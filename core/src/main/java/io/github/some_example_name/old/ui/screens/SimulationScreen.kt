@@ -26,6 +26,8 @@ import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.systems.render.usePostProcess
 import io.github.some_example_name.old.ui.dialogs.GenomeListDialog
 
+var isRenderUi = true
+
 class SimulationScreen(
     val multiPlatformFileProvider: FileProvider,
     val game: MyGame,
@@ -165,9 +167,11 @@ class SimulationScreen(
 
         if (Gdx.input.isKeyPressed(Input.Keys.Z)) {
             root.clear()
+            isRenderUi = false
         }
         if (Gdx.input.isKeyPressed(Input.Keys.Y)) {
             rebuildMenu()
+            isRenderUi = true
         }
     }
 

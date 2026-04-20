@@ -47,8 +47,6 @@ val texturePaths = arrayOf(
     "not_cell.png",     //PheromoneSensor(23),
     "punisher.png",     //Punisher(24)
     "not_cell.png"
-    // добавляй сюда сколько угодно (до 64+ легко)
-    // порядок = номер ex_cellType
 )
 
 class ShaderManagerLibgdxApi : ShaderManager {

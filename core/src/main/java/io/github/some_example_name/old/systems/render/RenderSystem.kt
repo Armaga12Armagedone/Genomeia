@@ -14,6 +14,7 @@ import io.github.some_example_name.old.core.utils.drawTriangleMiddle
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
+import io.github.some_example_name.old.ui.screens.isRenderUi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -87,7 +88,10 @@ class RenderSystem(
         Gdx.gl.glDepthMask(false)                 // чтобы UI не портил depth buffer
         Gdx.gl.glEnable(GL20.GL_BLEND)            // на всякий случай (stage любит blend)
 
-        drawTextSimInfo(spec)
+
+        if (isRenderUi) {
+            drawTextSimInfo(spec)
+        }
 
         if (blurLevel > 0) {
             blurLevel -= 0.09f
@@ -153,12 +157,14 @@ class RenderSystem(
 //
         Gdx.gl.glLineWidth(2f)
         shapeRenderer.color = Color.WHITE
-        shapeRenderer.rect(
-            0f,
-            0f,
-            diContext.gridWidth.toFloat(),
-            diContext.gridHeight.toFloat()
-        )
+        if (isRenderUi) {
+            shapeRenderer.rect(
+                0f,
+                0f,
+                diContext.gridWidth.toFloat(),
+                diContext.gridHeight.toFloat()
+            )
+        }
 
         if (!usePostProcess) {
             with(cellBuf) {
