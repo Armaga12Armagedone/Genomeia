@@ -1,28 +1,19 @@
 package io.github.some_example_name.old.genome_editor_deprecated
 
-import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.systems.genomics.genome.Action
-import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
-import io.github.some_example_name.old.core.utils.UnorderedIntPairMap
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 
 
 data class EditorCell(
     val id: Int,
-    val index: Int,
     val parentIndex: Int,
     val parentId: Int,
     var x: Float,
     var y: Float,
     val radius: Float,
-    val energy: Float,
-    val angle: Float,
-    val color: Color,
-    val isJustAdded: Boolean,
-    val gridId: Int,
+    val angleToParent: Float,
+    val isPhantom: Boolean,
     val divide: Action?,
     val mutate: Action?,
-    val cellProperty: Action?
 )
 
 data class SpecialCell(

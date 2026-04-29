@@ -16,7 +16,7 @@ class SpecialEntity(
 ): Entity(cellsStartMaxAmount) {
 
     //Special type entities
-    private var specialTypeIndexes = IntArray(maxAmount) { -1 }
+    var specialTypeIndexes = IntArray(maxAmount) { -1 }
 
     //Special Tail
     fun getTailGeneration(index: Int) = tailEntity.getGeneration(specialTypeIndexes[index])

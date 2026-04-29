@@ -86,12 +86,15 @@ class MenuScreen(
                             import = bundle.get("button.import"),
                             onNew = {
                                 game.screen = GenomeEditorScreen(
-                                    game = game
+                                    game = game,
+                                    genomeName = null
                                 )
                             },
                             onNext = { genomeName ->
+                                println("kek ${genomeName}")
                                 game.screen = GenomeEditorScreen(
-                                    game = game
+                                    game = game,
+                                    genomeName = genomeName
                                 )
                             },
                             onRestart = {

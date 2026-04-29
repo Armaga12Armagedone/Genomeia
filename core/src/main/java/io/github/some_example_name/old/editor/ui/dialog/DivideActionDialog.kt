@@ -17,29 +17,6 @@ import io.github.some_example_name.old.ui.dialogs.setupTitleSize
 import kotlin.math.PI
 import kotlin.math.atan2
 
-//fun showDivideDialog(
-//    clickedCell: EditorCell,
-//    clickedIndex: Int,
-//    newDividedCellPosition: Pair<Float, Float>
-//) {
-//    val dialogDivide = DivideActionDialog(
-//        clickedCell = clickedCell,
-//        newDividedCellPosition = newDividedCellPosition,
-//        game = game,
-//        bundle = bundle,
-//        onDivide = { action ->
-//            defaultActionType = LastActionType.DIVIDE
-//            defaultAction = action.copy(
-//                id = -1,
-//                angle = null,
-//                physicalLink = hashMapOf()
-//            )
-//            println(action.toString())
-//            tryToDivide(clickedIndex, newDividedCellPosition, action.copy())
-//        }
-//    )
-//    dialogDivide.show(stage)
-//}
 
 class DivideActionDialog(
     val clickedCell: EditorCell,

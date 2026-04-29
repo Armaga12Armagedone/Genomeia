@@ -22,13 +22,13 @@ import io.github.some_example_name.old.editor.commands.NextTickButtonTap
 import io.github.some_example_name.old.editor.commands.PrevStageButtonTap
 import io.github.some_example_name.old.editor.commands.PrevTickButtonTap
 import io.github.some_example_name.old.editor.commands.TimeSlider
-import io.github.some_example_name.old.editor.entities.ReplayEntity
+import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.system.EditorLogicSystem
 import io.github.some_example_name.old.editor.system.EditorRenderSystem
 import io.github.some_example_name.old.editor.system.EditorSimulationSystem
-import io.github.some_example_name.old.genome_editor_deprecated.SaveGenomeDialog
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import io.github.some_example_name.old.systems.genomics.genome.domainToJson
+import io.github.some_example_name.old.systems.render.usePostProcess
 import io.github.some_example_name.old.ui.screens.MenuScreen
 import io.github.some_example_name.old.ui.screens.MyGame
 import io.github.some_example_name.old.ui.screens.SimulationScreen
@@ -41,7 +41,6 @@ class MenuUiBuilder(
     val stage: Stage,
     val editorLogicSystem: EditorLogicSystem,
     val genomeJsonReader: GenomeJsonReader,
-    val replayEntity: ReplayEntity,
     val renderSystem: EditorRenderSystem,
     val fileProvider: FileProvider,
     val editorSimulationSystem: EditorSimulationSystem
@@ -51,7 +50,6 @@ class MenuUiBuilder(
     lateinit var stageText: VisLabel
     lateinit var tickText: VisLabel
     var isCtrl = false
-    var previousCtrlClicked = -1
     private var isRightClick = false
 
     var isProgrammaticChange = false
@@ -85,7 +83,7 @@ class MenuUiBuilder(
 //        fpsText = VisLabel("0 FPS")
 //        game.applyCustomFontMedium(fpsText)
 
-        timeSlider = VisSlider(0f, (replayEntity.size - 1).toFloat(), 1f, false)
+        timeSlider = VisSlider(0f, editorLogicSystem.lastTick.toFloat(), 1f, false)
         timeSlider.value = 0f
 
         timeSlider.addListener { event ->
@@ -124,6 +122,16 @@ class MenuUiBuilder(
             }
         })
 
+        val usePostProcessLinkButton = VisTextButton("Use post process", "toggle")
+        usePostProcessLinkButton.isChecked = usePostProcess
+
+        // Toggle кнопка
+        usePostProcessLinkButton.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                usePostProcess = usePostProcessLinkButton.isChecked
+            }
+        })
+
         val ctrlZ = VisTextButton("Ctrl+z")
         ctrlZ.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -143,7 +151,7 @@ class MenuUiBuilder(
         ctrl.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 isCtrl = ctrl.isChecked
-                if (!isCtrl) previousCtrlClicked = -1
+                if (!isCtrl) editorLogicSystem.previousCtrlClicked = -1
             }
         })
 
@@ -156,7 +164,7 @@ class MenuUiBuilder(
         })
 
         val buttons = mutableListOf(
-            goToMenuButton, chooseColorButton, showPhysicalLinkButton
+            goToMenuButton, chooseColorButton, showPhysicalLinkButton, usePostProcessLinkButton
         )
         if (Gdx.app.type == Application.ApplicationType.Android) {
             buttons.add(ctrlZ)

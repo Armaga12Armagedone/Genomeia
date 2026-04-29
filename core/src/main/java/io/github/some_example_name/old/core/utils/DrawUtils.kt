@@ -46,7 +46,7 @@ fun ShapeRenderer.drawTriangleEnd(
     c1y: Float,
     c2x: Float,
     c2y: Float,
-    arrowSize: Float = 2.5f
+    arrowSize: Float = 2.5f / 40f
 ) {
     // Вектор направления стрелки
     val dx = c2x - c1x

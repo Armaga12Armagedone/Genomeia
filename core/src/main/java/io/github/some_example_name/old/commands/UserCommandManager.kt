@@ -158,8 +158,8 @@ class UserCommandManager(
                                 )
                             }
                         } else {
-                            val radius = 10.0f
-                            repeat(300) {
+                            val radius = 14.0f
+                            repeat(2000) {
                                 val angle = MathUtils.random(0f, MathUtils.PI2)
 
                                 val r = radius * sqrt(MathUtils.random())

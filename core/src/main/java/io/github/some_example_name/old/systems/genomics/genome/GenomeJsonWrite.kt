@@ -130,13 +130,13 @@ private fun Action.toJson(): ActionJsonWrite {
         c = this.c,
         isSum = this.isSum,
         colorRecognition = this.colorRecognition,
-        lengthDirected = this.lengthDirected
+        lengthDirected = this.lengthDirected?.times(40f)
     )
 }
 
 private fun LinkData.toJson(): LinkDataJsonWrite {
     return LinkDataJsonWrite(
-        length = this.length,
+        length = this.length?.times(40f),
         weight = this.weight,
         directedNeuronLink = this.directedNeuronLink
     )

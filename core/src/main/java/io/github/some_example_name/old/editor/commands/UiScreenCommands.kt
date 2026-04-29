@@ -14,3 +14,7 @@ class ShowMutateDialog(
     clickedCell: EditorCell,
     clickedIndex: Int
 ): UiScreenCommands
+
+class MutateOrDivideDialog(
+
+):UiScreenCommands

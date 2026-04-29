@@ -1,9 +1,9 @@
 package io.github.some_example_name.old.systems.genomics
 
 import com.badlogic.gdx.graphics.Color
+import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
-import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.utils.collectParticles
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.ParticleEntity
@@ -16,7 +16,8 @@ class DivideManager(
     val cellEntity: CellEntity,
     val particleEntity: ParticleEntity,
     val worldCommandsManager: WorldCommandsManager,
-    val gridManager: GridManager
+    val gridManager: GridManager,
+    val cellList: List<Cell>
 ) {
 
     fun divideCell(index: Int, threadId: Int) = with(cellEntity) {
@@ -29,22 +30,27 @@ class DivideManager(
             val genomeAngle = action.angle ?: throw Exception("Forgot angle")
             val divideAngleCos = cos(genomeAngle)
             val divideAngleSin = sin(genomeAngle)
-            val finalCos = angleCos[index] * divideAngleCos - angleSin[index] * divideAngleSin
-            val finalSin = angleSin[index] * divideAngleCos + angleCos[index] * divideAngleSin
+            //angle + genomeAngle
+            val isDirected = cellList[cellType[index].toInt()].isDirected
+            //TODO Для компенсации угла у клеток с parentIndex == -1 не стоит использовать angleDiff, это условие временное, что бы было корректное деление из зиготы
+            val parentAngleCos = if (isDirected) { angleCos[index] * angleDiffCos[index] + angleSin[index] * angleDiffSin[index] } else angleCos[index]
+            val parentAngleSin = if (isDirected) { angleSin[index] * angleDiffCos[index] - angleCos[index] * angleDiffSin[index] } else angleSin[index]
+            val finalCos = parentAngleCos * divideAngleCos - parentAngleSin * divideAngleSin
+            val finalSin = parentAngleSin * divideAngleCos + parentAngleCos * divideAngleSin
             var x = getX(index) + finalCos * parentLinkLength
             var y = getY(index) + finalSin * parentLinkLength
 
             if (x < 0) {
                 x = 0.1f
             }
-            if (x > DISimulationContainer.gridManager.gridWidth) {
-                x = DISimulationContainer.gridManager.gridWidth - 0.1f
+            if (x > gridManager.gridWidth) {
+                x = gridManager.gridWidth - 0.1f
             }
             if (y < 0) {
                 y = 0.1f
             }
-            if (y > DISimulationContainer.gridManager.gridHeight) {
-                y = DISimulationContainer.gridManager.gridHeight - 0.1f
+            if (y > gridManager.gridHeight) {
+                y = gridManager.gridHeight - 0.1f
             }
 
             val cellGenomeId: Int = action.id
@@ -54,11 +60,11 @@ class DivideManager(
                 val radius: Float = PARTICLE_MAX_RADIUS
                 val cellType: Int = action.cellType ?: throw Exception("Forgot cellType")
                 val parentIndex: Int = index
-                val angleCos: Float = divideAngleCos
-                val angleSin: Float = divideAngleSin
                 val angleDiff: Float = action.angleDirected ?: 0f
                 val angleDiffCos: Float = cos(angleDiff)
                 val angleDiffSin: Float = sin(angleDiff)
+                val angleCos: Float = finalCos * angleDiffCos - finalSin * angleDiffSin
+                val angleSin: Float = finalSin * angleDiffCos + finalCos * angleDiffSin
 
                 val colorDifferentiation: Int = action.colorRecognition ?: 7
                 val visibilityRange: Float = action.lengthDirected ?: 4.25f

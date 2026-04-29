@@ -336,7 +336,7 @@ fun eye(
     val density = Gdx.graphics.density
     val table = VisTable()
 
-    val distanceAction = action.lengthDirected ?: 0.0f
+    val distanceAction = (action.lengthDirected ?: 0.0f) * 40f
     val volumeLabel = VisLabel("${bundle.get("button.distance")} $distanceAction")
     game.applyCustomFontMedium(volumeLabel)
     volumeLabel.setAlignment(Align.center)
@@ -374,7 +374,7 @@ fun eye(
         if (event is ChangeEvent) {
             val distance = volumeSlider.value
             volumeLabel.setText("${bundle.get("button.distance")}: ${distance.toInt()}")
-            onDistanceChange(distance)
+            onDistanceChange(distance / 40f)
         }
         false
     }

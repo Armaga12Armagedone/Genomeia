@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.input.GestureDetector
+import com.badlogic.gdx.input.GestureDetector.GestureListener
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.math.Vector3
@@ -20,27 +21,26 @@ import io.github.some_example_name.old.core.DIGenomeEditorContainer
 import io.github.some_example_name.old.editor.commands.CtrlY
 import io.github.some_example_name.old.editor.commands.CtrlZ
 import io.github.some_example_name.old.editor.commands.FlingScreen
+import io.github.some_example_name.old.editor.commands.GoToEndOfTimeLine
 import io.github.some_example_name.old.editor.commands.PanScreen
-import io.github.some_example_name.old.editor.commands.ShowDivideDialog
-import io.github.some_example_name.old.editor.commands.ShowMutateDialog
 import io.github.some_example_name.old.editor.commands.TapScreen
-import io.github.some_example_name.old.systems.genomics.genome.Action
+import io.github.some_example_name.old.editor.commands.TouchDown
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import io.github.some_example_name.old.ui.screens.MyGame
-import kotlin.Float
-import kotlin.system.measureNanoTime
 
 
 data class GenomeEditorData(
     var currentTick: Int,
-    var currentStage: Int
+    var currentStage: Int,
+    var lastTick: Int
 )
 
 class GenomeEditorScreen(
-    val game: MyGame
-) : Screen, GestureDetector.GestureListener {
+    val game: MyGame,
+    val genomeName: String?
+) : Screen, GestureListener {
 
-    val replayEntity = DIGenomeEditorContainer.replayEntity
+    val replayEntity = DIGenomeEditorContainer.cellReplay
     val renderSystem = DIGenomeEditorContainer.editorRenderSystem
     val editorLogicSystem = DIGenomeEditorContainer.editorLogicSystem
     val fileProvider = DIGameGlobalContainer.fileProvider
@@ -54,7 +54,8 @@ class GenomeEditorScreen(
 
     private var state = GenomeEditorData(
         currentTick = 0,
-        currentStage = 0
+        currentStage = 0,
+        lastTick = 0
     )
     private var initialZoom = 0f
     private var currentPinchCenter: Vector2? = null
@@ -68,19 +69,32 @@ class GenomeEditorScreen(
     lateinit var menuUiBuilder: MenuUiBuilder
 
     override fun show() {
+        DIGenomeEditorContainer.genomeManager.load("$genomeName.json")
+        editorSimulationSystem.genome = DIGenomeEditorContainer.genomeManager.genomes[0]
+        editorLogicSystem.currentTick = 0
+        editorLogicSystem.currentTick = 0
+        editorLogicSystem.currentStage = 0
+
+
         camera = OrthographicCamera().apply {
             setToOrtho(false, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat())
         }
         shape = ShapeRenderer()
 
-
-        editorSimulationSystem.simulate()
+        editorLogicSystem.restartSimulation()
 
         virtualWidth = Gdx.graphics.width.toFloat()
         virtualHeight = Gdx.graphics.height.toFloat()
         val multiplexer = InputMultiplexer()
         multiplexer.addProcessor(stage)
-        multiplexer.addProcessor(GestureDetector(this))
+        multiplexer.addProcessor(
+            GestureDetector(
+                10f,
+                0.4f,
+                1.1f,
+                Float.MAX_VALUE,
+                this
+            ))
         multiplexer.addProcessor(object : InputAdapter() {
             override fun scrolled(amountX: Float, amountY: Float): Boolean {
                 val mouseX = Gdx.input.x.toFloat()
@@ -106,7 +120,6 @@ class GenomeEditorScreen(
             stage = stage,
             editorLogicSystem = editorLogicSystem,
             genomeJsonReader = genomeJsonReader,
-            replayEntity = replayEntity,
             renderSystem = renderSystem,
             fileProvider = fileProvider,
             editorSimulationSystem = editorSimulationSystem
@@ -115,7 +128,10 @@ class GenomeEditorScreen(
         menuUiBuilder.buildEditorMenu()
         camera.position.set(64f, 64f, 0f)
         camera.zoom = 0.01f
+//        camera.rotate(90f)
         camera.update()
+
+        editorLogicSystem.bindToScreen(camera, game, stage)
     }
 
     override fun render(delta: Float) {
@@ -132,6 +148,11 @@ class GenomeEditorScreen(
             renderSystem.isUpdateBuffer = true
         }
 
+        if (state.lastTick != editorLogicSystem.lastTick) {
+            menuUiBuilder.timeSlider.setRange(0f, editorLogicSystem.lastTick.toFloat())
+            state.lastTick = editorLogicSystem.lastTick
+        }
+
         camera.update()
         renderSystem.render()
 
@@ -146,30 +167,30 @@ class GenomeEditorScreen(
 
         if (Gdx.app.type == Application.ApplicationType.Desktop) {
             menuUiBuilder.isCtrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
-            if (!menuUiBuilder.isCtrl) menuUiBuilder.previousCtrlClicked = -1
+            if (!menuUiBuilder.isCtrl) editorLogicSystem.previousCtrlClicked = -1
         }
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            editorLogicSystem.putUiCommand(CtrlY)
+            editorLogicSystem.putUiCommand(GoToEndOfTimeLine)
         }
 
         stage.act(delta)
         stage.draw()
 
-        if (editorLogicSystem.uiScreenCommands != null) {
-            when (editorLogicSystem.uiScreenCommands) {
-                is ShowDivideDialog -> {
-                    TODO()
-                }
-                is ShowMutateDialog -> {
-                    TODO()
-                }
-                null -> {
-                    TODO()
-                }
-            }
-            editorLogicSystem.uiScreenCommands = null
-        }
+//        if (editorLogicSystem.uiScreenCommands != null) {
+//            when (editorLogicSystem.uiScreenCommands) {
+//                is ShowDivideDialog -> {
+//                    TODO()
+//                }
+//                is ShowMutateDialog -> {
+//                    TODO()
+//                }
+//                null -> {
+//                    TODO()
+//                }
+//            }
+//            editorLogicSystem.uiScreenCommands = null
+//        }
     }
 
     override fun resize(width: Int, height: Int) {
@@ -181,6 +202,7 @@ class GenomeEditorScreen(
         menuUiBuilder.stageText.setText(state.currentStage.toString())
         menuUiBuilder.tickText.setText(state.currentTick.toString())
         renderSystem.isUpdateBuffer = true
+        renderSystem.resize(width, height)
 
         camera.viewportWidth = width.toFloat()
         camera.viewportHeight = height.toFloat()
@@ -196,11 +218,9 @@ class GenomeEditorScreen(
     override fun hide() { }
 
     override fun dispose() {
+        editorLogicSystem.dispose()
         stage.dispose()
-//        shaderManager.dispose()
         shape.dispose()
-//        editor.growthProcessor.clearAll()
-//        editor.dispose()
     }
 
     override fun touchDown(
@@ -209,6 +229,8 @@ class GenomeEditorScreen(
         pointer: Int,
         button: Int
     ): Boolean {
+        val (touchedCellX, touchedCellY) = screenToWorld(x, y)
+        editorLogicSystem.putUiCommand(TouchDown(x = touchedCellX, y = touchedCellY))
         return false
     }
 
@@ -223,7 +245,8 @@ class GenomeEditorScreen(
             TapScreen(
                 x = touchedCellX,
                 y = touchedCellY,
-                isLeft = button == Input.Buttons.LEFT
+                isLeft = button == Input.Buttons.LEFT,
+                isCtrl = menuUiBuilder.isCtrl
             )
         )
         return true

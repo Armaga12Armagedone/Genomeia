@@ -9,6 +9,7 @@ import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.core.DISimulationContainer.cellsSettings
 import io.github.some_example_name.old.core.utils.collectParticles
+import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
@@ -132,6 +133,22 @@ class MutateManager(
             action.angleDirected?.let {
                 angleDiffCos[index] = cos(it)
                 angleDiffSin[index] = sin(it)
+
+                val parentIndex = parentIndex[index]
+                if (parentIndex != -1) {
+                    val dx = getX(index) - getX(parentIndex)
+                    val dy = getY(index) - getY(parentIndex)
+
+                    val len = 1f / invSqrt(dx * dx + dy * dy)
+                    val toChildCos = dx / len
+                    val toChildSin = dy / len
+
+                    val cd = angleDiffCos[index]
+                    val sd = angleDiffSin[index]
+
+                    angleCos[index] = toChildCos * cd - toChildSin * sd
+                    angleSin[index] = toChildSin * cd + toChildCos * sd
+                }
             }
 
             if (lastCell is Eye && newCell is Eye) {

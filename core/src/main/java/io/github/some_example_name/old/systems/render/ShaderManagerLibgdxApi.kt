@@ -39,7 +39,7 @@ val texturePaths = arrayOf(
     "not_cell.png",     //Compass(15),
     "not_cell.png",     //Controller(16),
     "not_cell.png",     //TouchTrigger(17),
-    "not_cell.png",     //Zygote(18),
+    "zygote.png",       //Zygote(18),
     "not_cell.png",     //Producer(19),
     "not_cell.png",     //Breakaway(20),
     "not_cell.png",     //Vascular(21),
@@ -73,7 +73,7 @@ class ShaderManagerLibgdxApi : ShaderManager {
 
     private lateinit var blurFbo: FrameBuffer
 
-    private val invProjMatrix = Matrix4()
+//    private val invProjMatrix = Matrix4()
 
     private fun createTextureArray() {
 
@@ -335,7 +335,7 @@ class ShaderManagerLibgdxApi : ShaderManager {
         shader.setUniformMatrix("u_projTrans", cameraProjection)
 //        shader.setUniformi("u_currentBuffer", currentReadIndex)
         shader.setUniformf("u_textureScale", 1.0f)
-        shader.setUniformf("u_colorScale", if (usePostProcess) 0f else 0.5f)
+        shader.setUniformf("u_colorScale", if (usePostProcess) 0f else 1.0f)
         shader.setUniformi("u_textureArray", 0)
 
         Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0)
@@ -357,7 +357,7 @@ class ShaderManagerLibgdxApi : ShaderManager {
             Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
             Gdx.gl.glDisable(GL20.GL_BLEND)
 
-            invProjMatrix.set(cameraProjection).inv()
+//            invProjMatrix.set(cameraProjection).inv()
 
             sobelShader.bind()
             sobelShader.setUniformi("u_texture", 0)

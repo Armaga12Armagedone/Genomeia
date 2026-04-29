@@ -22,7 +22,8 @@ object FlingScreen: UiEditorCommands
 class TapScreen(
     val x: Float,
     val y: Float,
-    val isLeft: Boolean
+    val isLeft: Boolean,
+    val isCtrl: Boolean
 ): UiEditorCommands
 
 class TimeSlider(
@@ -31,5 +32,7 @@ class TimeSlider(
 ): UiEditorCommands
 
 object GoToEndOfTimeLine: UiEditorCommands
+
+class TouchDown(val x: Float, val y: Float): UiEditorCommands
 
 //TODO dialog commands

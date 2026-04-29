@@ -3,8 +3,8 @@ package io.github.some_example_name.old.core.utils
 import kotlin.math.*
 
 data class Point(val x: Float, val y: Float)
-const val START_EDITOR_CELL_X = 128f
-const val START_EDITOR_CELL_Y = 128f
+const val START_EDITOR_CELL_X = 64f
+const val START_EDITOR_CELL_Y = 64f
 
 const val MIN_DISTANCE_TO_CENTER = 24f / 40f
 const val MAX_DISTANCE_TO_CENTER = 36f / 40f
@@ -78,8 +78,8 @@ fun setMinMaxDistForChildCellToParent(childCellX: Float, childCellY: Float, pare
     val distance = sqrt(dx * dx + dy * dy)
 
     // Ограничиваем расстояние между minRadius (5f) и maxRadius (30f)
-    val minRadius = 5f
-    val maxRadius = 30f
+    val minRadius = 5f / 40f
+    val maxRadius = 30f / 40f
 
     return when {
         distance < minRadius -> {

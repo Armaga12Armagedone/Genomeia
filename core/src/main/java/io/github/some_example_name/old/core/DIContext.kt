@@ -2,6 +2,7 @@ package io.github.some_example_name.old.core
 
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.entities.CellEntity
+import io.github.some_example_name.old.entities.Entity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
@@ -15,6 +16,8 @@ import io.github.some_example_name.old.systems.physics.GridManager
 interface DIContext {
     var gridWidth: Int
     var gridHeight: Int
+    var chunkSize: Int
+    var totalChunks: Int
     var threadCount: Int
     val particleEntity: ParticleEntity
     val cellEntity: CellEntity
@@ -29,4 +32,5 @@ interface DIContext {
 
     val gridManager: GridManager
     val organManager: OrganManager
+    val entityList: List<Entity>
 }

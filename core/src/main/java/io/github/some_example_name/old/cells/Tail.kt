@@ -5,7 +5,8 @@ import io.github.some_example_name.old.core.utils.blueColors
 class Tail(cellTypeId: Int): Cell(
     defaultColor = blueColors.first(),
     cellTypeId = cellTypeId,
-    isNeural = true
+    isNeural = true,
+    isDirected = true
 ) {
 
     override fun doOnTick(cellIndex: Int, threadId: Int) = with(cellEntity) {

@@ -54,8 +54,4 @@ class OrganManager(
             }
         }
     }
-
-    fun clear() {
-        organEntity.clear()
-    }
 }

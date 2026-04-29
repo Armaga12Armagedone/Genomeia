@@ -1,6 +1,31 @@
 package io.github.some_example_name.old.editor.ui.dialog
 
+import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.*
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
+import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.utils.Align
+import com.badlogic.gdx.utils.I18NBundle
+import com.kotcrab.vis.ui.VisUI
+import com.kotcrab.vis.ui.widget.VisDialog
+import com.kotcrab.vis.ui.widget.VisLabel
+import com.kotcrab.vis.ui.widget.VisTable
+import com.kotcrab.vis.ui.widget.color.ColorPickerAdapter
+import io.github.some_example_name.old.cells.base.formulaType
+import io.github.some_example_name.old.core.color_picker.ColorPicker
+import io.github.some_example_name.old.core.utils.invSqrt
+import io.github.some_example_name.old.editor.entities.CellReplay
+import io.github.some_example_name.old.editor.entities.EyeReplay
+import io.github.some_example_name.old.editor.entities.NeuralReplay
+import io.github.some_example_name.old.entities.CellEntity
+import io.github.some_example_name.old.entities.ParticleEntity
+import io.github.some_example_name.old.genome_editor_deprecated.EditorCell
+import io.github.some_example_name.old.systems.genomics.genome.Action
+import io.github.some_example_name.old.ui.dialogs.setupTitleSize
+import io.github.some_example_name.old.ui.screens.MyGame
+import io.github.some_example_name.old.ui.screens.applyCustomFontMedium
+import kotlin.math.atan2
+import kotlin.random.Random
 
 
 fun getColorFromBits(bits: Int): Color {
@@ -35,53 +60,80 @@ fun encodeColorToBits(r: Float, g: Float, b: Float): Int {
     return bits
 }
 
-//fun showMutateDialog(
-//    clickedCell: EditorCell,
-//    clickedIndex: Int
-//) {
-//    val dialogMutate = MutateActionDialog(
-//        clickedCell = clickedCell,
-//        cellFullReplay = editor.growthProcessor.simulationFullReplay[state.currentStage],
-//        clickedIndex = clickedIndex,
-//        game = game,
-//        bundle = bundle,
-//        onMutate = { action ->
-//            defaultActionType = LastActionType.MUTATE
-//            defaultAction = action.copy(
-//                id = -1,
-//                angle = null,
-//                physicalLink = hashMapOf()
-//            )
-//            println(action.toString())
-//            tryToMutate(clickedIndex, action.copy())
-//        }
-//    )
-//    dialogMutate.show(stage)
-//}
-
-
-/*
-
 class MutateActionDialog(
     val clickedCell: EditorCell,
-    val cellFullReplay: FullReplayStructure,
+    val parentCell: EditorCell,
+    val startCurrentStageTick: Int,
+    val cellReplay: CellReplay,
+    val eyeReplay: EyeReplay,
+    val neuralReplay: NeuralReplay,
     val clickedIndex: Int,
     val onMutate: (Action) -> Unit,
     val game: MyGame,
     val bundle: I18NBundle
 ) : VisDialog("${bundle.get("button.cellId")} ${clickedCell.id}") {
-    private val colorOfCellFrom = Color(
-        cellFullReplay.colorR[clickedIndex],
-        cellFullReplay.colorG[clickedIndex],
-        cellFullReplay.colorB[clickedIndex],
-        1f
-    )
+
+    private val colorOfCellFrom = Color().also {
+        val argb = cellReplay.getColor(startCurrentStageTick, clickedIndex)
+        val rgba = ((argb shr 16) and 0xFF) or (argb and 0xFF00) or ((argb shl 16) and 0xFF0000) or (argb and -0x1000000)
+        Color.argb8888ToColor(it,  rgba)
+    }
+
+    fun getCellType() = cellReplay.getCellType(startCurrentStageTick, clickedIndex).toInt()
+
+    fun getColorDifferentiation(tick: Int): Byte? {
+        val eyeIndex = cellReplay.getSpecialTypeIndexes(tick, clickedIndex)
+
+        return eyeReplay.getColorDifferentiation(tick, eyeIndex)
+    }
+
+    fun getVisibilityRange(tick: Int): Float? {
+        val eyeIndex = cellReplay.getSpecialTypeIndexes(tick, clickedIndex)
+
+        return eyeReplay.getVisibilityRange(tick, eyeIndex)
+    }
+
+    fun getActivationFuncType(): Byte? {
+        val neuralIndex = cellReplay.getNeuralIndexes(startCurrentStageTick, clickedIndex)
+
+        return neuralReplay.getActivationFuncType(startCurrentStageTick, neuralIndex)
+    }
+    fun getA(): Float? {
+        val neuralIndex = cellReplay.getNeuralIndexes(startCurrentStageTick, clickedIndex)
+
+        return neuralReplay.getA(startCurrentStageTick, neuralIndex)
+    }
+    fun getB(): Float? {
+        val neuralIndex = cellReplay.getNeuralIndexes(startCurrentStageTick, clickedIndex)
+
+        return neuralReplay.getB(startCurrentStageTick, neuralIndex)
+    }
+    fun getC(): Float? {
+        val neuralIndex = cellReplay.getNeuralIndexes(startCurrentStageTick, clickedIndex)
+
+        return neuralReplay.getC(startCurrentStageTick, neuralIndex)
+    }
+    fun getIsSum(): Boolean? {
+        val neuralIndex = cellReplay.getNeuralIndexes(startCurrentStageTick, clickedIndex)
+
+        return neuralReplay.getIsSum(startCurrentStageTick, neuralIndex)
+    }
+
+    fun getBaseAngleFromParent(): Float {
+        val dx = clickedCell.x - parentCell.x
+        val dy = clickedCell.y - parentCell.y
+
+        val len = 1f / invSqrt(dx * dx + dy * dy)
+        val toChildCos = dx / len
+        val toChildSin = dy / len
+
+        return atan2(toChildSin, toChildCos)
+    }
 
     private var colorOfCellTo = colorOfCellFrom
-    private var cellType = clickedCell.mutate?.cellType ?: cellFullReplay.cellType[clickedIndex]
+    private var cellType = clickedCell.mutate?.cellType ?: getCellType()//cellEntity.cellType[clickedIndex].toInt()
 
     private var mutation: Action? = clickedCell.mutate?.copy()
-
 
     val scrollPane: ScrollPane
     init {
@@ -119,47 +171,58 @@ class MutateActionDialog(
     private fun makeMutateList(text: StringBuilder) {
         clickedCell.mutate?.apply {
             cellType?.let {
-                val fullReplayCellType = cellFullReplay.cellType[clickedIndex]
+                val fullReplayCellType = getCellType()
                 if (it != fullReplayCellType)
                     text.append("Cell type: ${cellsType[fullReplayCellType]} -> ${cellsType[it]}\n")
             }
             funActivation?.let {
-                if (it != cellFullReplay.activationFuncType[clickedIndex])
-                    text.append("Activation formula:\n${formulaType[cellFullReplay.activationFuncType[clickedIndex]]} -> ${formulaType[it]}\n")
+                val activationFuncType = getActivationFuncType()?.toInt()
+                if (it != activationFuncType) {
+                    val formula = if (activationFuncType != null) formulaType[activationFuncType] else null
+                    text.append("Activation formula:\n${formula} -> ${formulaType[it]}\n")
+                }
             }
             a?.let {
-                if (it != cellFullReplay.a[clickedIndex])
-                    text.append("a: ${cellFullReplay.a[clickedIndex]} -> $it\n")
+                if (it != getA())
+                    text.append("a: ${getA()} -> $it\n")
             }
             b?.let {
-                if (it != cellFullReplay.b[clickedIndex])
-                    text.append("b: ${cellFullReplay.b[clickedIndex]} -> $it\n")
+                if (it != getB())
+                    text.append("b: ${getB()} -> $it\n")
             }
             c?.let {
-                if (it != cellFullReplay.c[clickedIndex])
-                    text.append("c: ${cellFullReplay.c[clickedIndex]} -> $it\n")
+                if (it != getC())
+                    text.append("c: ${getC()} -> $it\n")
             }
             isSum?.let {
-                if (it != cellFullReplay.isSum[clickedIndex])
+                if (it != getIsSum())
                     text.append(
                         "isSum: ${
-                            if (cellFullReplay.isSum[clickedIndex]) "Addition" else "Multiplication"
+                            when (getIsSum()) {
+                                true -> "Addition"
+                                false -> "Multiplication"
+                                null -> "null"
+                            }
                         } -> ${
                             if (it) "Addition\n" else "Multiplication\n"
                         }"
                     )
             }
             colorRecognition?.let {
-                val colorFrom = getColorFromBits(cellFullReplay.colorDifferentiation[clickedIndex])
+                val colorDifferentiation = getColorDifferentiation(startCurrentStageTick)?.toInt()
+                val colorFrom = if (colorDifferentiation != null) getColorFromBits(colorDifferentiation) else null
                 val colorTo = getColorFromBits(it)
-                if (it != cellFullReplay.colorDifferentiation[clickedIndex])
+                if (it != colorDifferentiation) {
+                    val fromText =
+                        if (colorFrom != null) "(r:${if (colorFrom.r > 0) 1 else 0}, g:${if (colorFrom.g > 0) 1 else 0}, b${if (colorFrom.b > 0) 1 else 0})" else null
                     text.append(
-                        "Eye color recognition: (r:${if (colorFrom.r > 0) 1 else 0}, g:${if (colorFrom.g > 0) 1 else 0}, b${if (colorFrom.b > 0) 1 else 0}) -> (r:${if (colorTo.r > 0) 1 else 0}, g:${if (colorTo.g > 0) 1 else 0}, b${if (colorTo.b > 0) 1 else 0})\n"
+                        "Eye color recognition: $fromText -> (r:${if (colorTo.r > 0) 1 else 0}, g:${if (colorTo.g > 0) 1 else 0}, b${if (colorTo.b > 0) 1 else 0})\n"
                     )
+                }
             }
             lengthDirected?.let {
-                if (it != cellFullReplay.visibilityRange[clickedIndex])
-                    text.append("Eye distance: ${cellFullReplay.visibilityRange[clickedIndex]} -> $it\n")
+                if (it != getVisibilityRange(startCurrentStageTick))
+                    text.append("Eye distance: ${getVisibilityRange(startCurrentStageTick)} -> $it\n")
             }
         }
     }
@@ -169,9 +232,12 @@ class MutateActionDialog(
         scrollContentTable.clear()
         val circleWidgetFrom = CircleWidget(
             initialColor = colorOfCellFrom,
-            smallCircleRadius = clickedCell.energy,
-            initialDirectedAngle = if (cellFullReplay.cellType[clickedIndex].isDirected()) {
-                cellFullReplay.angle[clickedIndex] + cellFullReplay.angleDiff[clickedIndex]
+            smallCircleRadius = 3f,
+            initialDirectedAngle = if (getCellType().isDirected()) {
+                atan2(
+                    cellReplay.getAngleSin(startCurrentStageTick,clickedIndex),
+                    cellReplay.getAngleCos(startCurrentStageTick,clickedIndex)
+                )
             } else null
         )
         var mutableCircleWidget = circleWidgetFrom
@@ -190,9 +256,9 @@ class MutateActionDialog(
             }
             val circleWidgetTo = CircleWidget(
                 initialColor = colorOfCellTo,
-                smallCircleRadius = clickedCell.energy,
+                smallCircleRadius = 3f,
                 initialDirectedAngle = if (cellType.isDirected()) {
-                    cellFullReplay.angle[clickedIndex] + (mutation?.angleDirected ?: cellFullReplay.angleDiff[clickedIndex])
+                    getBaseAngleFromParent() + (mutation?.angleDirected ?: 0f)
                 } else null
             )
             previewTable.add(circleWidgetTo).size(100f * density, 100f * density)
@@ -243,11 +309,11 @@ class MutateActionDialog(
         if (cellType.isNeural()) {
             neuron(
                 action = mutation ?: Action(
-                    funActivation = cellFullReplay.activationFuncType[clickedIndex],
-                    a = cellFullReplay.a[clickedIndex],
-                    b = cellFullReplay.b[clickedIndex],
-                    c = cellFullReplay.c[clickedIndex],
-                    isSum = cellFullReplay.isSum[clickedIndex]
+                    funActivation = getActivationFuncType()?.toInt(),
+                    a = getA(),
+                    b = getB(),
+                    c = getC(),
+                    isSum = getIsSum()
                 ),
                 game = game,
                 bundle = bundle,
@@ -275,22 +341,30 @@ class MutateActionDialog(
         }
 
         if (cellType.isDirected()) {
-            angleDirected(mutation ?: Action(
-                angleDirected = cellFullReplay.angleDiff[clickedIndex]),
+            val angle = atan2(
+                cellReplay.getAngleSin(startCurrentStageTick,clickedIndex),
+                cellReplay.getAngleCos(startCurrentStageTick,clickedIndex)
+            )
+            val baseParentAngle = getBaseAngleFromParent()
+
+            angleDirected(
+                action = mutation ?: Action(
+                    angleDirected = angle - baseParentAngle
+                ),
                 scrollPane = scrollPane,
                 game = game,
                 bundle = bundle
             ) { angle ->
                 if (mutation == null) mutation = Action()
                 mutation = mutation?.copy(angleDirected = angle)
-                mutableCircleWidget.setAngle(angle + cellFullReplay.angle[clickedIndex])
+                mutableCircleWidget.setAngle(baseParentAngle + angle)
             }.also { scrollContentTable.add(it).width(200f * density).row() }
         }
         if (cellType.isEye()) {
             eye(
                 action = mutation ?: Action(
-                    lengthDirected = cellFullReplay.visibilityRange[clickedIndex],
-                    colorRecognition = cellFullReplay.colorDifferentiation[clickedIndex]
+                    lengthDirected = getVisibilityRange(startCurrentStageTick),
+                    colorRecognition = getColorDifferentiation(startCurrentStageTick)?.toInt()
                 ),
                 scrollPane = scrollPane,
                 game = game,
@@ -325,7 +399,7 @@ class MutateActionDialog(
             }
             !fromCellType.isDirected() && toCellType.isDirected() -> {
                 mutation = mutation?.copy(angleDirected = 0f)
-                mutableCircleWidget.setAngle(0f + cellFullReplay.angle[clickedIndex])
+                mutableCircleWidget.setAngle(getBaseAngleFromParent())
             }
         }
 
@@ -366,4 +440,3 @@ class MutateActionDialog(
         }
     }
 }
-*/

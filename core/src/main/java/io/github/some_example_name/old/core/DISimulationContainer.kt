@@ -44,8 +44,8 @@ object DISimulationContainer:  DIContext, Disposable {
     var heightMultiplier = chunkHeight * 2
     var gridSize = gridWidth * gridHeight
     override var threadCount = (gridHeight / chunkHeight) / 2
-    var totalChunks = threadCount * 2
-    var chunkSize = gridSize / totalChunks
+    override var totalChunks = threadCount * 2
+    override var chunkSize = gridSize / totalChunks
     override val substrateSettings = SubstrateSettings()
 
     var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks
@@ -60,7 +60,9 @@ object DISimulationContainer:  DIContext, Disposable {
 
     override val gridManager = GridManager(
         gridWidth = gridWidth,
-        gridHeight = gridHeight
+        gridHeight = gridHeight,
+        diContext = this,
+        maxAmountOfParticles = 4
     )
     private val cellListBuilder = CellListBuilder(this)
     val cellList = cellListBuilder.instances
@@ -119,7 +121,7 @@ object DISimulationContainer:  DIContext, Disposable {
         substrateSettings = substrateSettings
     )
 
-    val entityList = listOf(
+    override val entityList = listOf(
         tailEntity,
         organEntity,
         particleEntity,
@@ -130,7 +132,8 @@ object DISimulationContainer:  DIContext, Disposable {
         cellEntity,
         linkEntity,
 //        pheromoneEntity,
-        substancesEntity
+        substancesEntity,
+        producerEntity
     )
 
     override val genomeManager = GenomeManager(
@@ -211,7 +214,8 @@ object DISimulationContainer:  DIContext, Disposable {
         cellEntity = cellEntity,
         worldCommandsManager = worldCommandsManager,
         particleEntity = particleEntity,
-        gridManager = gridManager
+        gridManager = gridManager,
+        cellList = cellList
     )
 
     val mutateManager = MutateManager(

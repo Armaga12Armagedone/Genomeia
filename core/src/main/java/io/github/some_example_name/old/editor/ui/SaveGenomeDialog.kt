@@ -1,4 +1,4 @@
-package io.github.some_example_name.old.genome_editor_deprecated
+package io.github.some_example_name.old.editor.ui
 
 import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx

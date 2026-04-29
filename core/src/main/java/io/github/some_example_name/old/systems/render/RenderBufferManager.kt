@@ -60,11 +60,8 @@ class RenderBufferManager(
                 if (isCell[i]) {
                     val cellIndex = holderEntityIndex[i]
 
-                    val cd = cellEntity.angleDiffCos[cellIndex]
-                    val sd = cellEntity.angleDiffSin[cellIndex]
-
-                    val cos = cellEntity.angleCos[cellIndex] * cd + cellEntity.angleSin[cellIndex] * sd
-                    val sin = cellEntity.angleSin[cellIndex] * cd - cellEntity.angleCos[cellIndex] * sd
+                    val cos = cellEntity.angleCos[cellIndex]
+                    val sin = cellEntity.angleSin[cellIndex]
 
                     val cosByte = ((cos * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
                     val sinByte = ((sin * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
@@ -81,6 +78,7 @@ class RenderBufferManager(
                             14 -> specialEntity.getVisibilityRange(cellIndex)
                             3 -> 1f
                             9 -> 1f
+//                            18 -> 1f
                             else -> 0f
                         }
                         back.directedAngleCos[bufIndex] = cellEntity.angleCos[cellIndex] * length

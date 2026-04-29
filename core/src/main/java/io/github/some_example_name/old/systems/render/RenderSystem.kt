@@ -59,8 +59,6 @@ class RenderSystem(
         camera.update()
     }
 
-    @Volatile
-    var isClear = 3
     private var buffer = allocateBuffer(INITIAL_PARTICLE_CAPACITY)
 
     fun resize(width: Int, height: Int) {
@@ -84,9 +82,9 @@ class RenderSystem(
 
         moveCameraAndDrawSelected(spec)
 
-        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)      // обязательно!
-        Gdx.gl.glDepthMask(false)                 // чтобы UI не портил depth buffer
-        Gdx.gl.glEnable(GL20.GL_BLEND)            // на всякий случай (stage любит blend)
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
+        Gdx.gl.glDepthMask(false)
+        Gdx.gl.glEnable(GL20.GL_BLEND)
 
 
         if (isRenderUi) {
@@ -106,7 +104,7 @@ class RenderSystem(
 
     private fun ensureCapacityForWrite(neededParticles: Int) {
         val currentCapacity = buffer.capacity() / PARTICLE_STRUCT_SIZE
-        if (neededParticles + 10 <= currentCapacity) return
+        if (neededParticles <= currentCapacity) return
 
         var newCapacity = currentCapacity.toDouble()
         do { newCapacity *= 1.5 } while (newCapacity < neededParticles)
@@ -126,19 +124,8 @@ class RenderSystem(
                 buffer.putInt(packed2[i])
                 buffer.putInt(0)
             }
-            repeat(10) {
-                buffer.putFloat(-100f)
-                buffer.putFloat(-100f)
-                buffer.putInt(0)
-                buffer.putInt(0)
-                buffer.putInt(0)
-                buffer.putInt(0)
-            }
         }
         buffer.flip()
-
-        val screenCoords = Vector3(Gdx.input.x.toFloat(), Gdx.input.y.toFloat(), 0f)
-        camera.unproject(screenCoords)
 
         val worldX = camera.position.x
         val worldY = camera.position.y

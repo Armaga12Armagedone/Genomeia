@@ -1,92 +1,10 @@
 package io.github.some_example_name.old.editor.commands
 
-import io.github.some_example_name.old.core.utils.distanceTo
 import io.github.some_example_name.old.genome_editor_deprecated.EditorCell
 import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
 import io.github.some_example_name.old.systems.genomics.genome.LinkData
-import io.github.some_example_name.old.systems.physics.GridManager
-import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
 import kotlin.math.atan2
 import kotlin.math.sqrt
-
-fun getAllCloseNeighboursEditor(
-    grabbedX: Float,
-    grabbedY: Float,
-    gridManager: GridManager,
-    editorCells: List<EditorCell>,
-    grabbedCellIndex: Int?
-): List<Int> {
-    val gridGrabbedX = grabbedX.toInt()
-    val gridGrabbedY = grabbedY.toInt()
-    val allCells = mutableListOf<Int>()
-    for (i in -1..1) {
-        for (j in -1..1) {
-            allCells.addAll(gridManager.getParticles(gridGrabbedX + i, gridGrabbedY + j).toList())
-        }
-    }
-    val filteredByDistance = allCells.filter {
-        distanceTo(
-            grabbedX,
-            grabbedY,
-            editorCells[it].x,
-            editorCells[it].y
-        ) <= PARTICLE_MAX_RADIUS
-    }
-
-    return if (grabbedCellIndex != null) filteredByDistance.filterNot { it == grabbedCellIndex } else filteredByDistance
-}
-/*
-
-fun moveCell(
-    editor: GenomeEditorManager,
-    grabbedCellIndex: Int,
-    lastGrabbedCellX: Float,
-    lastGrabbedCellY: Float,
-    commandManager: CommandManager,
-    currentStage: Int,
-    autoLinking: Boolean,
-    genomeStageInstruction: MutableList<GenomeStage>
-) {
-    val grabbedEditorCell = editor.editorCells[grabbedCellIndex].copy()
-    val newX = editor.editorCells[grabbedCellIndex].x
-    val newY = editor.editorCells[grabbedCellIndex].y
-
-    val oldNeighboursIds = getAllCloseNeighboursEditor(
-        lastGrabbedCellX,
-        lastGrabbedCellY,
-        editor.gridManager,
-        editor.editorCells,
-        null
-    )
-    val oldNeighboursJustAdded = oldNeighboursIds.map { id ->
-        editor.editorCells[id]
-    }
-
-    val newNeighboursIds = getAllCloseNeighboursEditor(
-        newX,
-        newY,
-        editor.gridManager,
-        editor.editorCells,
-        null
-    )
-
-    val newNeighbours = newNeighboursIds.map { id ->
-        editor.editorCells[id]
-    }
-
-    commandManager.executeCommand(MoveCellCommand(
-        grabbedEditorCell = grabbedEditorCell,
-        parentEditorCell = editor.editorCells[grabbedEditorCell.parentIndex].copy(),
-        oldNeighboursJustAdded = oldNeighboursJustAdded,
-        newNeighbours = newNeighbours,
-        newX = newX,
-        newY = newY,
-        currentStage = currentStage,
-        autoLinking = autoLinking,
-        genomeStageInstruction = genomeStageInstruction
-    ))
-}
-*/
 
 class MoveCellCommand(
     val grabbedEditorCell: EditorCell,
@@ -102,6 +20,7 @@ class MoveCellCommand(
 
     override val stage = currentStage
 
+    //TODO здесь по сути сохраняется 2 глубокие копии всего генома, это сильно проще, но это может жрать много памяти
     private val oldGenomeStageInstruction = genomeStageInstruction.map { it.deepCopy() }
     private var newGenomeStageInstruction: List<GenomeStage>? = null
 
@@ -131,7 +50,7 @@ class MoveCellCommand(
         if (autoLinking) {
             //Удаление всех прошлых связок с новыми клетками
             oldNeighboursJustAdded.forEach {
-                if (it.isJustAdded) {
+                if (it.isPhantom) {
                     it.divide?.physicalLink?.remove(grabbedEditorCell.id)
                 }
             }
@@ -154,7 +73,7 @@ class MoveCellCommand(
         val deltaX = newX - parentEditorCell.x
         val deltaY = newY - parentEditorCell.y
 
-        val angle = atan2(deltaY.toDouble(), deltaX.toDouble()).toFloat() - parentEditorCell.angle
+        val angle = atan2(deltaY, deltaX) - parentEditorCell.angleToParent
 
         grabbedEditorCell.divide?.also { it ->
             it.angle = angle

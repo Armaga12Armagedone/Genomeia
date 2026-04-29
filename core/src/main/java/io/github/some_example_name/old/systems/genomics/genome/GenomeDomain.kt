@@ -14,9 +14,14 @@ class GenomeManager(
 ) {
 
     val genomes = mutableListOf<Genome>()
-    val genomeForEditor: Genome
+    var genomeForEditor: Genome? = null
 
     init {
+        load(genomeName)
+    }
+
+    fun load(genomeName: String?) {
+        genomes.clear()
         val newGenome = Genome(
             name = "User genome",
             genomeStageInstruction = mutableListOf(
@@ -27,7 +32,7 @@ class GenomeManager(
                                 id = 1,
                                 angle = 0.02165f,
                                 cellType = 0,
-                                physicalLink = hashMapOf(0 to LinkData(length = 30f)),
+                                physicalLink = hashMapOf(0 to LinkData(length = 30f / 40f)),
                                 color = Color(0.133f, 0.545f, 0.133f, 1f)
                             )
                         )

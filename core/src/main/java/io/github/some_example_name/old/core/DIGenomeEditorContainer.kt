@@ -19,7 +19,10 @@ import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.entities.SpecialModDataEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.entities.TailEntity
-import io.github.some_example_name.old.editor.entities.ReplayEntity
+import io.github.some_example_name.old.editor.entities.CellReplay
+import io.github.some_example_name.old.editor.entities.EyeReplay
+import io.github.some_example_name.old.editor.entities.LinkReplay
+import io.github.some_example_name.old.editor.entities.NeuralReplay
 import io.github.some_example_name.old.entities.PheromoneEntity
 import io.github.some_example_name.old.entities.ProducerEntity
 import io.github.some_example_name.old.systems.genomics.CellSystem
@@ -34,10 +37,14 @@ object DIGenomeEditorContainer: DIContext, Disposable {
     override var gridWidth = 128
     override var gridHeight = 128
     override var threadCount = 1
+    override var chunkSize = gridWidth * gridHeight
+    override var totalChunks = 1
 
     override val gridManager = GridManager(
         gridWidth = gridWidth,
-        gridHeight = gridHeight
+        gridHeight = gridHeight,
+        diContext = this,
+        maxAmountOfParticles = 8
     )
 
     private val cellListBuilder = CellListBuilder(this)
@@ -51,7 +58,7 @@ object DIGenomeEditorContainer: DIContext, Disposable {
         genomeJsonReader = genomeJsonReader,
         simulationData = simulationData,
         isGenomeEditor = true,
-        genomeName = "AAA.json"
+        genomeName = null
     )
 
     override val organEntity = OrganEntity(
@@ -100,7 +107,7 @@ object DIGenomeEditorContainer: DIContext, Disposable {
     )
 
     override val linkEntity = LinkEntity(
-        1,
+        100,
         cellEntity = cellEntity
     )
     override val substancesEntity = SubstancesEntity(
@@ -136,7 +143,8 @@ object DIGenomeEditorContainer: DIContext, Disposable {
         cellEntity = cellEntity,
         worldCommandsManager = worldCommandsManager,
         particleEntity = particleEntity,
-        gridManager = gridManager
+        gridManager = gridManager,
+        cellList = cellList
     )
 
     val mutateManager = MutateManager(
@@ -160,10 +168,40 @@ object DIGenomeEditorContainer: DIContext, Disposable {
         threadManager = null
     )
 
-    val replayEntity = ReplayEntity(
+    val cellReplay = CellReplay(
         startCapacity = 1_000,
         particleEntity = particleEntity,
         cellEntity = cellEntity
+    )
+
+    val linkReplay = LinkReplay(
+        startCapacity = 1_000,
+        linkEntity = linkEntity
+    )
+
+    val eyeReplay = EyeReplay(
+        startCapacity = 300,
+        specialEntity = specialEntity,
+        eyeEntity = eyeEntity
+    )
+
+    val neuralReplay = NeuralReplay(
+        startCapacity = 300,
+        neuralEntity = neuralEntity
+    )
+
+    override val entityList = listOf(
+        tailEntity,
+        organEntity,
+        particleEntity,
+        neuralEntity,
+        eyeEntity,
+        specialModDataEntity,
+        specialEntity,
+        cellEntity,
+        linkEntity,
+        substancesEntity,
+        producerEntity
     )
 
     val editorSimulationSystem = EditorSimulationSystem(
@@ -172,11 +210,15 @@ object DIGenomeEditorContainer: DIContext, Disposable {
         organManager = organManager,
         worldCommandsManager = worldCommandsManager,
         genomeManager = genomeManager,
-        replayEntity = replayEntity,
+        cellReplay = cellReplay,
+        linkReplay = linkReplay,
+        eyeReplay = eyeReplay,
+        neuralReplay = neuralReplay,
         particleEntity = particleEntity,
         cellSystem = cellSystem,
         gridManager = gridManager,
-        zygote = zygote
+        zygote = zygote,
+        entityList = entityList
     )
 
     val commandEditorStackManager = CommandEditorStackManager()
@@ -184,13 +226,24 @@ object DIGenomeEditorContainer: DIContext, Disposable {
     val editorLogicSystem = EditorLogicSystem(
         commandEditorStackManager = commandEditorStackManager,
         editorSimulationSystem = editorSimulationSystem,
-        replayEntity = replayEntity
+        cellReplay = cellReplay,
+        linkReplay = linkReplay,
+        eyeReplay = eyeReplay,
+        neuralReplay = neuralReplay,
+        cellEntity = cellEntity,
+        particleEntity = particleEntity,
+        linkEntity = linkEntity
     )
 
     val editorRenderSystem = EditorRenderSystem(
         shaderManager = shaderManager,
-        replayEntity = replayEntity,
-        editorLogicSystem = editorLogicSystem
+        cellReplay = cellReplay,
+        linkReplay = linkReplay,
+        editorLogicSystem = editorLogicSystem,
+        cellEntity = cellEntity,
+        particleEntity = particleEntity,
+        editorSimulationSystem = editorSimulationSystem,
+        linkEntity = linkEntity
     )
 
     override fun dispose() {

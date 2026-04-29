@@ -9,6 +9,9 @@ import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.color.ColorPickerAdapter
+import io.github.some_example_name.old.cells.Controller
+import io.github.some_example_name.old.cells.Eye
+import io.github.some_example_name.old.core.DIGenomeEditorContainer.cellList
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.genome_editor_deprecated.EditorCell
 import io.github.some_example_name.old.core.color_picker.ColorPicker
@@ -25,7 +28,7 @@ class ChangeRemoveActionDialog(
 ) : VisDialog("${bundle.get("button.cellId")} ${clickedCell.id}") {
 
     val scrollPane: ScrollPane
-    val cellBaseAngle = clickedCell.angle
+    val cellBaseAngle = clickedCell.angleToParent
 
     init {
         isModal = true
@@ -215,17 +218,9 @@ class ChangeRemoveActionDialog(
     }
 }
 
-fun Int.isEye() = this == 14
-fun Int.isController() = this == 16
-fun Int.isDirected() = when (this) {
-    3, 9, 14, 15, 19, 21 -> true
-    else -> false
-}
-fun Int.isNeural() = when (this) {
-    3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 20, 21, 22, 23 -> true
-    else -> false
-}
+fun Int.isEye() = cellList[this] is Eye
+fun Int.isController() = cellList[this] is Controller
+fun Int.isDirected() = cellList[this].isDirected
+fun Int.isNeural() = cellList[this].isNeural
 
-fun getCellColor(cellType: Int): Color {
-    TODO()
-}
+fun getCellColor(cellType: Int) = cellList[cellType].defaultColor

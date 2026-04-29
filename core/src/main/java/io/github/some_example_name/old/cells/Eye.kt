@@ -17,7 +17,8 @@ class Eye(cellTypeId: Int, var visitedBits: Array<BitSet>): Cell(
     defaultColor = skyBlueColors[2],
     cellTypeId = cellTypeId,
     isNeural = true,
-    isNeuronTransportable = false
+    isNeuronTransportable = false,
+    isDirected = true
 ) {
 
     override fun doOnTick(cellIndex: Int, threadId: Int) = with(cellEntity) {

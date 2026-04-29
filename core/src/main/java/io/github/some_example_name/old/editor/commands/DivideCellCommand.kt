@@ -6,6 +6,7 @@ import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
 import io.github.some_example_name.old.systems.genomics.genome.LinkData
 import io.github.some_example_name.old.genome_editor_deprecated.EditorCell
 import io.github.some_example_name.old.core.utils.findNewOptimalCellPosition
+import io.github.some_example_name.old.editor.system.EditorLogicSystem
 import io.github.some_example_name.old.systems.physics.GridManager
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -34,9 +35,9 @@ fun getAll2LayersNeighboursEditor(
 fun tryToDivideCell(
     clickedCellIndex: Int,
     gridManager: GridManager,
-    editorCells: List<EditorCell>,
+    editorLogicSystem: EditorLogicSystem
 ): Pair<Float, Float>? {
-    val clickedCell = editorCells[clickedCellIndex]
+    val clickedCell = editorLogicSystem.toEditorData(clickedCellIndex)
     val xs = mutableListOf<Float>()
     val ys = mutableListOf<Float>()
 
@@ -47,9 +48,10 @@ fun tryToDivideCell(
         clickedCellIndex
     )
 
-    neighboursAllowedForConnectionIds.forEach { it
-        xs.add(editorCells[it].x)
-        ys.add(editorCells[it].y)
+    neighboursAllowedForConnectionIds.forEach { it ->
+        val clickedCell = editorLogicSystem.toEditorData(it)
+        xs.add(clickedCell.x)
+        ys.add(clickedCell.y)
     }
 
     val newPoint = findNewOptimalCellPosition(clickedCell.x, clickedCell.y, xs, ys)
@@ -87,7 +89,7 @@ class DivideCellCommand(
         val deltaXAngle = justAddedCellX - clickedCell.x
         val deltaYAngle = justAddedCellY - clickedCell.y
 
-        val angle = atan2(deltaYAngle.toDouble(), deltaXAngle.toDouble()).toFloat() - clickedCell.angle
+        val angle = atan2(deltaYAngle, deltaXAngle) - clickedCell.angleToParent
 
         val physicalLink = if (autoLinking) HashMap(neighboursCells.associate {
             val deltaX = justAddedCellX - it.x

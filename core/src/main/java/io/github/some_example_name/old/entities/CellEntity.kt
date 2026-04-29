@@ -14,10 +14,10 @@ class CellEntity(
     val substrateSettings: SubstrateSettings,
     val cellList: List<Cell>,
     private val neuralEntity: NeuralEntity,
-    private val specialEntity: SpecialEntity
+    val specialEntity: SpecialEntity
 ) : Entity(cellsStartMaxAmount) {
     //Particle entity
-    private var particleIndexes = IntArray(maxAmount) { -1 }
+    var particleIndexes = IntArray(maxAmount) { -1 }
     fun getParticleIndex(index: Int) = particleIndexes[index]
     fun getX(index: Int) = particleEntity.x[particleIndexes[index]]
     fun getY(index: Int) = particleEntity.y[particleIndexes[index]]
@@ -62,7 +62,7 @@ class CellEntity(
     var neuronImpulseOutput = FloatArray(maxAmount)
 
     //Neural entity
-    private var neuralIndexes = IntArray(maxAmount) { -1 }
+    var neuralIndexes = IntArray(maxAmount) { -1 }
     fun getNeuralGeneration(index: Int) = neuralEntity.getGeneration(neuralIndexes[index])
     fun getIsNeuronTransportable(index: Int) = neuralEntity.isNeuronTransportable[neuralIndexes[index]]
     fun setIsNeuronTransportable(index: Int, value: Boolean) { neuralEntity.isNeuronTransportable[neuralIndexes[index]] = value }

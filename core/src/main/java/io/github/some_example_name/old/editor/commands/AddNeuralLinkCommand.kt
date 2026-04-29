@@ -13,7 +13,8 @@ class AddNeuralLinkCommand(
     val cellTo: EditorCell,
     val genomeStageInstruction: MutableList<GenomeStage>,
     val doesNeedAddNewStage: Boolean,
-    val link: EditorLinks,
+    val isNeural: Boolean,
+    val parentId: Int
 ) : Command {
 
     override val stage = currentStage
@@ -28,8 +29,6 @@ class AddNeuralLinkCommand(
             genomeStageInstruction.addAll(newGenomeStageInstruction!!)
             return
         }
-
-        val isNeural = link.isNeuralTo2 != null
 
         val linkData = if (isNeural) {
             LinkData(
@@ -48,7 +47,7 @@ class AddNeuralLinkCommand(
         }
 
         when {
-            cellFrom.isJustAdded && cellTo.isJustAdded -> {
+            cellFrom.isPhantom && cellTo.isPhantom -> {
                 if (cellFrom.divide?.physicalLink[cellTo.id] != null) {
                     cellFrom.divide.physicalLink.compute(cellTo.id) { _, old ->
                         old?.copy(
@@ -65,7 +64,7 @@ class AddNeuralLinkCommand(
                     }
                 }
             }
-            cellFrom.isJustAdded && !cellTo.isJustAdded -> {
+            cellFrom.isPhantom && !cellTo.isPhantom -> {
                 cellFrom.divide?.physicalLink?.compute(cellTo.id) { _, old ->
                     old?.copy(
                         isNeuronal = linkData.isNeuronal,
@@ -73,7 +72,7 @@ class AddNeuralLinkCommand(
                     )
                 }
             }
-            !cellFrom.isJustAdded && cellTo.isJustAdded -> {
+            !cellFrom.isPhantom && cellTo.isPhantom -> {
                 cellTo.divide?.physicalLink?.compute(cellFrom.id) { _, old ->
                     old?.copy(
                         isNeuronal = linkData.isNeuronal,
@@ -82,8 +81,8 @@ class AddNeuralLinkCommand(
                 }
             }
             else -> {
-                val otherCellId = if (cellTo.id != link.parentId) cellTo.id else cellFrom.id
-                val parentCell = link.parentId
+                val otherCellId = if (cellTo.id != parentId) cellTo.id else cellFrom.id
+                val parentCell = parentId
 
                 val mutate = Action(physicalLink = hashMapOf(otherCellId to linkData))
                 genomeStageInstruction[currentStage].cellActions.compute(parentCell) { _, current ->

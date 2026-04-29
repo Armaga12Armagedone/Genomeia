@@ -24,6 +24,7 @@ class SimulationData {
         isFinish = false
         tickCounter = 0
         timeSimulation = 0f
+        selectedCellIndex = -1
     }
 
 }
