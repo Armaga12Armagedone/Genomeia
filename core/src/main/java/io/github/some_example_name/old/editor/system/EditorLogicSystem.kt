@@ -31,6 +31,7 @@ import io.github.some_example_name.old.editor.commands.UiEditorCommands
 import io.github.some_example_name.old.editor.commands.UiScreenCommands
 import io.github.some_example_name.old.editor.commands.tryToDivideCell
 import io.github.some_example_name.old.editor.entities.CellReplay
+import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.editor.entities.EyeReplay
 import io.github.some_example_name.old.editor.entities.LinkReplay
 import io.github.some_example_name.old.editor.entities.NeuralReplay
@@ -41,7 +42,6 @@ import io.github.some_example_name.old.editor.ui.dialog.MutateOrDivideDialog
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
-import io.github.some_example_name.old.genome_editor_deprecated.EditorCell
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.ui.screens.MyGame
 import kotlin.math.atan2
@@ -65,7 +65,8 @@ class EditorLogicSystem(
     val neuralReplay: NeuralReplay,
     val cellEntity: CellEntity,
     val particleEntity: ParticleEntity,
-    val linkEntity: LinkEntity
+    val linkEntity: LinkEntity,
+    val symmetryManager: SymmetryManager
 ): RestartSimulation {
     var currentTick = 0
     var currentStage = 0
@@ -203,30 +204,11 @@ class EditorLogicSystem(
                     val genomeStageInstruction = editorSimulationSystem.genome.genomeStageInstruction
 
                     val grabbedEditorCell = toEditorData(grabbedCellIndex)
-//                    TODO попытка сделать сетку
-//                    val step = 0.5f
-//
-//                    particleEntity.x[grabbedCellIndex] = (particleEntity.x[grabbedCellIndex] / step).roundToInt() * step
-//                    particleEntity.y[grabbedCellIndex] = (particleEntity.y[grabbedCellIndex] / step).roundToInt() * step
-//                    println("ta da ${particleEntity.x[grabbedCellIndex]} ${particleEntity.y[grabbedCellIndex]}")
-//
-//                    val a = step
-//                    val h = (sqrt(3.0) / 2.0 * a).toFloat()
-//
-//                    val x = particleEntity.x[grabbedCellIndex]
-//                    val y = particleEntity.y[grabbedCellIndex]
-//                    println("lol1 $x $y")
-//
-//                    val gx = x / a
-//                    val gy = y / h - gx * 0.5f
-//
-//                    val ix = gx.roundToInt()
-//                    val iy = gy.roundToInt()
-//
-//                    particleEntity.x[grabbedCellIndex] = ix * a
-//                    particleEntity.y[grabbedCellIndex] = (iy + ix * 0.5f) * h
-//                    println("lol2 ${particleEntity.x[grabbedCellIndex]} ${particleEntity.y[grabbedCellIndex]}")
 
+                    val (x, y) = symmetryManager.snapPosition(particleEntity.x[grabbedCellIndex], particleEntity.y[grabbedCellIndex])
+
+                    particleEntity.x[grabbedCellIndex] = x
+                    particleEntity.y[grabbedCellIndex] = y
 
                     val newX = particleEntity.x[grabbedCellIndex]
                     val newY = particleEntity.y[grabbedCellIndex]
@@ -374,7 +356,8 @@ class EditorLogicSystem(
             val newDividedCellPosition = tryToDivideCell(
                 clickedCellIndex = clickedIndex,
                 gridManager = editorSimulationSystem.gridManager,
-                editorLogicSystem = this
+                editorLogicSystem = this,
+                symmetryManager = symmetryManager
             )
 
             when {
@@ -517,7 +500,8 @@ class EditorLogicSystem(
                     val newDividedCellPosition = tryToDivideCell(
                         clickedCellIndex = clickedIndex,
                         gridManager = editorSimulationSystem.gridManager,
-                        editorLogicSystem = this
+                        editorLogicSystem = this,
+                        symmetryManager = symmetryManager
                     )
                     defaultAction?.let {
                         tryToDivide(clickedIndex, newDividedCellPosition, it.copy(

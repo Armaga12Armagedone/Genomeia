@@ -11,19 +11,19 @@ import io.github.some_example_name.old.ui.screens.MyGame;
  * Launches the desktop (LWJGL3) application.
  */
 public class Lwjgl3Launcher {
-//    public static void main(String[] args) {
-//        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-//            Logger.logCrash(throwable);
-//            System.exit(1);
-//        });
-//        if (StartupHelper.startNewJvmIfRequired()) return;
-//        createApplication();
-//    }
     public static void main(String[] args) {
-        if (StartupHelper.startNewJvmIfRequired())
-            return; // This handles macOS support and helps on Windows.
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            Logger.logCrash(throwable);
+            System.exit(1);
+        });
+        if (StartupHelper.startNewJvmIfRequired()) return;
         createApplication();
     }
+//    public static void main(String[] args) {
+//        if (StartupHelper.startNewJvmIfRequired())
+//            return; // This handles macOS support and helps on Windows.
+//        createApplication();
+//    }
 
     private static Lwjgl3Application createApplication() {
         return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null, null), getDefaultConfiguration());
@@ -43,7 +43,7 @@ public class Lwjgl3Launcher {
         //// You may also need to configure GPU drivers to fully disable Vsync; this can cause screen tearing.
 //        configuration.useVsync(false);
 //        configuration.setForegroundFPS(60);
-        configuration.setWindowedMode(1300, 1300);
+        configuration.setWindowedMode(900, 900);
 //        configuration.setFullscreenMode(Lwjgl3ApplicationConfiguration.getDisplayMode());
         configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL32, 3, 2);
 //        configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 4, 3);

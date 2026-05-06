@@ -18,6 +18,7 @@ import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DIGenomeEditorContainer
+import io.github.some_example_name.old.core.DIGenomeEditorContainer.symmetryManager
 import io.github.some_example_name.old.editor.commands.CtrlY
 import io.github.some_example_name.old.editor.commands.CtrlZ
 import io.github.some_example_name.old.editor.commands.FlingScreen
@@ -51,6 +52,7 @@ class GenomeEditorScreen(
     private var virtualHeight = 0f
     private val stage = Stage(ScreenViewport())
     lateinit var shape: ShapeRenderer
+    private var orientation = 0f
 
     private var state = GenomeEditorData(
         currentTick = 0,
@@ -122,13 +124,14 @@ class GenomeEditorScreen(
             genomeJsonReader = genomeJsonReader,
             renderSystem = renderSystem,
             fileProvider = fileProvider,
-            editorSimulationSystem = editorSimulationSystem
+            editorSimulationSystem = editorSimulationSystem,
+            symmetryManager = symmetryManager
         )
 
         menuUiBuilder.buildEditorMenu()
         camera.position.set(64f, 64f, 0f)
         camera.zoom = 0.01f
-//        camera.rotate(90f)
+        camera.rotate(orientation)
         camera.update()
 
         editorLogicSystem.bindToScreen(camera, game, stage)
@@ -276,12 +279,21 @@ class GenomeEditorScreen(
         deltaY: Float
     ): Boolean {
         val (touchedCellX, touchedCellY) = screenToWorld(x, y)
+        val dx = -deltaX * camera.zoom
+        val dy = deltaY * camera.zoom
+        val angle = -orientation * MathUtils.degreesToRadians
+        val cos = MathUtils.cos(angle)
+        val sin = MathUtils.sin(angle)
+
+        val worldDx = dx * cos - dy * sin
+        val worldDy = dx * sin + dy * cos
+
         editorLogicSystem.putUiCommand(
             PanScreen(
                 x = touchedCellX,
                 y = touchedCellY,
-                deltaX = -deltaX * camera.zoom,
-                deltaY = deltaY * camera.zoom
+                deltaX = worldDx,
+                deltaY = worldDy
             )
         )
         return true
@@ -297,7 +309,7 @@ class GenomeEditorScreen(
         val worldBefore = camera.unproject(screenPos.cpy())
         val ratio = initialDistance / distance
         camera.zoom = initialZoom * ratio
-        camera.zoom = MathUtils.clamp(camera.zoom, 0.1f, 10f)
+        camera.zoom = MathUtils.clamp(camera.zoom, 0.001f, 1000f)
         camera.update()
         val worldAfter = camera.unproject(screenPos.cpy())
         camera.position.add(worldBefore.x - worldAfter.x, worldBefore.y - worldAfter.y, 0f)

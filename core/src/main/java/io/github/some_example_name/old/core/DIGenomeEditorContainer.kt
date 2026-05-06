@@ -23,6 +23,7 @@ import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.entities.EyeReplay
 import io.github.some_example_name.old.editor.entities.LinkReplay
 import io.github.some_example_name.old.editor.entities.NeuralReplay
+import io.github.some_example_name.old.editor.system.SymmetryManager
 import io.github.some_example_name.old.entities.PheromoneEntity
 import io.github.some_example_name.old.entities.ProducerEntity
 import io.github.some_example_name.old.systems.genomics.CellSystem
@@ -223,6 +224,11 @@ object DIGenomeEditorContainer: DIContext, Disposable {
 
     val commandEditorStackManager = CommandEditorStackManager()
 
+    val symmetryManager = SymmetryManager(
+        gridManager = gridManager,
+        particleEntity = particleEntity
+    )
+
     val editorLogicSystem = EditorLogicSystem(
         commandEditorStackManager = commandEditorStackManager,
         editorSimulationSystem = editorSimulationSystem,
@@ -232,7 +238,8 @@ object DIGenomeEditorContainer: DIContext, Disposable {
         neuralReplay = neuralReplay,
         cellEntity = cellEntity,
         particleEntity = particleEntity,
-        linkEntity = linkEntity
+        linkEntity = linkEntity,
+        symmetryManager = symmetryManager
     )
 
     val editorRenderSystem = EditorRenderSystem(
@@ -243,7 +250,8 @@ object DIGenomeEditorContainer: DIContext, Disposable {
         cellEntity = cellEntity,
         particleEntity = particleEntity,
         editorSimulationSystem = editorSimulationSystem,
-        linkEntity = linkEntity
+        linkEntity = linkEntity,
+        symmetryManager = symmetryManager
     )
 
     override fun dispose() {

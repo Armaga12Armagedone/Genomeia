@@ -48,8 +48,10 @@ class CellEntity(
     var parentIndex = IntArray(maxAmount) { -1 }
     var angleCos = FloatArray(maxAmount)
     var angleSin = FloatArray(maxAmount)
-    var angleDiffCos = FloatArray(maxAmount)
-    var angleDiffSin = FloatArray(maxAmount)
+    var angleDirectedCos = FloatArray(maxAmount)
+    var angleDirectedSin = FloatArray(maxAmount)
+    var angleCompensationCos = FloatArray(maxAmount)
+    var angleCompensationSin = FloatArray(maxAmount)
     var energyNecessaryToDivide = FloatArray(maxAmount) { 2f }
     var energyNecessaryToMutate = FloatArray(maxAmount) { 1f }
     var isDividedInThisStage = BooleanArray(maxAmount)
@@ -179,10 +181,12 @@ class CellEntity(
         cellActions[cellIndex] = null
         this.organIndex[cellIndex] = organIndex
         this.parentIndex[cellIndex] = parentIndex
-        this.angleCos[cellIndex] = angleCos
-        this.angleSin[cellIndex] = angleSin
-        this.angleDiffCos[cellIndex] = angleDiffCos
-        this.angleDiffSin[cellIndex] = angleDiffSin
+        this.angleCos[cellIndex] = angleCos * angleDiffCos - angleSin * angleDiffSin
+        this.angleSin[cellIndex] = angleSin * angleDiffCos + angleCos * angleDiffSin
+        this.angleDirectedCos[cellIndex] = angleDiffCos
+        this.angleDirectedSin[cellIndex] = angleDiffSin
+        this.angleCompensationCos[cellIndex] = 1f
+        this.angleCompensationSin[cellIndex] = 0f
         energyNecessaryToDivide[cellIndex] = 2f
         energyNecessaryToMutate[cellIndex] = 1f
         isDividedInThisStage[cellIndex] = false
@@ -209,14 +213,6 @@ class CellEntity(
             speed = speed
         )
 
-//        if (cellList[cellType] is Eye) {
-//            addEye(cellIndex, colorDifferentiation, visibilityRange)
-//        } else if (cellList[cellType] is Controller) {
-//            //TODO addController
-//            specialTypeIndexes[cellIndex] = -1
-//        } else {
-//            specialTypeIndexes[cellIndex] = -1
-//        }
         return cellIndex
     }
 
@@ -232,8 +228,10 @@ class CellEntity(
         parentIndex[cellIndex] = -1
         this.angleCos[cellIndex] = 1f
         this.angleSin[cellIndex] = 0f
-        this.angleDiffCos[cellIndex] = 1f
-        this.angleDiffSin[cellIndex] = 0f
+        this.angleDirectedCos[cellIndex] = 1f
+        this.angleDirectedSin[cellIndex] = 0f
+        this.angleCompensationCos[cellIndex] = 1f
+        this.angleCompensationSin[cellIndex] = 0f
         energyNecessaryToDivide[cellIndex] = 2f
         energyNecessaryToMutate[cellIndex] = 1f
         isDividedInThisStage[cellIndex] = true
@@ -253,15 +251,6 @@ class CellEntity(
         deleteNeural(cellIndex = cellIndex)
 
         specialEntity.delete(cell = cell, cellIndex = cellIndex)
-
-//        if (specialTypeIndexes[cellIndex] != -1) {
-//            if (cellList[cellType.toInt()] is Eye) {
-//                deleteEye(cellIndex)
-//            } else if (cellList[cellType.toInt()] is Controller) {
-//                //TODO deleteController
-//            }
-//            specialTypeIndexes[cellIndex] = -1
-//        }
     }
 
     override fun onCopy() {
@@ -280,8 +269,10 @@ class CellEntity(
         parentIndex.clear(-1)
         angleCos.clear(1f)
         angleSin.clear()
-        angleDiffCos.clear(1f)
-        angleDiffSin.clear()
+        angleDirectedCos.clear(1f)
+        angleDirectedSin.clear()
+        angleCompensationCos.clear(1f)
+        angleCompensationSin.clear()
         energyNecessaryToDivide.clear(2f)
         energyNecessaryToMutate.clear(1f)
         isDividedInThisStage.clear(false)
@@ -309,8 +300,10 @@ class CellEntity(
         parentIndex = parentIndex.resize(-1)
         angleCos = angleCos.resize(1f)
         angleSin = angleSin.resize()
-        angleDiffCos = angleDiffCos.resize(1f)
-        angleDiffSin = angleDiffSin.resize()
+        angleDirectedCos = angleDirectedCos.resize(1f)
+        angleDirectedSin = angleDirectedSin.resize()
+        angleCompensationCos = angleCompensationCos.resize(1f)
+        angleCompensationSin = angleCompensationSin.resize()
         energyNecessaryToDivide = energyNecessaryToDivide.resize(2f)
         energyNecessaryToMutate = energyNecessaryToMutate.resize(1f)
         isDividedInThisStage = isDividedInThisStage.resize(false)

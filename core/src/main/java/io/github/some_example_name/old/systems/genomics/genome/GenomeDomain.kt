@@ -5,7 +5,6 @@ import com.badlogic.gdx.utils.Json
 import com.badlogic.gdx.utils.JsonWriter
 import io.github.some_example_name.old.systems.simulation.SimulationData
 
-
 class GenomeManager(
     val genomeJsonReader: GenomeJsonReader = GenomeJsonReader(),
     val simulationData: SimulationData,
@@ -22,40 +21,33 @@ class GenomeManager(
 
     fun load(genomeName: String?) {
         genomes.clear()
-        val newGenome = Genome(
-            name = "User genome",
-            genomeStageInstruction = mutableListOf(
-                GenomeStage(
-                    cellActions = hashMapOf(
-                        0 to CellAction(
-                            divide = Action(
-                                id = 1,
-                                angle = 0.02165f,
-                                cellType = 0,
-                                physicalLink = hashMapOf(0 to LinkData(length = 30f / 40f)),
-                                color = Color(0.133f, 0.545f, 0.133f, 1f)
+
+        if (!isGenomeEditor) {
+            val jsonGenomesAssets = genomeJsonReader.readAllGenomesFromAssetsFolder("genomes")
+            val jsonGenomes = jsonGenomesAssets + genomeJsonReader.readAllGenomesFromFolder("user_genomes")
+            genomes.addAll(jsonGenomes.map { it.jsonToDomain() })
+            genomeForEditor = jsonGenomes[simulationData.currentGenomeIndex].jsonToDomain(true)
+        } else {
+            val newGenome = Genome(
+                name = "User genome",
+                genomeStageInstruction = mutableListOf(
+                    GenomeStage(
+                        cellActions = hashMapOf(
+                            0 to CellAction(
+                                divide = Action(
+                                    id = 1,
+                                    angle = 0f,
+                                    cellType = 0,
+                                    physicalLink = hashMapOf(0 to LinkData(length = 0.6f)),
+                                    color = Color(0.133f, 0.545f, 0.133f, 1f)
+                                )
                             )
                         )
                     )
-                )
-            ),
-            dividedTimes = IntArray(1) { 1 },
-            mutatedTimes = IntArray(1),
-        )
-
-        if (!isGenomeEditor) {
-            if (genomeName == null) {
-                val jsonGenomesAssets = genomeJsonReader.readAllGenomesFromAssetsFolder("genomes")
-                val jsonGenomes =
-                    jsonGenomesAssets + genomeJsonReader.readAllGenomesFromFolder("user_genomes")
-                genomes.addAll(jsonGenomes.map { it.jsonToDomain() })
-                genomeForEditor = jsonGenomes[simulationData.currentGenomeIndex].jsonToDomain(true)
-            } else {
-                val genome = genomeJsonReader.readGenomeFromFolder("user_genomes", genomeName, false)
-                genomes.add(genome?.jsonToDomain() ?: newGenome)
-                genomeForEditor = genome?.jsonToDomain(true) ?: newGenome
-            }
-        } else {
+                ),
+                dividedTimes = IntArray(1) { 1 },
+                mutatedTimes = IntArray(1),
+            )
             if (genomeName != null) {
                 val genome = genomeJsonReader.readGenomeFromFolder("user_genomes", genomeName, false)
                 genomes.add(genome?.jsonToDomain() ?: newGenome)
@@ -70,7 +62,7 @@ class GenomeManager(
 }
 
 class Genome(
-    val name: String,
+    var name: String,
     val genomeStageInstruction: MutableList<GenomeStage>,
     val dividedTimes: IntArray,
     val mutatedTimes: IntArray
@@ -118,6 +110,7 @@ data class Action(
     var cellType: Int? = null,
     val physicalLink: HashMap<Int, LinkData?> = hashMapOf(),
     var color: Color? = null,
+    var radius: Float? = null,
     val angleDirected: Float? = null,
     val funActivation: Int? = null,
     val a: Float? = null,
@@ -134,6 +127,7 @@ data class Action(
             cellType = cellType,
             physicalLink = HashMap(physicalLink.mapValues { it.value?.deepCopy() }),
             color = color?.cpy(),
+            radius = radius,
             angleDirected = angleDirected,
             funActivation = funActivation,
             a = a,

@@ -9,8 +9,10 @@ import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTextField
+import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.DISimulationContainer.simulationSystem
 import io.github.some_example_name.old.editor.ui.dialog.actionButton
-import io.github.some_example_name.old.systems.genomics.genome.CreatureJsonWrite
+import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
 import io.github.some_example_name.old.ui.screens.MyGame
@@ -19,7 +21,7 @@ import io.github.some_example_name.old.ui.screens.applyCustomFontMedium
 
 class SaveGenomeDialog(
     val genomeJsonReader: GenomeJsonReader,
-    val genome: CreatureJsonWrite,
+    val genome: Genome,
     val onSaveAndTest: (String) -> Unit,
     val onGoMenu: () -> Unit,
     val game: MyGame,
@@ -44,9 +46,10 @@ class SaveGenomeDialog(
         contentTable.add(genomeNameTable).padBottom(15f * density).row()
 
         val saveToFileAndTestButton = actionButton(bundle.get("button.saveAndTest"), game) {
-            genome.name = genomeNameField.text
-            genomeJsonReader.saveGenomeToFile(genome, "user_genomes/${genomeNameField.text}.json")
+            genomeJsonReader.saveGenomeToFile(genome, "user_genomes/${genomeNameField.text}.json", name = genomeNameField.text)
             onSaveAndTest.invoke("${genomeNameField.text}.json")
+            val genomeNames = DISimulationContainer.genomeManager.genomes.map { it.name }
+            simulationSystem.simulationData.currentGenomeIndex = genomeNames.indexOf(genomeNameField.text)
             fadeOut()
         }.also {
             it.labelCell.pad(8f * density)
@@ -55,8 +58,9 @@ class SaveGenomeDialog(
         }
 
         val saveToFileButton = actionButton(bundle.get("button.saveToFile"), game) {
-            genome.name = genomeNameField.text
-            genomeJsonReader.saveGenomeToFile(genome, "user_genomes/${genomeNameField.text}.json")
+            genomeJsonReader.saveGenomeToFile(
+                genome,"user_genomes/${genomeNameField.text}.json", genomeNameField.text
+            )
         }.also {
             it.labelCell.pad(8f * density)
             game.applyCustomFont(it)
@@ -66,10 +70,8 @@ class SaveGenomeDialog(
         val exportButton =
             if (Gdx.app.type == Application.ApplicationType.Android) {
                 actionButton(bundle.get("button.saveAndExport"), game) {
-                    genome.name = genomeNameField.text
                     genomeJsonReader.saveGenomeToFile(
-                        genome,
-                        "user_genomes/${genomeNameField.text}.json"
+                        genome, "user_genomes/${genomeNameField.text}.json", genomeNameField.text
                     )
                     game.multiPlatformFileProvider.exportGenome("user_genomes/${genomeNameField.text}.json")
                 }.also {

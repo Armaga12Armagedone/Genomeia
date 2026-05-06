@@ -1,6 +1,6 @@
 package io.github.some_example_name.old.editor.commands
 
-import io.github.some_example_name.old.genome_editor_deprecated.EditorCell
+import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
 import io.github.some_example_name.old.systems.genomics.genome.LinkData
 import kotlin.math.atan2

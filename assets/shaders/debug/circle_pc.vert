@@ -36,9 +36,9 @@ void main() {
     int id = gl_InstanceID;
 
     Circle curr = circlesA[id];//(u_currentBuffer == 0u) ? circlesA[id] : circlesB[id];
-//    Circle prev = (u_currentBuffer == 0u) ? circlesB[id] : circlesA[id];
+    //    Circle prev = (u_currentBuffer == 0u) ? circlesB[id] : circlesA[id];
 
-//    vec2 velocity = curr.pos - prev.pos;
+    //    vec2 velocity = curr.pos - prev.pos;
 
     vec4 v1 = unpackUnorm4x8(curr.packed1);
     vec4 v2 = unpackUnorm4x8(curr.packed2);
@@ -57,7 +57,7 @@ void main() {
 
     ex_Quad = worldPos;
     ex_Centroid = curr.pos;
-//    ex_Velocity = velocity;
+    //    ex_Velocity = velocity;
     ex_Color = unpackUnorm4x8(curr.color).rgb;
     ex_R_2 = ex_R * ex_R;
     ex_Energy = energy * energy * 0.0005;

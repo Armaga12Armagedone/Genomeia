@@ -69,12 +69,11 @@ class MenuScreen(
                 val genomes = genomeJsonReader.getGenomeFileNamesFromFolder("user_genomes")
 
                 when (genomes.size) {
-                    0 -> {/*game.screen = GenomeEditorScreen(
-                        multiPlatformFileProvider = multiPlatformFileProvider,
-                        game = game,
-                        genomeName = null,
-                        bundle = bundle
-                    )*/
+                    0 -> {
+                        game.screen = GenomeEditorScreen(
+                            game = game,
+                            genomeName = null,
+                        )
                     }
                     else -> {
                         GenomeListDialog(
@@ -91,7 +90,6 @@ class MenuScreen(
                                 )
                             },
                             onNext = { genomeName ->
-                                println("kek ${genomeName}")
                                 game.screen = GenomeEditorScreen(
                                     game = game,
                                     genomeName = genomeName

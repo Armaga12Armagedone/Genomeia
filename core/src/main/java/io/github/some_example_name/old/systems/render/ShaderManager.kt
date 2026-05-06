@@ -13,7 +13,8 @@ interface ShaderManager {
         worldX: Float,
         worldY: Float,
         blurAmount: Float,
-        zoom: Float
+        zoom: Float,
+        vignetteEnabled: Float
     )
     fun dispose()
 

@@ -6,14 +6,13 @@ import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.DISimulationContainer.energyTransportRate
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
-import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.simulation.ThreadManager
-import kotlin.math.atan2
+import kotlin.math.sqrt
 
 class CellSystem(
     val cellEntity: CellEntity,
@@ -89,15 +88,21 @@ class CellSystem(
         val dx = getX(cellIndex) - getX(parentCellIndex)
         val dy = getY(cellIndex) - getY(parentCellIndex)
 
-        val len = 1f / invSqrt(dx * dx + dy * dy)
+        val len = sqrt(dx * dx + dy * dy)
         val toChildCos = dx / len
         val toChildSin = dy / len
 
-        val cd = angleDiffCos[cellIndex]
-        val sd = angleDiffSin[cellIndex]
+        val cd = angleCompensationCos[cellIndex]
+        val sd = angleCompensationSin[cellIndex]
 
-        angleCos[cellIndex] = toChildCos * cd - toChildSin * sd
-        angleSin[cellIndex] = toChildSin * cd + toChildCos * sd
+        val parentCos = toChildCos * cd - toChildSin * sd
+        val parentSin = toChildSin * cd + toChildCos * sd
+
+        val directedCos = angleDirectedCos[cellIndex]
+        val directedSin = angleDirectedSin[cellIndex]
+
+        angleCos[cellIndex] = parentCos * directedCos - parentSin * directedSin
+        angleSin[cellIndex] = parentSin * directedCos + parentCos * directedSin
     }
 
     fun genomicTransformations(cellIndex: Int, threadId: Int = 0) = with(cellEntity) {

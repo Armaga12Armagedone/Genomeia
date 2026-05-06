@@ -197,7 +197,7 @@ class ShaderManagerLibgdxApi : ShaderManager {
 
     override fun create() {
         // Загружаем шейдеры (файлы будут обновлены ниже)
-        val vertexShader = Gdx.files.internal("shaders/debug/circle.vert").readString()
+        val vertexShader = Gdx.files.internal("shaders/debug/circle_pc.vert").readString()
         val fragmentShader = Gdx.files.internal("shaders/debug/circle.frag").readString()
         shader = ShaderProgram(vertexShader, fragmentShader)
         if (!shader.isCompiled) {
@@ -301,7 +301,8 @@ class ShaderManagerLibgdxApi : ShaderManager {
         worldX: Float,
         worldY: Float,
         blurAmount: Float,
-        zoom: Float
+        zoom: Float,
+        vignetteEnabled: Float
     ) {
 
         val dataSize = currentRead.remaining()
@@ -365,6 +366,8 @@ class ShaderManagerLibgdxApi : ShaderManager {
             val zoomX10 = zoom * 10f
             val sobel = if (zoomX10 < 0.16) 0.16f else if (zoomX10 > 0.24) 0.24f else zoomX10
             sobelShader.setUniformf("u_zoom", sobel)
+            sobelShader.setUniformf("u_vignetteEnabled", vignetteEnabled)
+
 //            println(zoomX10)
 
 //            sobelShader.setUniformf("u_cameraPos", worldX, worldY)

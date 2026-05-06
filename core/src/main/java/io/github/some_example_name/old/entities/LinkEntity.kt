@@ -100,8 +100,8 @@ class LinkEntity(
 
             parentIndex[cellId] = otherCellId
 
-            angleDiffCos[cellId] = angleCos[cellId] * dirCos + angleSin[cellId] * dirSin
-            angleDiffSin[cellId] = angleSin[cellId] * dirCos - angleCos[cellId] * dirSin
+            angleCompensationCos[cellId] = angleCos[cellId] * dirCos + angleSin[cellId] * dirSin
+            angleCompensationSin[cellId] = angleSin[cellId] * dirCos - angleCos[cellId] * dirSin
         }
     }
 

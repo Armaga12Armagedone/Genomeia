@@ -114,7 +114,7 @@ class RenderSystem(
     }
 
     private fun drawShader(cellBuf: RenderCellBufferData, linkBuf: RenderLinkBufferData) {
-        buffer.clear()
+        (buffer as java.nio.Buffer).clear()
         with(cellBuf) {
             for (i in 0..<renderCellBufferSize) {
                 buffer.putFloat(x[i])
@@ -125,7 +125,7 @@ class RenderSystem(
                 buffer.putInt(0)
             }
         }
-        buffer.flip()
+        (buffer as java.nio.Buffer).flip()
 
         val worldX = camera.position.x
         val worldY = camera.position.y
@@ -137,7 +137,8 @@ class RenderSystem(
             worldX = worldX,
             worldY = worldY,
             blurAmount = blurLevel,
-            zoom = camera.zoom
+            zoom = camera.zoom,
+            vignetteEnabled = 1f
         )
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Line)

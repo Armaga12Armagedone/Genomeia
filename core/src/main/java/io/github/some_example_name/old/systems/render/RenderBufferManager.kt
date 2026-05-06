@@ -60,11 +60,8 @@ class RenderBufferManager(
                 if (isCell[i]) {
                     val cellIndex = holderEntityIndex[i]
 
-                    val cos = cellEntity.angleCos[cellIndex]
-                    val sin = cellEntity.angleSin[cellIndex]
-
-                    val cosByte = ((cos * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
-                    val sinByte = ((sin * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
+                    val cosByte = ((cellEntity.angleCos[cellIndex] * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
+                    val sinByte = ((cellEntity.angleSin[cellIndex] * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
 
                     val bRadius = (((radius[i] - 0.1f) / 0.4f) * 255f + 0.5f).toInt().coerceIn(0, 255)
                     val bEnergy = 0//((cellEntity.energy[cellIndex] / 10f) * 255f + 0.5f).toInt().coerceIn(0, 255)
@@ -78,11 +75,15 @@ class RenderBufferManager(
                             14 -> specialEntity.getVisibilityRange(cellIndex)
                             3 -> 1f
                             9 -> 1f
-//                            18 -> 1f
+                            18 -> 1f
                             else -> 0f
                         }
-                        back.directedAngleCos[bufIndex] = cellEntity.angleCos[cellIndex] * length
-                        back.directedAngleSin[bufIndex] = cellEntity.angleSin[cellIndex] * length
+                        with(cellEntity) {
+                            val cos = angleCos[cellIndex]
+                            val sin = angleSin[cellIndex]
+                            back.directedAngleCos[bufIndex] = cos * length
+                            back.directedAngleSin[bufIndex] = sin * length
+                        }
                     }
                 } else {
                     val bRadius = (((radius[i] - 0.1f) / 0.4f) * 255f + 0.5f).toInt().coerceIn(0, 255)
@@ -142,7 +143,7 @@ class RenderBufferManager(
 
             val cellIndex = simulationData.selectedCellIndex
             if (cellIndex != -1) {
-                selectedCellIndex = cellIndex
+                selectedCellIndex = cellEntity.cellGenomeId[cellIndex]//cellIndex
                 neuronImpulseInput = cellEntity.neuronImpulseInput[cellIndex]
                 neuronImpulseOutput = cellEntity.neuronImpulseOutput[cellIndex]
                 isCellSelected = true

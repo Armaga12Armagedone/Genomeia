@@ -31,7 +31,8 @@ class EditorRenderSystem(
     val cellEntity: CellEntity,
     val particleEntity: ParticleEntity,
     val editorSimulationSystem: EditorSimulationSystem,
-    val linkEntity: LinkEntity
+    val linkEntity: LinkEntity,
+    val symmetryManager: SymmetryManager
 ) {
 
     private lateinit var shapeRenderer: ShapeRenderer
@@ -101,7 +102,7 @@ class EditorRenderSystem(
 
     fun render() {
         if (isUpdateBuffer) {
-            buffer.clear()
+            (buffer as java.nio.Buffer).clear()
             cellReplay.forEachInTick(editorLogicSystem.currentTick) { cellType, index, _, angleCos, angleSin, color ->
                 putBuffer(
                     cos = angleCos,
@@ -138,7 +139,7 @@ class EditorRenderSystem(
                     }
                 }
             }
-            buffer.flip()
+            (buffer as java.nio.Buffer).flip()
         }
 
         val worldX = camera.position.x
@@ -151,7 +152,8 @@ class EditorRenderSystem(
             worldX = worldX,
             worldY = worldY,
             blurAmount = -0.04f,
-            zoom = camera.zoom
+            zoom = camera.zoom,
+            vignetteEnabled = 0f
         )
 
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
@@ -169,7 +171,7 @@ class EditorRenderSystem(
             gridHeight.toFloat()
         )
 
-        shapeRenderer.line(gridWidth.toFloat() / 2f, 0f, gridWidth.toFloat() / 2f, gridHeight.toFloat())
+        symmetryManager.drawSymmetry(shapeRenderer)
 
         Gdx.gl.glLineWidth(2f)
 
@@ -259,7 +261,8 @@ class EditorRenderSystem(
                         shapeRenderer.drawArrowWithRotationAngle(
                             startX = particleEntity.x[index],
                             startY = particleEntity.y[index],
-                            baseAngle = atan2(angleSin, angleCos),
+                            angleCos = angleCos,
+                            angleSin = angleSin,
                             length = cellEntity.specialEntity.getVisibilityRange(index),
                             isDrawWithoutTriangle = true,
                         )
@@ -270,7 +273,8 @@ class EditorRenderSystem(
                         shapeRenderer.drawArrowWithRotationAngle(
                             startX = particleEntity.x[index],
                             startY = particleEntity.y[index],
-                            baseAngle = atan2(angleSin, angleCos),
+                            angleCos = angleCos,
+                            angleSin = angleSin,
                             length = 15f / 40f
                         )
                     }

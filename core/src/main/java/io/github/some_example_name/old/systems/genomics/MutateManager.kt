@@ -131,24 +131,24 @@ class MutateManager(
             }
 
             action.angleDirected?.let {
-                angleDiffCos[index] = cos(it)
-                angleDiffSin[index] = sin(it)
+                val cosA = angleCos[index]
+                val sinA = angleSin[index]
+                val cosB = angleDirectedCos[index]
+                val sinB = angleDirectedSin[index]
 
-                val parentIndex = parentIndex[index]
-                if (parentIndex != -1) {
-                    val dx = getX(index) - getX(parentIndex)
-                    val dy = getY(index) - getY(parentIndex)
+                angleCos[index] = cosA * cosB + sinA * sinB
+                angleSin[index] = sinA * cosB - cosA * sinB
 
-                    val len = 1f / invSqrt(dx * dx + dy * dy)
-                    val toChildCos = dx / len
-                    val toChildSin = dy / len
+                angleDirectedCos[index] = cos(it)
+                angleDirectedSin[index] = sin(it)
 
-                    val cd = angleDiffCos[index]
-                    val sd = angleDiffSin[index]
+                val cosA2 = angleCos[index]
+                val sinA2 = angleSin[index]
+                val cosB2 = angleDirectedCos[index]
+                val sinB2 = angleDirectedSin[index]
 
-                    angleCos[index] = toChildCos * cd - toChildSin * sd
-                    angleSin[index] = toChildSin * cd + toChildCos * sd
-                }
+                angleCos[index] = cosA2 * cosB2 - sinA2 * sinB2
+                angleSin[index] = sinA2 * cosB2 + cosA2 * sinB2
             }
 
             if (lastCell is Eye && newCell is Eye) {

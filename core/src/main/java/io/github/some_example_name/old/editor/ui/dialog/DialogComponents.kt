@@ -412,7 +412,6 @@ fun eye(
         val g = if (gCheckBox.isChecked) 1f else 0f
         val b = if (bCheckBox.isChecked) 1f else 0f
         val bits = encodeColorToBits(r, g, b)
-        println(bits)
         onColorChange(bits)
     }
 

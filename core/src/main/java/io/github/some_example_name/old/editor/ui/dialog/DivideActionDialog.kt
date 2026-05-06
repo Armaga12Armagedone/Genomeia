@@ -7,13 +7,18 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
+import com.kotcrab.vis.ui.widget.VisLabel
+import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.color.ColorPickerAdapter
 import io.github.some_example_name.old.systems.genomics.genome.Action
-import io.github.some_example_name.old.genome_editor_deprecated.EditorCell
 import io.github.some_example_name.old.core.color_picker.ColorPicker
+import io.github.some_example_name.old.editor.entities.EditorCell
+import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.ui.screens.MyGame
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
+import io.github.some_example_name.old.ui.screens.applyCustomFontMedium
+import io.github.some_example_name.old.ui.screens.valueChanged
 import kotlin.math.PI
 import kotlin.math.atan2
 
@@ -162,6 +167,26 @@ class DivideActionDialog(
                 },
             ).also { scrollContentTable.add(it).row() }
         }
+
+        val radiusLabel = VisLabel("Radius: $PARTICLE_MAX_RADIUS")
+        game.applyCustomFontMedium(radiusLabel)
+        val radiusSlider = VisSlider(0.2f, 0.5f, 0.01f, false).apply {
+            disableScrollWhileDragging(scrollPane)
+            value = PARTICLE_MAX_RADIUS
+            addListener { e ->
+                if (valueChanged(e)) {
+                    val radius = kotlin.math.round(value * 100f) / 100f
+                    divide = divide.copy(radius = radius)
+                    radiusLabel.setText("Radius: $radius")
+                }
+                false
+            }
+            invalidateHierarchy()
+        }
+        scrollContentTable.add(radiusLabel).left()
+        scrollContentTable.row()
+        scrollContentTable.add(radiusSlider).fillX()
+        scrollContentTable.row()
 
         actionButton(bundle.get("button.divide"), game) {
             if (clickedCell.divide.hashCode() != divide.hashCode() && clickedCell.divide != divide) {

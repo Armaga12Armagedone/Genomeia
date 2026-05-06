@@ -2,7 +2,6 @@ package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.cells.base.activation
 import io.github.some_example_name.old.core.utils.blueColors
-import kotlin.math.*
 
 class Compass(cellTypeId: Int) : Cell(
     defaultColor = blueColors[6],

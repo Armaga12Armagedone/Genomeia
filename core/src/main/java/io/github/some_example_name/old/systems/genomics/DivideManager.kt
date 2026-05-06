@@ -30,15 +30,24 @@ class DivideManager(
             val genomeAngle = action.angle ?: throw Exception("Forgot angle")
             val divideAngleCos = cos(genomeAngle)
             val divideAngleSin = sin(genomeAngle)
-            //angle + genomeAngle
-            val isDirected = cellList[cellType[index].toInt()].isDirected
-            //TODO Для компенсации угла у клеток с parentIndex == -1 не стоит использовать angleDiff, это условие временное, что бы было корректное деление из зиготы
-            val parentAngleCos = if (isDirected) { angleCos[index] * angleDiffCos[index] + angleSin[index] * angleDiffSin[index] } else angleCos[index]
-            val parentAngleSin = if (isDirected) { angleSin[index] * angleDiffCos[index] - angleCos[index] * angleDiffSin[index] } else angleSin[index]
-            val finalCos = parentAngleCos * divideAngleCos - parentAngleSin * divideAngleSin
-            val finalSin = parentAngleSin * divideAngleCos + parentAngleCos * divideAngleSin
+
+            val parentCos = angleCos[index] * angleDirectedCos[index] + angleSin[index] * angleDirectedSin[index]
+            val parentSin = angleSin[index] * angleDirectedCos[index] - angleCos[index] * angleDirectedSin[index]
+
+            val finalCos = parentCos * divideAngleCos - parentSin * divideAngleSin
+            val finalSin = parentSin * divideAngleCos + parentCos * divideAngleSin
+
             var x = getX(index) + finalCos * parentLinkLength
             var y = getY(index) + finalSin * parentLinkLength
+
+            if (cellEntity.parentIndex[index] == -1) {
+                val aCos = -1f
+                val aSin = 0f
+                val bCos = divideAngleCos
+                val bSin = divideAngleSin
+                cellEntity.angleCompensationCos[index] = aCos * bCos + aSin * bSin
+                cellEntity.angleCompensationSin[index] = aSin * bCos - aCos * bSin
+            }
 
             if (x < 0) {
                 x = 0.1f
@@ -57,14 +66,12 @@ class DivideManager(
             val parentOrganIndex: Int = organIndex[index]
             run {
                 val color: Int = (action.color ?: Color.WHITE).toIntBits()
-                val radius: Float = PARTICLE_MAX_RADIUS
+                val radius: Float = action.radius ?: PARTICLE_MAX_RADIUS
                 val cellType: Int = action.cellType ?: throw Exception("Forgot cellType")
                 val parentIndex: Int = index
                 val angleDiff: Float = action.angleDirected ?: 0f
                 val angleDiffCos: Float = cos(angleDiff)
                 val angleDiffSin: Float = sin(angleDiff)
-                val angleCos: Float = finalCos * angleDiffCos - finalSin * angleDiffSin
-                val angleSin: Float = finalSin * angleDiffCos + finalCos * angleDiffSin
 
                 val colorDifferentiation: Int = action.colorRecognition ?: 7
                 val visibilityRange: Float = action.lengthDirected ?: 4.25f
@@ -77,7 +84,7 @@ class DivideManager(
                 worldCommandsManager.worldCommandBuffer[threadId].push(
                     type = WorldCommandType.ADD_CELL,
                     booleans = booleanArrayOf(isSum),
-                    floats = floatArrayOf(x, y, radius, angleCos, angleSin, angleDiffCos, angleDiffSin, visibilityRange, a, b, c),
+                    floats = floatArrayOf(x, y, radius, finalCos, finalSin, angleDiffCos, angleDiffSin, visibilityRange, a, b, c),
                     ints = intArrayOf(
                         color,
                         cellGenomeId,

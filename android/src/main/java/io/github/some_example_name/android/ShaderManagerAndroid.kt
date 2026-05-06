@@ -11,24 +11,20 @@ import io.github.some_example_name.old.systems.render.texturePaths
 import io.github.some_example_name.old.systems.render.usePostProcess
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.max
-
-//var usePostProcess = false
 
 class ShaderManagerAndroidApi : ShaderManager {
 
-    // SSBO (один, как в LibGDX)
-    private val ssbos = IntArray(1)
-    private var currentReadIndex = 0
-    private val ssboCapacities = IntArray(1)
+    // Particle VBO (вместо SSBO)
+    private val particleVbo = IntArray(1)
+    private var particleVboCapacity = INITIAL_PARTICLE_CAPACITY * PARTICLE_STRUCT_SIZE
 
-    // Шейдеры (теперь точно как в LibGDX)
+    // Шейдеры
     private var particleProgram = 0
     private var sobelProgram = 0
     private var distortProgram = 0
     private var blurProgram = 0
 
-    // Uniform locations (добавлены для distort)
+    // Uniform locations
     private var particleProjLoc = 0
     private var particleTextureScaleLoc = 0
     private var particleColorScaleLoc = 0
@@ -37,6 +33,7 @@ class ShaderManagerAndroidApi : ShaderManager {
     private var sobelTextureLoc = 0
     private var sobelResolutionLoc = 0
     private var sobelZoomLoc = 0
+    private var vignetteEnabledLoc = 0
 
     private var distortTextureLoc = 0
     private var distortResolutionLoc = 0
@@ -45,7 +42,7 @@ class ShaderManagerAndroidApi : ShaderManager {
     private var blurAmountLoc = 0
     private var blurResolutionLoc = 0
 
-    // Quad (VAO + VBO) — один на всё
+    // Quad VAO + VBO (один на всё)
     private var quadVao = 0
     private var quadVbo = 0
 
@@ -53,7 +50,7 @@ class ShaderManagerAndroidApi : ShaderManager {
     private var textureArray = 0
     private var numLayers = 0
 
-    // FBOs (теперь ВСЕ полного размера, как в актуальной LibGDX-версии)
+    // FBOs
     private var sceneFbo = 0
     private var sceneColorTex = 0
     private var sceneDepthRbo = 0
@@ -70,7 +67,7 @@ class ShaderManagerAndroidApi : ShaderManager {
     private var distortFboWidth = 0
     private var distortFboHeight = 0
 
-    private val invProjMatrix = Matrix4() // оставляем для совместимости
+    private val invProjMatrix = Matrix4()
 
     private fun compileShader(type: Int, source: String): Int {
         val shader = GLES32.glCreateShader(type)
@@ -164,6 +161,36 @@ class ShaderManagerAndroidApi : ShaderManager {
         println("✅ TextureArray создан (Android GLES): $numLayers слоёв, ${width}×${height} px")
     }
 
+    private fun createParticleVbo() {
+        GLES32.glGenBuffers(1, particleVbo, 0)
+        GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, particleVbo[0])
+        GLES32.glBufferData(
+            GLES32.GL_ARRAY_BUFFER,
+            INITIAL_PARTICLE_CAPACITY * PARTICLE_STRUCT_SIZE,
+            null,
+            GLES32.GL_DYNAMIC_DRAW
+        )
+        GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, 0)
+        println("✅ Particle VBO создан (Android GLES)")
+    }
+
+    private fun resizeParticleVbo(dataSize: Int) {
+        if (dataSize > particleVboCapacity) {
+            var newCapacity = particleVboCapacity.toDouble()
+            do {
+                newCapacity *= 1.5
+            } while (newCapacity < dataSize)
+
+            val finalCapacity = newCapacity.toInt().coerceAtLeast(dataSize)
+
+            GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, particleVbo[0])
+            GLES32.glBufferData(GLES32.GL_ARRAY_BUFFER, finalCapacity, null, GLES32.GL_DYNAMIC_DRAW)
+            GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, 0)
+
+            particleVboCapacity = finalCapacity
+        }
+    }
+
     private fun createQuadMesh() {
         val vertices = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
 
@@ -178,6 +205,7 @@ class ShaderManagerAndroidApi : ShaderManager {
 
         GLES32.glBindVertexArray(quadVao)
 
+        // Quad vertices (location 0)
         val vbo = IntArray(1)
         GLES32.glGenBuffers(1, vbo, 0)
         quadVbo = vbo[0]
@@ -188,47 +216,38 @@ class ShaderManagerAndroidApi : ShaderManager {
         GLES32.glEnableVertexAttribArray(0)
         GLES32.glVertexAttribPointer(0, 2, GLES32.GL_FLOAT, false, 0, 0)
 
+        // === INSTANCE ATTRIBUTES (particle data) ===
+        GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, particleVbo[0])
+        val stride = PARTICLE_STRUCT_SIZE
+
+        // location 1: vec2 pos          offset 0
+        GLES32.glEnableVertexAttribArray(1)
+        GLES32.glVertexAttribPointer(1, 2, GLES32.GL_FLOAT, false, stride, 0)
+        GLES32.glVertexAttribDivisor(1, 1)
+
+        // location 2: uint color        offset 8
+        GLES32.glEnableVertexAttribArray(2)
+        GLES32.glVertexAttribIPointer(2, 1, GLES32.GL_UNSIGNED_INT, stride, 8)
+        GLES32.glVertexAttribDivisor(2, 1)
+
+        // location 3: uint packed1      offset 12
+        GLES32.glEnableVertexAttribArray(3)
+        GLES32.glVertexAttribIPointer(3, 1, GLES32.GL_UNSIGNED_INT, stride, 12)
+        GLES32.glVertexAttribDivisor(3, 1)
+
+        // location 4: uint packed2      offset 16
+        GLES32.glEnableVertexAttribArray(4)
+        GLES32.glVertexAttribIPointer(4, 1, GLES32.GL_UNSIGNED_INT, stride, 16)
+        GLES32.glVertexAttribDivisor(4, 1)
+
         GLES32.glBindVertexArray(0)
         GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, 0)
 
-        println("✅ Quad mesh (VAO) создан")
+        println("✅ Quad + Instance attributes VAO создан")
     }
 
-    private fun createSSBO() {
-        GLES32.glGenBuffers(1, ssbos, 0)
-        ssboCapacities[0] = INITIAL_PARTICLE_CAPACITY * PARTICLE_STRUCT_SIZE
-
-        GLES32.glBindBuffer(GLES32.GL_SHADER_STORAGE_BUFFER, ssbos[0])
-        GLES32.glBufferData(
-            GLES32.GL_SHADER_STORAGE_BUFFER,
-            INITIAL_PARTICLE_CAPACITY * PARTICLE_STRUCT_SIZE,
-            null,
-            GLES32.GL_DYNAMIC_DRAW
-        )
-        GLES32.glBindBufferBase(GLES32.GL_SHADER_STORAGE_BUFFER, 0, ssbos[0])
-        GLES32.glBindBuffer(GLES32.GL_SHADER_STORAGE_BUFFER, 0)
-
-        println("✅ SSBO создан (Android GLES)")
-    }
-
-    private fun resizeSsbo(dataSize: Int, targetIndex: Int, ssboId: Int) {
-        if (dataSize > ssboCapacities[targetIndex]) {
-            var newCapacity = ssboCapacities[targetIndex].toDouble()
-            do {
-                newCapacity *= 1.5
-            } while (newCapacity < dataSize)
-
-            val finalCapacity = newCapacity.toInt().coerceAtLeast(dataSize)
-
-            GLES32.glBindBuffer(GLES32.GL_SHADER_STORAGE_BUFFER, ssboId)
-            GLES32.glBufferData(GLES32.GL_SHADER_STORAGE_BUFFER, finalCapacity, null, GLES32.GL_DYNAMIC_DRAW)
-            GLES32.glBindBuffer(GLES32.GL_SHADER_STORAGE_BUFFER, 0)
-
-            ssboCapacities[targetIndex] = finalCapacity
-        }
-    }
-
-    // === FBO ===
+    // === FBO функции (createSceneFbo, createBlurFbo, createDistortFbo, deleteFbos) ===
+    // Оставьте их **точно такими же**, как у вас были — они не менялись.
 
     private fun createSceneFbo(width: Int, height: Int) {
         // Color texture
@@ -371,8 +390,8 @@ class ShaderManagerAndroidApi : ShaderManager {
     }
 
     override fun create() {
-        // === Шейдеры (точно как в LibGDX) ===
-        val particleVert = Gdx.files.internal("shaders/debug/circle.vert").readString()
+        // Шейдеры (точно как в LibGDX)
+        val particleVert = Gdx.files.internal("shaders/debug/circle_android.vert").readString()
         val particleFrag = Gdx.files.internal("shaders/debug/circle.frag").readString()
         particleProgram = createProgram(particleVert, particleFrag)
 
@@ -385,10 +404,10 @@ class ShaderManagerAndroidApi : ShaderManager {
         distortProgram = createProgram(distortVert, distortFrag)
 
         val blurVert = Gdx.files.internal("shaders/blur/blur.vert").readString()
-        val blurFrag = Gdx.files.internal("shaders/blur/gaussian_blur.frag").readString() // ← теперь точно gaussian, как в LibGDX
+        val blurFrag = Gdx.files.internal("shaders/blur/gaussian_blur.frag").readString()
         blurProgram = createProgram(blurVert, blurFrag)
 
-        // Uniform locations
+        // Uniform locations (без изменений)
         particleProjLoc = GLES32.glGetUniformLocation(particleProgram, "u_projTrans")
         particleTextureScaleLoc = GLES32.glGetUniformLocation(particleProgram, "u_textureScale")
         particleColorScaleLoc = GLES32.glGetUniformLocation(particleProgram, "u_colorScale")
@@ -397,6 +416,7 @@ class ShaderManagerAndroidApi : ShaderManager {
         sobelTextureLoc = GLES32.glGetUniformLocation(sobelProgram, "u_texture")
         sobelResolutionLoc = GLES32.glGetUniformLocation(sobelProgram, "u_resolution")
         sobelZoomLoc = GLES32.glGetUniformLocation(sobelProgram, "u_zoom")
+        vignetteEnabledLoc = GLES32.glGetUniformLocation(sobelProgram, "u_vignetteEnabled")
 
         distortTextureLoc = GLES32.glGetUniformLocation(distortProgram, "u_texture")
         distortResolutionLoc = GLES32.glGetUniformLocation(distortProgram, "u_resolution")
@@ -405,7 +425,8 @@ class ShaderManagerAndroidApi : ShaderManager {
         blurAmountLoc = GLES32.glGetUniformLocation(blurProgram, "u_blurAmount")
         blurResolutionLoc = GLES32.glGetUniformLocation(blurProgram, "u_resolution")
 
-        createQuadMesh()
+        createParticleVbo()      // ← новый
+        createQuadMesh()         // ← теперь создаёт instance attributes
         createTextureArray()
 
         val w = Gdx.graphics.width.coerceAtLeast(1)
@@ -423,12 +444,13 @@ class ShaderManagerAndroidApi : ShaderManager {
         distortFboWidth = w
         distortFboHeight = h
 
-        createSSBO()
+        GLES32.glViewport(0, 0, w, h)
 
-        println("✅ ShaderManagerAndroidApi создан (полностью соответствует LibGDX)")
+        println("✅ ShaderManagerAndroidApi создан (instanced attributes, 100% совместим с Android)")
     }
 
     override fun resize(width: Int, height: Int) {
+        // ... ваш оригинальный resize (FBO) без изменений ...
         val safeW = width.coerceAtLeast(1)
         val safeH = height.coerceAtLeast(1)
 
@@ -446,7 +468,9 @@ class ShaderManagerAndroidApi : ShaderManager {
         distortFboWidth = safeW
         distortFboHeight = safeH
 
-        println("✅ FBOs resized (Android GLES) → все full-size ${safeW}×${safeH} (как в LibGDX)")
+        GLES32.glViewport(0, 0, safeW, safeH)
+
+        println("✅ FBOs resized (Android GLES)")
     }
 
     override fun render(
@@ -457,34 +481,27 @@ class ShaderManagerAndroidApi : ShaderManager {
         worldX: Float,
         worldY: Float,
         blurAmount: Float,
-        zoom: Float
+        zoom: Float,
+        vignetteEnabled: Float
     ) {
         val dataSize = currentRead.remaining()
         val numInstances = dataSize / PARTICLE_STRUCT_SIZE
 
-        if (isNewFrame) {
-            val writeIndex = 0
-            if (dataSize > 0) {
-                resizeSsbo(dataSize, writeIndex, ssbos[writeIndex])
+        if (isNewFrame && dataSize > 0) {
+            resizeParticleVbo(dataSize)
 
-                GLES32.glBindBuffer(GLES32.GL_SHADER_STORAGE_BUFFER, ssbos[writeIndex])
-                GLES32.glBufferSubData(
-                    GLES32.GL_SHADER_STORAGE_BUFFER,
-                    0,
-                    dataSize,
-                    currentRead
-                )
-                GLES32.glBindBuffer(GLES32.GL_SHADER_STORAGE_BUFFER, 0)
-            }
-            currentReadIndex = writeIndex
+            GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, particleVbo[0])
+            GLES32.glBufferSubData(GLES32.GL_ARRAY_BUFFER, 0, dataSize, currentRead)
+            GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, 0)
         }
 
-        // === Рендер частиц ===
-        if (usePostProcess) {
-            GLES32.glBindFramebuffer(GLES32.GL_FRAMEBUFFER, sceneFbo)
-        } else {
-            GLES32.glBindFramebuffer(GLES32.GL_FRAMEBUFFER, 0)
-        }
+        // ====================== РЕНДЕР ЧАСТИЦ ======================
+        val targetFbo = if (usePostProcess) sceneFbo else 0
+        val targetW = if (usePostProcess) sceneFboWidth else Gdx.graphics.width
+        val targetH = if (usePostProcess) sceneFboHeight else Gdx.graphics.height
+
+        GLES32.glBindFramebuffer(GLES32.GL_FRAMEBUFFER, targetFbo)
+        GLES32.glViewport(0, 0, targetW, targetH)          // ← КРИТИЧНО!
 
         GLES32.glDisable(GLES32.GL_BLEND)
         GLES32.glEnable(GLES32.GL_DEPTH_TEST)
@@ -510,20 +527,21 @@ class ShaderManagerAndroidApi : ShaderManager {
 
         if (!usePostProcess) return
 
-        GLES32.glBindFramebuffer(GLES32.GL_FRAMEBUFFER, 0)
-
-        // === POST-PROCESS: Sobel → blurFbo (точно как в LibGDX) ===
+        // ====================== POST-PROCESS ======================
+        // 1. Sobel → blurFbo
         GLES32.glBindFramebuffer(GLES32.GL_FRAMEBUFFER, blurFbo)
+        GLES32.glViewport(0, 0, blurFboWidth, blurFboHeight)   // ← важно!
+
         GLES32.glDisable(GLES32.GL_DEPTH_TEST)
         GLES32.glDisable(GLES32.GL_BLEND)
 
         GLES32.glUseProgram(sobelProgram)
         GLES32.glUniform1i(sobelTextureLoc, 0)
         GLES32.glUniform2f(sobelResolutionLoc, sceneFboWidth.toFloat(), sceneFboHeight.toFloat())
-
         val zoomX10 = zoom * 10f
-        val sobel = if (zoomX10 < 0.16f) 0.16f else if (zoomX10 > 0.24f) 0.24f else zoomX10
+        val sobel = zoomX10.coerceIn(0.16f, 0.24f)
         GLES32.glUniform1f(sobelZoomLoc, sobel)
+        GLES32.glUniform1f(vignetteEnabledLoc, vignetteEnabled)
 
         GLES32.glActiveTexture(GLES32.GL_TEXTURE0)
         GLES32.glBindTexture(GLES32.GL_TEXTURE_2D, sceneColorTex)
@@ -532,12 +550,9 @@ class ShaderManagerAndroidApi : ShaderManager {
         GLES32.glDrawArrays(GLES32.GL_TRIANGLE_STRIP, 0, 4)
         GLES32.glBindVertexArray(0)
 
-        GLES32.glBindFramebuffer(GLES32.GL_FRAMEBUFFER, 0)
-
-        // === POST-PROCESS: Distort (CA) → distortFbo ===
+        // 2. Distort (CA) → distortFbo
         GLES32.glBindFramebuffer(GLES32.GL_FRAMEBUFFER, distortFbo)
-        GLES32.glDisable(GLES32.GL_DEPTH_TEST)
-        GLES32.glDisable(GLES32.GL_BLEND)
+        GLES32.glViewport(0, 0, distortFboWidth, distortFboHeight)
 
         GLES32.glUseProgram(distortProgram)
         GLES32.glUniform1i(distortTextureLoc, 0)
@@ -550,9 +565,10 @@ class ShaderManagerAndroidApi : ShaderManager {
         GLES32.glDrawArrays(GLES32.GL_TRIANGLE_STRIP, 0, 4)
         GLES32.glBindVertexArray(0)
 
+        // 3. Gaussian Blur → экран
         GLES32.glBindFramebuffer(GLES32.GL_FRAMEBUFFER, 0)
+        GLES32.glViewport(0, 0, Gdx.graphics.width, Gdx.graphics.height)  // ← обратно на экран!
 
-        // === POST-PROCESS: Gaussian Blur → экран ===
         GLES32.glUseProgram(blurProgram)
         GLES32.glUniform1i(blurTextureLoc, 0)
         GLES32.glUniform1f(blurAmountLoc, (blurAmount + 0.04f) * 0.5f)
@@ -576,13 +592,11 @@ class ShaderManagerAndroidApi : ShaderManager {
 
         GLES32.glDeleteVertexArrays(1, intArrayOf(quadVao), 0)
         GLES32.glDeleteBuffers(1, intArrayOf(quadVbo), 0)
+        GLES32.glDeleteBuffers(1, particleVbo, 0)
 
         if (textureArray != 0) {
             GLES32.glDeleteTextures(1, intArrayOf(textureArray), 0)
-            textureArray = 0
         }
-
-        GLES32.glDeleteBuffers(1, ssbos, 0)
 
         deleteFbos()
 

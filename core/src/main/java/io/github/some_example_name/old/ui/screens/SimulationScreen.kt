@@ -19,10 +19,13 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextButton.VisTextButtonStyle
 import io.github.some_example_name.old.commands.PlayerCommand
+import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
 import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.DISimulationContainer.genomeManager
 import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
 import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
 import io.github.some_example_name.old.core.FileProvider
+import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
 import io.github.some_example_name.old.systems.render.usePostProcess
 import io.github.some_example_name.old.ui.dialogs.GenomeListDialog
 
@@ -117,11 +120,7 @@ class SimulationScreen(
         root.setFillParent(true)
         stage.addActor(root)
 
-        //TODO это должно находиться не тут
-        val reader = simulationSystem.genomeManager.genomeJsonReader
-        val assetsGenomes = reader.getGenomeFileNamesFromAssetsFolder("genomes")
-        val userGenomes = reader.getGenomeFileNamesFromFolder("user_genomes")
-        genomeNames = assetsGenomes + userGenomes
+        genomeNames = genomeManager.genomes.map { it.name }
 
         rebuildMenu()
         currentScreenWidth = Gdx.graphics.width
@@ -138,6 +137,7 @@ class SimulationScreen(
         camera.zoom = 0.08f
         camera.position.x = gridWidth / 2f
         camera.position.y = gridHeight / 2f
+        camera.rotate(90f)
         camera.update()
     }
 
@@ -212,6 +212,14 @@ class SimulationScreen(
     override fun hide() { }
 
     override fun pan(x: Float, y: Float, deltaX: Float, deltaY: Float): Boolean {
+        val dx = -deltaX * camera.zoom
+        val dy = deltaY * camera.zoom
+        val angle = -90 * MathUtils.degreesToRadians
+        val cos = MathUtils.cos(angle)
+        val sin = MathUtils.sin(angle)
+
+        val worldDx = dx * cos - dy * sin
+        val worldDy = dx * sin + dy * cos
         //TODO есть подозрения что это вызывает краш cuncurent изменений
         if (userCommandManager.grabbedParticleIndex != -1) {
             val world = screenToWorld(x, y)
@@ -219,12 +227,12 @@ class SimulationScreen(
                 PlayerCommand.Drag(
                     world.first,
                     world.second,
-                    -deltaX * camera.zoom,
-                    deltaY * camera.zoom
+                    worldDx,
+                    worldDy
                 )
             )
         } else {
-            renderSystem.moveCamera(-deltaX * camera.zoom, deltaY * camera.zoom)
+            renderSystem.moveCamera(worldDx, worldDy)
         }
         return true
     }
@@ -271,10 +279,10 @@ class SimulationScreen(
 
         when (button) {
             Input.Buttons.LEFT -> {
-                userCommandManager.push(PlayerCommand.Tap(world.first, world.second, isLeftButton = true))
+                userCommandManager.push(PlayerCommand.Tap(world.first, world.second, isLeftButton = putOrgs))
             }
             Input.Buttons.RIGHT -> {
-                userCommandManager.push(PlayerCommand.Tap(world.first, world.second, isLeftButton = false))
+                userCommandManager.push(PlayerCommand.Tap(world.first, world.second, isLeftButton = !putOrgs))
             }
         }
 
@@ -444,8 +452,7 @@ class SimulationScreen(
                 if (genomeName == null)
                     game.screen = MenuScreen(game, multiPlatformFileProvider)
                 else {
-//                    game.screen =
-//                        GenomeEditorScreen(multiPlatformFileProvider, game, genomeName, bundle)
+                    game.screen = GenomeEditorScreen(game, genomeName.replace(".json", ""))
                 }
             }
         })
@@ -453,23 +460,23 @@ class SimulationScreen(
 
         selectGenomeButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                val genomes = genomeJsonReader.getGenomeFileNamesFromFolder("user_genomes")
                 GenomeListDialog(
-                    genomesList = genomeNames,
+                    genomesList = genomes,
                     selectedGenomeIndex = simulationSystem.simulationData.currentGenomeIndex,
                     title = bundle.get("button.selectGenome"),
                     new = bundle.get("button.new"),
                     select = bundle.get("button.select"),
                     import = bundle.get("button.import"),
                     onNew = {
-//                        game.screen.dispose()
-//                        game.screen = GenomeEditorScreen(
-//                            multiPlatformFileProvider,
-//                            game,
-//                            genomeName = null,
-//                            bundle = bundle
-//                        )
+                        game.screen.dispose()
+                        game.screen = GenomeEditorScreen(
+                            game,
+                            genomeName = null
+                        )
                     },
                     onNext = { genomeName ->
+                        println("$genomeName ${genomeNames.indexOf(genomeName)}")
                         simulationSystem.simulationData.currentGenomeIndex = genomeNames.indexOf(genomeName)
                     },
                     onRestart = {

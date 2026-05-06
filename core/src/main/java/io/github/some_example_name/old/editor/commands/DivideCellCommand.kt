@@ -4,9 +4,9 @@ import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.systems.genomics.genome.CellAction
 import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
 import io.github.some_example_name.old.systems.genomics.genome.LinkData
-import io.github.some_example_name.old.genome_editor_deprecated.EditorCell
-import io.github.some_example_name.old.core.utils.findNewOptimalCellPosition
+import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.editor.system.EditorLogicSystem
+import io.github.some_example_name.old.editor.system.SymmetryManager
 import io.github.some_example_name.old.systems.physics.GridManager
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -35,7 +35,8 @@ fun getAll2LayersNeighboursEditor(
 fun tryToDivideCell(
     clickedCellIndex: Int,
     gridManager: GridManager,
-    editorLogicSystem: EditorLogicSystem
+    editorLogicSystem: EditorLogicSystem,
+    symmetryManager: SymmetryManager
 ): Pair<Float, Float>? {
     val clickedCell = editorLogicSystem.toEditorData(clickedCellIndex)
     val xs = mutableListOf<Float>()
@@ -54,7 +55,7 @@ fun tryToDivideCell(
         ys.add(clickedCell.y)
     }
 
-    val newPoint = findNewOptimalCellPosition(clickedCell.x, clickedCell.y, xs, ys)
+    val newPoint = symmetryManager.newPoint(clickedCell, xs, ys)
     return newPoint
 }
 

@@ -6,11 +6,9 @@ import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.core.utils.skyBlueColors
 import java.util.BitSet
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.round
-import kotlin.math.sin
 import kotlin.math.sqrt
 
 class Eye(cellTypeId: Int, var visitedBits: Array<BitSet>): Cell(

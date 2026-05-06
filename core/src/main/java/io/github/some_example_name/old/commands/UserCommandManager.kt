@@ -145,7 +145,7 @@ class UserCommandManager(
                                     dividedTimes = genome.dividedTimes[0],
                                     mutatedTimes = genome.mutatedTimes[0]
                                 )
-                                val randomAngle = Random.nextFloat() * 3.1415f
+                                val randomAngle = Random.nextFloat() * 3.1415f * 2f
                                 cellEntity.addCell(
                                     x = cmd.x,
                                     y = cmd.y,
@@ -158,8 +158,8 @@ class UserCommandManager(
                                 )
                             }
                         } else {
-                            val radius = 14.0f
-                            repeat(2000) {
+                            val radius = 7.0f
+                            repeat(500) {
                                 val angle = MathUtils.random(0f, MathUtils.PI2)
 
                                 val r = radius * sqrt(MathUtils.random())

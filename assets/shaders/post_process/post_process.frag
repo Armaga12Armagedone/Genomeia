@@ -10,6 +10,9 @@ uniform vec2 u_resolution;
 //uniform float u_parallaxStrength;
 uniform float u_zoom;
 
+// ← НОВЫЙ UNIFORM ДЛЯ УПРАВЛЕНИЯ ВИНЬЕТКОЙ
+uniform float u_vignetteEnabled;   // 0.0 = выключена, 1.0 = включена (можно ставить значения между 0 и 1 для плавной регулировки)
+
 out vec4 fragColor;
 
 void main() {
@@ -83,7 +86,7 @@ void main() {
     float softness = 0.8;
     float vignette = smoothstep(radius, radius - softness, normDist);
 
-//    vec4 plugColor = pastelColor * vignette * 0.000001;
+    float vignetteFactor = mix(1.0, vignette, u_vignetteEnabled);
 
-    fragColor = pastelColor * vignette/*vec4(edge) + plugColor*/;
+    fragColor = pastelColor * vignetteFactor;
 }

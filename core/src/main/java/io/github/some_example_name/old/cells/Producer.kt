@@ -39,9 +39,7 @@ class Producer(cellTypeId: Int): Cell(
         val color: Int = zygote.defaultColor.toIntBits()
         val radius: Float = PARTICLE_MAX_RADIUS
         val cellType: Int = zygote.cellTypeId
-        val parentIndex: Int = cellIndex
-        val angleCos = angleCos[cellIndex]
-        val angleSin = angleSin[cellIndex]
+        val parentIndex: Int = -1
         val angleDiffCosDefault: Float = 1f
         val angleDiffSinDefault: Float = 0f
         val colorDifferentiation: Int = 7
@@ -51,8 +49,8 @@ class Producer(cellTypeId: Int): Cell(
         val c: Float = 0f
         val isSum: Boolean = true
         val activationFuncType: Int = 0
-        val finalCos = angleCos * angleDiffCos[cellIndex] - angleSin * angleDiffSin[cellIndex]
-        val finalSin = angleSin * angleDiffCos[cellIndex] + angleCos * angleDiffSin[cellIndex]
+        val finalCos = angleCos[cellIndex]
+        val finalSin = angleSin[cellIndex]
 
         val x = getX(cellIndex) + finalCos * 0.05f
         val y = getY(cellIndex) + finalSin * 0.05f
@@ -60,10 +58,10 @@ class Producer(cellTypeId: Int): Cell(
         worldCommandsManager.worldCommandBuffer[threadId].push(
             type = WorldCommandType.ADD_CELL,
             booleans = booleanArrayOf(isSum),
-            floats = floatArrayOf(x, y, radius, angleCos, angleSin, angleDiffCosDefault, angleDiffSinDefault, visibilityRange, a, b, c),
+            floats = floatArrayOf(x, y, radius, finalCos, finalSin, angleDiffCosDefault, angleDiffSinDefault, visibilityRange, a, b, c),
             ints = intArrayOf(
                 color,
-                0,
+                0,          //cellGenomeId
                 cellType,
                 organIndex,
                 parentIndex,

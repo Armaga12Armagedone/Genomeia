@@ -11,6 +11,7 @@ import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.simulation.SimulationData
+import io.github.some_example_name.old.ui.screens.GlobalSettings.GRAVITATION
 import kotlin.math.sqrt
 
 class ParticlePhysicsSystem(
@@ -254,7 +255,7 @@ class ParticlePhysicsSystem(
         processCellFrictionOld(particleIndex)
 
 //        vx[particleIndex] -= 0.04f * sin((500f - particleIndex) * simulationData.timeSimulation)
-//        vy[particleIndex] -= 0.04f * cos((500f - particleIndex) * simulationData.timeSimulation)
+        vx[particleIndex] -= GRAVITATION //* cos((500f - particleIndex) * simulationData.timeSimulation)
 
         val vxv = vx[particleIndex]
         val vyv = vy[particleIndex]

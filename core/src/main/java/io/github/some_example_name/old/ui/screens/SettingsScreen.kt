@@ -20,8 +20,10 @@ import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
 import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
 import io.github.some_example_name.old.core.DISimulationContainer.heightMultiplier
 import io.github.some_example_name.old.core.FileProvider
+import io.github.some_example_name.old.ui.screens.GlobalSettings.GRAVITATION
 import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_HEIGHT
 import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_WIDTH
+import kotlin.math.round
 
 class SettingsScreen(
     val game: MyGame,
@@ -185,6 +187,25 @@ class SettingsScreen(
         table.add(gridHeightSlider).fillX()
         table.row()
 
+
+        val gravitationLabel = VisLabel("Gravitation: $GRAVITATION")
+        game.applyCustomFontMedium(gravitationLabel)
+        val gravitationSlider = VisSlider(-0.1f, 0.1f, 0.01f, false).apply {
+            value = GRAVITATION
+            addListener { e ->
+                if (valueChanged(e)) {
+                    GRAVITATION = round((value / 100f) * 10000f) / 10000f
+                    gravitationLabel.setText("Gravitation: ${round(value * 10000f) / 10000f}")
+                }
+                false
+            }
+            invalidateHierarchy()
+        }
+        table.add(gravitationLabel).left()
+        table.row()
+        table.add(gravitationSlider).fillX()
+        table.row()
+
         // === Кнопка назад ===
         val backButton = VisTextButton(bundle.get("button.back")).apply {
             game.applyCustomFont(this)
@@ -223,8 +244,9 @@ class SettingsScreen(
     // Утилиты для читаемости
     private fun clicked(e: Event) = e is ChangeListener.ChangeEvent
     private fun changed(e: Event) = e is ChangeListener.ChangeEvent
-    private fun valueChanged(e: Event) = e is ChangeListener.ChangeEvent
 }
+
+fun valueChanged(e: Event) = e is ChangeListener.ChangeEvent
 
 // === Глобальные настройки ===
 object GlobalSettings {
@@ -238,6 +260,7 @@ object GlobalSettings {
     var SOUND_VOLUME = 50
     var GRID_WIDTH = gridWidth
     var GRID_HEIGHT = gridHeight
+    var GRAVITATION = 0f
 
 //    var WORLD_SIZE_TYPE = WorldSize.XL
 //    var WORLD_CELL_WIDTH = WORLD_SIZE_TYPE.size

@@ -1,8 +1,8 @@
 package io.github.some_example_name.old.editor.commands
 
+import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
-import io.github.some_example_name.old.genome_editor_deprecated.EditorCell
 
 class ChangeDivideCommand(
     override val stage: Int,
@@ -24,6 +24,7 @@ class ChangeDivideCommand(
         genomeStageInstruction[stage].cellActions.compute(clickedCell.parentId) { _, oldValue ->
             oldValue?.copy(divide = oldValue.divide?.copy(
                 cellType = divide.cellType,
+                radius = divide.radius,
                 color = divide.color,
                 angleDirected = divide.angleDirected,
                 funActivation = divide.funActivation,

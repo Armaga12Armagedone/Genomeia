@@ -34,6 +34,7 @@ class ActionJsonWrite(
     val angle: Float? = null,
     val cellType: Int? = null,
     val physicalLink: HashMap<String, LinkDataJsonWrite?> = hashMapOf(),
+    val radius: Float? = null,
     val color: Color? = null,
     val angleDirected: Float? = null,
     val startDirectionId: Int? = null,
@@ -58,6 +59,7 @@ class ActionJsonWrite(
         }
         json.writeObjectEnd()
         if (color != null) json.writeValue("colorHsv", color.toString())
+        if (radius != null) json.writeValue("radius", radius)
         if (angleDirected != null) json.writeValue("angleDirected", angleDirected)
         if (startDirectionId != null) json.writeValue("startDirectionId", startDirectionId)
         if (funActivation != null) json.writeValue("funActivation", funActivation)
@@ -122,6 +124,7 @@ private fun Action.toJson(): ActionJsonWrite {
         cellType = this.cellType,
         physicalLink = this.physicalLink.mapKeys { (k, _) -> k.toString() }
             .mapValues { (_, v) -> v?.toJson() } as HashMap<String, LinkDataJsonWrite?>,
+        radius = this.radius,
         color = this.color,
         angleDirected = this.angleDirected,
         funActivation = this.funActivation,

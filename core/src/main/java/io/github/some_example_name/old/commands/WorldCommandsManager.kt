@@ -123,12 +123,6 @@ class WorldCommandsManager(
 
                             if (cellEntity.parentIndex[parentIndex] == -1) {
                                 cellEntity.parentIndex[parentIndex] = cellIndex
-                                val aCos = -1f
-                                val aSin = 0f
-                                val bCos = floats[3]
-                                val bSin = floats[4]
-                                cellEntity.angleDiffCos[parentIndex] = aCos * bCos + aSin * bSin
-                                cellEntity.angleDiffSin[parentIndex] = aSin * bCos - aCos * bSin
                             }
 
                             lastAddedCellIndexBuffer[threadId] = cellIndex

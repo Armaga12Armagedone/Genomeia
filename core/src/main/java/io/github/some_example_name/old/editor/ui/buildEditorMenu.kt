@@ -22,12 +22,12 @@ import io.github.some_example_name.old.editor.commands.NextTickButtonTap
 import io.github.some_example_name.old.editor.commands.PrevStageButtonTap
 import io.github.some_example_name.old.editor.commands.PrevTickButtonTap
 import io.github.some_example_name.old.editor.commands.TimeSlider
-import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.system.EditorLogicSystem
 import io.github.some_example_name.old.editor.system.EditorRenderSystem
 import io.github.some_example_name.old.editor.system.EditorSimulationSystem
+import io.github.some_example_name.old.editor.system.SymmetryManager
+import io.github.some_example_name.old.editor.ui.dialog.SymmetryDialog
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
-import io.github.some_example_name.old.systems.genomics.genome.domainToJson
 import io.github.some_example_name.old.systems.render.usePostProcess
 import io.github.some_example_name.old.ui.screens.MenuScreen
 import io.github.some_example_name.old.ui.screens.MyGame
@@ -43,7 +43,8 @@ class MenuUiBuilder(
     val genomeJsonReader: GenomeJsonReader,
     val renderSystem: EditorRenderSystem,
     val fileProvider: FileProvider,
-    val editorSimulationSystem: EditorSimulationSystem
+    val editorSimulationSystem: EditorSimulationSystem,
+    val symmetryManager: SymmetryManager
 ) {
 
     lateinit var timeSlider: VisSlider
@@ -132,6 +133,20 @@ class MenuUiBuilder(
             }
         })
 
+        val symmetryButton = VisTextButton("Symmetry")
+        symmetryButton.isChecked = usePostProcess
+
+        // Toggle кнопка
+        symmetryButton.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                SymmetryDialog(
+                    game = game,
+                    bundle = bundle,
+                    symmetryManager = symmetryManager
+                ).show(stage)
+            }
+        })
+
         val ctrlZ = VisTextButton("Ctrl+z")
         ctrlZ.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -164,7 +179,7 @@ class MenuUiBuilder(
         })
 
         val buttons = mutableListOf(
-            goToMenuButton, chooseColorButton, showPhysicalLinkButton, usePostProcessLinkButton
+            goToMenuButton, chooseColorButton, showPhysicalLinkButton, usePostProcessLinkButton, symmetryButton
         )
         if (Gdx.app.type == Application.ApplicationType.Android) {
             buttons.add(ctrlZ)
@@ -299,7 +314,7 @@ class MenuUiBuilder(
     }
 
     fun saveDialog(isGoToMenu: Boolean) {
-        val genome = editorSimulationSystem.genome.domainToJson()
+        val genome = editorSimulationSystem.genome
 
         SaveGenomeDialog(
             genomeJsonReader = genomeJsonReader,
