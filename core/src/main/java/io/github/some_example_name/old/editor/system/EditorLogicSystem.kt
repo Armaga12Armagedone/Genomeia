@@ -205,7 +205,13 @@ class EditorLogicSystem(
 
                     val grabbedEditorCell = toEditorData(grabbedCellIndex)
 
-                    val (x, y) = symmetryManager.snapPosition(particleEntity.x[grabbedCellIndex], particleEntity.y[grabbedCellIndex])
+                    val (x, y) = symmetryManager.snapPosition(
+                        particleEntity.x[grabbedCellIndex],
+                        particleEntity.y[grabbedCellIndex],
+                        currentTick = currentTick,
+                        nextStageTick = editorSimulationSystem.tickByStage[(currentStage + 1).coerceIn(0, lastStage)],
+                        cellIndex = grabbedCellIndex
+                    )
 
                     particleEntity.x[grabbedCellIndex] = x
                     particleEntity.y[grabbedCellIndex] = y
@@ -357,7 +363,9 @@ class EditorLogicSystem(
                 clickedCellIndex = clickedIndex,
                 gridManager = editorSimulationSystem.gridManager,
                 editorLogicSystem = this,
-                symmetryManager = symmetryManager
+                symmetryManager = symmetryManager,
+                currentTick = currentTick,
+                nextStageTick = editorSimulationSystem.tickByStage[(currentStage + 1).coerceIn(0, lastStage)]
             )
 
             when {
@@ -501,7 +509,9 @@ class EditorLogicSystem(
                         clickedCellIndex = clickedIndex,
                         gridManager = editorSimulationSystem.gridManager,
                         editorLogicSystem = this,
-                        symmetryManager = symmetryManager
+                        symmetryManager = symmetryManager,
+                        currentTick = currentTick,
+                        nextStageTick = editorSimulationSystem.tickByStage[(currentStage + 1).coerceIn(0, lastStage)]
                     )
                     defaultAction?.let {
                         tryToDivide(clickedIndex, newDividedCellPosition, it.copy(

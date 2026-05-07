@@ -36,7 +36,9 @@ fun tryToDivideCell(
     clickedCellIndex: Int,
     gridManager: GridManager,
     editorLogicSystem: EditorLogicSystem,
-    symmetryManager: SymmetryManager
+    symmetryManager: SymmetryManager,
+    currentTick: Int,
+    nextStageTick: Int
 ): Pair<Float, Float>? {
     val clickedCell = editorLogicSystem.toEditorData(clickedCellIndex)
     val xs = mutableListOf<Float>()
@@ -55,7 +57,7 @@ fun tryToDivideCell(
         ys.add(clickedCell.y)
     }
 
-    val newPoint = symmetryManager.newPoint(clickedCell, xs, ys)
+    val newPoint = symmetryManager.newPoint(clickedCell, xs, ys, currentTick, nextStageTick)
     return newPoint
 }
 

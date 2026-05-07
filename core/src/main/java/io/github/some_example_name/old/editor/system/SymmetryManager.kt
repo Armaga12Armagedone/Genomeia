@@ -6,7 +6,6 @@ import io.github.some_example_name.old.core.DIGenomeEditorContainer.gridWidth
 import io.github.some_example_name.old.core.utils.findNewOptimalCellPosition
 import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.entities.ParticleEntity
-import io.github.some_example_name.old.systems.physics.GridManager
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.floor
@@ -14,23 +13,25 @@ import kotlin.math.round
 import kotlin.math.sqrt
 
 private const val AXIAL_LINE_Y = 64f
-private const val CELL_RADIUS = 0.5f
 private const val EPSILON = 0.001f
 
 class SymmetryManager(
-    val gridManager: GridManager,
-    val particleEntity: ParticleEntity
+    val particleEntity: ParticleEntity,
+    val editorSimulationSystem: EditorSimulationSystem
 ) {
 
     var symmetryMode: SymmetryMode = NoSymmetry
-
-
 
     fun drawSymmetry(shapeRenderer: ShapeRenderer) {
         val symmetryMode = symmetryMode
         when (symmetryMode) {
             Axial -> {
-                shapeRenderer.line(0f, gridHeight.toFloat() / 2f, gridWidth.toFloat(), gridHeight.toFloat() / 2f)
+                shapeRenderer.line(
+                    0f,
+                    gridHeight.toFloat() / 2f,
+                    gridWidth.toFloat(),
+                    gridHeight.toFloat() / 2f
+                )
             }
             NoSymmetry -> {
                 return
@@ -67,41 +68,50 @@ class SymmetryManager(
                 val ox = symmetryMode.offsetX
                 val oy = symmetryMode.offsetY
 
-                val h = step * (sqrt(3f) / 2f)   // высота треугольника
+                val regionSize = 20f          // ← именно та область 20f, которую ты просил
+                val h = step * (sqrt(3f) / 2f) // высота маленького треугольника
 
-                // === 1. ГОРИЗОНТАЛЬНЫЕ ЛИНИИ === (оставляем как было — они уже корректные)
-                var i = floor((0f - oy) / h).toInt()
-                while (true) {
+                // Ограничиваем количество линий — теперь их будет очень мало (обычно 3–15 в каждом направлении)
+                val maxLines = (regionSize / h * 1.1f + 2f).toInt() // запас, чтобы покрыть ±20f
+
+                // === 1. ГОРИЗОНТАЛЬНЫЕ ЛИНИИ (короткие отрезки вокруг ox, oy) ===
+                val iMin = -maxLines
+                val iMax = maxLines
+                for (i in iMin..iMax) {
                     val y = oy + i * h
-                    if (y > gridHeight) break
-                    if (y >= 0f) {
-                        shapeRenderer.line(0f, y, gridWidth.toFloat(), y)
+                    if (y < 0f || y > gridHeight) continue
+
+                    // рисуем только в области ±regionSize по X
+                    val xLeft = (ox - regionSize).coerceAtLeast(0f)
+                    val xRight = (ox + regionSize).coerceAtMost(gridWidth.toFloat())
+                    if (xLeft < xRight) {
+                        shapeRenderer.line(xLeft, y, xRight, y)
                     }
-                    i++
                 }
 
                 // === 2. ДИАГОНАЛЬНЫЕ ЛИНИИ / (60°) ===
                 val m1 = sqrt(3f)
-                val db1 = step * sqrt(3f)          // правильный шаг по b
-                val b0 = oy - m1 * ox              // линия точно проходит через (ox, oy)
+                val db1 = step * sqrt(3f)
+                val b0 = oy - m1 * ox
 
-                var k = -300                       // начинаем далеко «слева/снизу» (запас для любого размера экрана)
-                while (true) {
+                // тот же диапазон k — количество линий минимально
+                for (k in -maxLines..maxLines) {
                     val b = b0 + k * db1
-                    val yStart = m1 * 0f + b
-                    val yEnd = m1 * gridWidth.toFloat() + b
 
-                    // полностью ниже экрана → продолжаем (ещё не дошли до видимой области)
-                    if (yStart < 0f && yEnd < 0f) {
-                        k++
-                        continue
+                    // короткий отрезок по X вокруг ox (y автоматически будет рядом с oy)
+                    val xLeft =
+                        (ox - regionSize * 1.15f).coerceAtLeast(0f)   // небольшой запас для диагоналей
+                    val xRight = (ox + regionSize * 1.15f).coerceAtMost(gridWidth.toFloat())
+
+                    val yLeft = m1 * xLeft + b
+                    val yRight = m1 * xRight + b
+
+                    // рисуем только если отрезок хотя бы немного попадает на экран
+                    if ((yLeft in 0f..gridHeight.toFloat() || yRight in 0f..gridHeight.toFloat()) ||
+                        (yLeft < 0f && yRight > 0f) || (yLeft > gridHeight && yRight < gridHeight)
+                    ) {
+                        shapeRenderer.line(xLeft, yLeft, xRight, yRight)
                     }
-                    // полностью выше экрана → можно останавливаться
-                    if (yStart > gridHeight && yEnd > gridHeight) break
-
-                    // рисуем полную линию (ShapeRenderer сам обрежет невидимые части)
-                    shapeRenderer.line(0f, yStart, gridWidth.toFloat(), yEnd)
-                    k++
                 }
 
                 // === 3. ДИАГОНАЛЬНЫЕ ЛИНИИ \ (-60°) ===
@@ -109,36 +119,36 @@ class SymmetryManager(
                 val db2 = step * sqrt(3f)
                 val b0_2 = oy - m2 * ox
 
-                k = -300
-                while (true) {
+                for (k in -maxLines..maxLines) {
                     val b = b0_2 + k * db2
-                    val yStart = m2 * 0f + b
-                    val yEnd = m2 * gridWidth.toFloat() + b
 
-                    if (yStart < 0f && yEnd < 0f) {
-                        k++
-                        continue
+                    val xLeft = (ox - regionSize * 1.15f).coerceAtLeast(0f)
+                    val xRight = (ox + regionSize * 1.15f).coerceAtMost(gridWidth.toFloat())
+
+                    val yLeft = m2 * xLeft + b
+                    val yRight = m2 * xRight + b
+
+                    if ((yLeft in 0f..gridHeight.toFloat() || yRight in 0f..gridHeight.toFloat()) ||
+                        (yLeft < 0f && yRight > 0f) || (yLeft > gridHeight && yRight < gridHeight)
+                    ) {
+                        shapeRenderer.line(xLeft, yLeft, xRight, yRight)
                     }
-                    if (yStart > gridHeight && yEnd > gridHeight) break
-
-                    shapeRenderer.line(0f, yStart, gridWidth.toFloat(), yEnd)
-                    k++
                 }
             }
         }
     }
 
-    fun snapPosition(x: Float, y: Float): Pair<Float, Float> {
+    fun snapPosition(
+        x: Float,
+        y: Float,
+        currentTick: Int,
+        nextStageTick: Int,
+        cellIndex: Int
+    ): Pair<Float, Float> {
         val symmetryMode = symmetryMode
         return when (symmetryMode) {
             Axial -> {
-                val distToLine = abs(y - AXIAL_LINE_Y)
-
-                if (distToLine <= CELL_RADIUS) {
-                    Pair(x, AXIAL_LINE_Y)           // прилипание к оси
-                } else {
-                    Pair(x, 2f * AXIAL_LINE_Y - y)  // зеркалирование в обе стороны
-                }
+                findAxialSymmetryPoint(Pair(x, y), currentTick, nextStageTick, cellIndex)
             }
             NoSymmetry -> Pair(x, y)
             is SquareGrid -> {
@@ -149,12 +159,9 @@ class SymmetryManager(
                 val resultX = ((x - ox) / step).roundToInt() * step + ox
                 val resultY = ((y - oy) / step).roundToInt() * step + oy
 
-                gridManager.getParticles(resultX.toInt(), resultY.toInt()).forEach {
-                    if (particleEntity.x[it] == resultX && particleEntity.y[it] == resultY)
-                    return Pair(x, y)
-                }
-
-                Pair(resultX, resultY)
+                if (isFreePosition(resultX, resultY, currentTick, nextStageTick, cellIndex)) {
+                    Pair(resultX, resultY)
+                } else Pair(x, y)
             }
             is TriangleGrid -> {
                 val step = symmetryMode.step
@@ -171,70 +178,60 @@ class SymmetryManager(
 
                 val resultX = ox + xShift + round((x - ox - xShift) / step) * step
 
-                gridManager.getParticles(resultX.toInt(), resultY.toInt()).forEach {
-                    if (particleEntity.x[it] == resultX && particleEntity.y[it] == resultY)
-                        return Pair(x, y)
-                }
-
-                Pair(resultX, resultY)
+                if (isFreePosition(resultX, resultY, currentTick, nextStageTick, cellIndex)) {
+                    Pair(resultX, resultY)
+                } else Pair(x, y)
             }
         }
     }
 
-    fun newPoint(clickedCell: EditorCell, xs: MutableList<Float>, ys: MutableList<Float>): Pair<Float, Float>? {
+    private fun findAxialSymmetryPoint(
+        it: Pair<Float, Float>,
+        currentTick: Int,
+        nextStageTick: Int,
+        cellIndex: Int?
+    ): Pair<Float, Float> {
+        val distToLine = abs(it.second - AXIAL_LINE_Y)
+
+        return if (distToLine <= 0.2f) {
+            Pair(it.first, AXIAL_LINE_Y)           // прилипание к оси
+        } else {
+            val searchSymmetryX = it.first
+            val searchSymmetryY = 2f * AXIAL_LINE_Y - it.second
+
+            val symmetryCellIndex = editorSimulationSystem.getClickedCellIndex(
+                clickX = searchSymmetryX,
+                clickY = searchSymmetryY,
+                currentTick = currentTick,
+                nextStageTick = nextStageTick
+            )?.first
+
+            val result = if (symmetryCellIndex != null) {
+                val y = 2f * AXIAL_LINE_Y - particleEntity.y[symmetryCellIndex]
+
+                Pair(particleEntity.x[symmetryCellIndex], y)
+            } else it
+
+            if (isFreePosition(result.first, result.second, currentTick, nextStageTick, cellIndex)) {
+                Pair(result.first, result.second)
+            } else it
+        }
+    }
+
+    fun newPoint(
+        clickedCell: EditorCell,
+        xs: MutableList<Float>,
+        ys: MutableList<Float>,
+        currentTick: Int,
+        nextStageTick: Int
+    ): Pair<Float, Float>? {
         val symmetryMode = symmetryMode
 
         return when (symmetryMode) {
             Axial -> {
-                val cx = clickedCell.x
-                val cy = clickedCell.y
-                val targetX = 64f
-                val targetY = 64f
-
-                // === ЗЕРКАЛЬНАЯ ПОЗИЦИЯ clickedCell ===
-                val mirrorY = 2f * AXIAL_LINE_Y - cy
-                val mirrorX = cx
-
-                // 8 позиций вокруг ЗЕРКАЛЬНОЙ точки
-                val candidates = listOf(
-                    Pair(mirrorX - 1f, mirrorY - 1f),
-                    Pair(mirrorX,      mirrorY - 1f),
-                    Pair(mirrorX + 1f, mirrorY - 1f),
-                    Pair(mirrorX - 1f, mirrorY),
-                    Pair(mirrorX + 1f, mirrorY),
-                    Pair(mirrorX - 1f, mirrorY + 1f),
-                    Pair(mirrorX,      mirrorY + 1f),
-                    Pair(mirrorX + 1f, mirrorY + 1f)
-                )
-
-                var best: Pair<Float, Float>? = null
-                var bestDistSq = Float.MAX_VALUE
-
-                for (cand in candidates) {
-                    // НЕ вызываем snapPosition снова (зеркало уже сделано выше)
-                    val snapped = cand
-
-                    // Пропускаем позицию самой clickedCell
-                    if (abs(snapped.first - cx) < EPSILON && abs(snapped.second - cy) < EPSILON) continue
-
-                    // Проверяем занятость
-                    if (!isFreePosition(snapped.first, snapped.second)) continue
-
-                    // Выбираем самую близкую к (64, 64)
-                    val dx = snapped.first - targetX
-                    val dy = snapped.second - targetY
-                    val distSq = dx * dx + dy * dy
-
-                    if (distSq < bestDistSq) {
-                        bestDistSq = distSq
-                        best = snapped
-                    }
+                findNewOptimalCellPosition(clickedCell.x, clickedCell.y, xs, ys)?.let {
+                    findAxialSymmetryPoint(it, currentTick, nextStageTick, null)
                 }
-
-                if (best != null) return best
-
-                // Fallback
-                return findNewOptimalCellPosition(clickedCell.x, clickedCell.y, xs, ys)
             }
 
             NoSymmetry -> findNewOptimalCellPosition(clickedCell.x, clickedCell.y, xs, ys)
@@ -249,12 +246,12 @@ class SymmetryManager(
                 // 8 соседних позиций (включая диагонали) — все точно на сетке
                 val candidates = listOf(
                     Pair(cx - step, cy - step),
-                    Pair(cx,        cy - step),
+                    Pair(cx, cy - step),
                     Pair(cx + step, cy - step),
                     Pair(cx - step, cy),
                     Pair(cx + step, cy),
                     Pair(cx - step, cy + step),
-                    Pair(cx,        cy + step),
+                    Pair(cx, cy + step),
                     Pair(cx + step, cy + step)
                 )
 
@@ -272,12 +269,12 @@ class SymmetryManager(
 
                 // 6 соседних вершин равностороннего треугольника — все точно на сетке
                 val candidates = listOf(
-                    Pair(cx + step,         cy),               // 0°
-                    Pair(cx - step,         cy),               // 180°
-                    Pair(cx + step / 2f,    cy + rowHeight),   // 60°
-                    Pair(cx - step / 2f,    cy + rowHeight),   // 120°
-                    Pair(cx + step / 2f,    cy - rowHeight),   // -60°
-                    Pair(cx - step / 2f,    cy - rowHeight)    // -120°
+                    Pair(cx + step, cy),               // 0°
+                    Pair(cx - step, cy),               // 180°
+                    Pair(cx + step / 2f, cy + rowHeight),   // 60°
+                    Pair(cx - step / 2f, cy + rowHeight),   // 120°
+                    Pair(cx + step / 2f, cy - rowHeight),   // -60°
+                    Pair(cx - step / 2f, cy - rowHeight)    // -120°
                 )
 
                 findBestFreePosition(candidates, xs, ys, ox, oy)
@@ -295,15 +292,11 @@ class SymmetryManager(
         var best: Pair<Float, Float>? = null
         var bestDistSq = Float.MAX_VALUE
 
-        // tolerance — решает проблему с floating-point в TriangleGrid
-        // (sqrt(3) + round + step = 0.6f дают микроскопические расхождения)
-        val epsilon = 0.001f   // можно сделать 0.0001f или step * 0.01f
-
         for (cand in candidates) {
             // === ПРОВЕРКА ЗАНЯТОСТИ ЧЕРЕЗ РАССТОЯНИЕ (а не ==) ===
             var occupied = false
             for (i in xs.indices) {
-                if (abs(xs[i] - cand.first) < epsilon && abs(ys[i] - cand.second) < epsilon) {
+                if (abs(xs[i] - cand.first) < EPSILON && abs(ys[i] - cand.second) < EPSILON) {
                     occupied = true
                     break
                 }
@@ -325,33 +318,35 @@ class SymmetryManager(
     }
 
 
-    private fun isFreePosition(x: Float, y: Float): Boolean {
-        val ix = x.toInt()
-        val iy = y.toInt()
+    private fun isFreePosition(
+        x: Float,
+        y: Float,
+        currentTick: Int,
+        nextStageTick: Int,
+        itselfIndex: Int?
+    ): Boolean {
+        val cellIndex = editorSimulationSystem.getClickedCellIndex(
+            clickX = x,
+            clickY = y,
+            currentTick = currentTick,
+            nextStageTick = nextStageTick,
+            itselfIndex = itselfIndex
+        )?.first ?: return true
 
-        // Проверяем 9 соседних «ячеек» (3×3) — как просил пользователь
-        for (dx in -1..1) {
-            for (dy in -1..1) {
-                gridManager.getParticles(ix + dx, iy + dy).forEach {
-                    if (abs(particleEntity.x[it] - x) < EPSILON && abs(particleEntity.y[it] - y) < EPSILON) {
-                        return false
-                    }
-                }
-            }
-        }
-        return true
+        return !(abs(particleEntity.x[cellIndex] - x) < EPSILON && abs(particleEntity.y[cellIndex] - y) < EPSILON)
     }
 }
 
 sealed class SymmetryMode
 
-object NoSymmetry: SymmetryMode()
+object NoSymmetry : SymmetryMode()
 data class SquareGrid(
     val step: Float,
     val offsetX: Float = 64f,   // ← было 0f, теперь 64f
     val offsetY: Float = 64f    // ← было 0f, теперь 64f
 ) : SymmetryMode()
-object Axial: SymmetryMode()
+
+object Axial : SymmetryMode()
 data class TriangleGrid(
     val step: Float,
     val offsetX: Float = 64f,   // ← было 0f, теперь 64f

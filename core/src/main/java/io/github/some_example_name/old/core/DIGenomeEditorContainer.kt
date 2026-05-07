@@ -228,8 +228,8 @@ object DIGenomeEditorContainer: DIContext, Disposable {
     val commandEditorStackManager = CommandEditorStackManager()
 
     val symmetryManager = SymmetryManager(
-        gridManager = gridManager,
-        particleEntity = particleEntity
+        particleEntity = particleEntity,
+        editorSimulationSystem = editorSimulationSystem
     )
 
     val editorLogicSystem = EditorLogicSystem(

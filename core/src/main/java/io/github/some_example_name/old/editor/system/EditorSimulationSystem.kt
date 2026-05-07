@@ -181,7 +181,8 @@ class EditorSimulationSystem(
         clickX: Float,
         clickY: Float,
         currentTick: Int,
-        nextStageTick: Int
+        nextStageTick: Int,
+        itselfIndex: Int? = null
     ): Pair<Int, Boolean>? {
 
         val x = clickX.toInt()
@@ -202,6 +203,7 @@ class EditorSimulationSystem(
 
                 val currentCellIndex = cellReplay.getCellIndex(currentTick, p)
                 val index = currentCellIndex ?: cellReplay.getCellIndex(nextStageTick, p) ?: continue
+                if (index == itselfIndex) continue
 
                 val px = particleEntity.x[index]
                 val py = particleEntity.y[index]
