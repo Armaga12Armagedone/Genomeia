@@ -75,6 +75,7 @@ class EditorLogicSystem(
     var grabbedCellIndex = -1
     var lastGrabbedCellX = 0.0f
     var lastGrabbedCellY = 0.0f
+    var isRightClick = false
     private var isDruggingCamera = false
     var uiScreenCommands: UiScreenCommands? = null
     private var defaultActionType: LastActionType? = null
@@ -323,7 +324,7 @@ class EditorLogicSystem(
                         }
                     } else {
                         if (!command.isCtrl) {
-                            if (!command.isLeft) {
+                            if (isRightClick) {
                                 rightClick(clickedIndex, clickedCell)
                             } else {
                                 leftClick(clickedIndex, clickedCell, false)

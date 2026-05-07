@@ -51,7 +51,6 @@ class MenuUiBuilder(
     lateinit var stageText: VisLabel
     lateinit var tickText: VisLabel
     var isCtrl = false
-    private var isRightClick = false
 
     var isProgrammaticChange = false
 
@@ -171,10 +170,10 @@ class MenuUiBuilder(
         })
 
         val rightClick = VisTextButton(bundle.get("button.performLastAction"), "toggle")
-        rightClick.isChecked = isRightClick
+        rightClick.isChecked = editorLogicSystem.isRightClick
         rightClick.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                isRightClick = rightClick.isChecked
+                editorLogicSystem.isRightClick = rightClick.isChecked
             }
         })
 
