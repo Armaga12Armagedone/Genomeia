@@ -33,11 +33,12 @@ class WorldCommandsManager(
     val cellList: List<Cell>,
     val substancesEntity: SubstancesEntity,
     val userCommandManager: UserCommandManager? = null,
-    val diContext: DIContext
+    val diContext: DIContext,
+    val isEditor: Boolean
 ): WorldResizable {
     var worldCommandBuffer = Array(diContext.threadCount) { WorldCommandBuffer() }
     var worldCommandSecondBuffer = Array(diContext.threadCount) { WorldCommandBuffer(100) }
-    private val worldCommandLastBuffer = WorldCommandBuffer(100)
+    val worldCommandLastBuffer = WorldCommandBuffer(100)
 
     private var lastAddedCellIndexBuffer = IntArray(diContext.threadCount) { -1 }
     private val organIndexCellIdMapIndex = OrderedIntPairMap()
@@ -88,54 +89,48 @@ class WorldCommandsManager(
                         }
                     }
                     WorldCommandType.DELETE_LINK -> {
-//                        println("DELETE_LINK ${ints[0]}")
                         linkEntity.deleteLink(linkIndex = ints[0], linkGeneration = ints[1])
                     }
                     WorldCommandType.ADD_CELL -> {
                         val cellType = ints[2]
                         val newCell = cellList[cellType]
-                        if (newCell !is Zygote) {
-                            val cellGenomeId = ints[1]
-                            val parentOrganIndex = ints[3]
-                            val parentIndex = ints[4]
 
-                            val cellIndex = cellEntity.addCell(
-                                x = floats[0],
-                                y = floats[1],
-                                color = ints[0],
-                                radius = floats[2],
-                                cellGenomeId = cellGenomeId,
-                                cellType = cellType,
-                                organIndex = parentOrganIndex,
-                                parentIndex = parentIndex,
-                                angleCos = floats[3],
-                                angleSin = floats[4],
-                                angleDiffCos = floats[5],
-                                angleDiffSin = floats[6],
-                                colorDifferentiation = ints[5],
-                                visibilityRange = floats[7],
-                                a = floats[8],
-                                b = floats[9],
-                                c = floats[10],
-                                isSum = booleans[0],
-                                activationFuncType = ints[6].toByte()
-                            )
+                        val cellGenomeId = if (newCell is Zygote && !isEditor) { 0 } else ints[1]
+                        val parentOrganIndex = ints[3]
+                        val parentIndex = ints[4]
+                        val organIndex = if (newCell is Zygote) -1 else parentOrganIndex
 
-                            if (cellEntity.parentIndex[parentIndex] == -1) {
-                                cellEntity.parentIndex[parentIndex] = cellIndex
-                            }
+                        val cellIndex = cellEntity.addCell(
+                            x = floats[0],
+                            y = floats[1],
+                            color = ints[0],
+                            radius = floats[2],
+                            cellGenomeId = cellGenomeId,
+                            cellType = cellType,
+                            organIndex = organIndex,
+                            parentIndex = parentIndex,
+                            angleCos = floats[3],
+                            angleSin = floats[4],
+                            angleDiffCos = floats[5],
+                            angleDiffSin = floats[6],
+                            colorDifferentiation = ints[5],
+                            visibilityRange = floats[7],
+                            a = floats[8],
+                            b = floats[9],
+                            c = floats[10],
+                            isSum = booleans[0],
+                            activationFuncType = ints[6].toByte()
+                        )
 
-                            lastAddedCellIndexBuffer[threadId] = cellIndex
-                            organIndexCellIdMapIndex.put(parentOrganIndex, cellGenomeId, cellIndex)
-                            newCell.onStart(cellIndex, 0)
-                        } else {
-                            worldCommandLastBuffer.push(
-                                type = WorldCommandType.ADD_CELL,
-                                booleans = booleans,
-                                floats = floats,
-                                ints = ints
-                            )
+                        val genomeIndex = organEntity.genomeIndex[parentOrganIndex]
+                        newCell.onStart(cellIndex, -1, genomeIndex)
+
+                        if (parentIndex != -1 && cellEntity.parentIndex[parentIndex] == -1) {
+                            cellEntity.parentIndex[parentIndex] = cellIndex
                         }
+
+                        lastAddedCellIndexBuffer[threadId] = cellIndex
+                        organIndexCellIdMapIndex.put(parentOrganIndex, cellGenomeId, cellIndex)
                     }
                     WorldCommandType.DECREMENT_DIVIDE_COUNTER -> {
                         organEntity.dividedTimes[ints[0]]--
@@ -150,7 +145,6 @@ class WorldCommandsManager(
                             userCommandManager.grabbedParticleIndex = -1
                             userCommandManager.isDragging = false
                         }
-//                        println("DELETE_CELL $cellIndex")
                         if (cellEntity.isAlive[cellIndex] && cellEntity.getGeneration(cellIndex) == cellGeneration) {
                             val r = Random.nextInt(255)
                             val g = Random.nextInt(255)
@@ -216,12 +210,11 @@ class WorldCommandsManager(
                         specialEntity.addProducer(index = ints[0])
                     }
                     WorldCommandType.ADD_ORGAN -> {
-                        val organStartCellOrganIndex = ints[0]
-                        cellEntity.organIndex[organStartCellOrganIndex] = organEntity.addOrgan(
-                            genomeIndex = ints[1],
-                            genomeSize = ints[2],
-                            dividedTimes = ints[3],
-                            mutatedTimes = ints[4]
+                        worldCommandLastBuffer.push(
+                            type = WorldCommandType.ADD_ORGAN,
+                            booleans = booleans,
+                            floats = floats,
+                            ints = ints
                         )
                     }
                     WorldCommandType.DELETE_ORGAN -> {
@@ -285,40 +278,18 @@ class WorldCommandsManager(
     fun executingLastCommandsFromTheWorld() {
         worldCommandLastBuffer.consume { type, ints, floats, booleans ->
             when (type) {
-                WorldCommandType.ADD_CELL -> {
-                    val parentOrganIndex = ints[3]
-                    val genomeIndex = organEntity.genomeIndex[parentOrganIndex]
-                    val genome = genomeManager.genomes[genomeIndex]
-                    val organIndex = organEntity.addOrgan(
-                        genomeIndex = genomeIndex,
-                        genomeSize = genome.genomeStageInstruction.size,
-                        dividedTimes = genome.dividedTimes[0],
-                        mutatedTimes = genome.mutatedTimes[0]
-                    )
-
-                    val cellIndex = cellEntity.addCell(
-                        x = floats[0],
-                        y = floats[1],
-                        color = ints[0],
-                        radius = floats[2],
-                        cellGenomeId = ints[1],
-                        cellType = ints[2],
-                        organIndex = organIndex,
-                        parentIndex = ints[4],
-                        angleCos = floats[3],
-                        angleSin = floats[4],
-                        angleDiffCos = floats[5],
-                        angleDiffSin = floats[6],
-                        colorDifferentiation = ints[5],
-                        visibilityRange = floats[7],
-                        a = floats[8],
-                        b = floats[9],
-                        c = floats[10],
-                        isSum = booleans[0],
-                        activationFuncType = ints[6].toByte()
-                    )
-                    cellEntity.energy[cellIndex] = 4.3f
+                WorldCommandType.ADD_ORGAN -> {
+                    if (!isEditor) {
+                        val organStartCellOrganIndex = ints[0]
+                        cellEntity.organIndex[organStartCellOrganIndex] = organEntity.addOrgan(
+                            genomeIndex = ints[1],
+                            genomeSize = ints[2],
+                            dividedTimes = ints[3],
+                            mutatedTimes = ints[4]
+                        )
+                    }
                 }
+
                 else -> {}
             }
         }

@@ -38,7 +38,7 @@ sealed class Cell(
     val gridManager get() = context.gridManager
     val organManager get() = context.organManager
 
-    open fun onStart(cellIndex: Int, threadId: Int) {
+    open fun onStart(cellIndex: Int, threadId: Int, genomeIndex: Int = -1) {
 
     }
 

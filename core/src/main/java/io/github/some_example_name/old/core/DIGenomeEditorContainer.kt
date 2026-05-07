@@ -137,7 +137,8 @@ object DIGenomeEditorContainer: DIContext, Disposable {
         cellList = cellList,
         substancesEntity = substancesEntity,
         specialEntity = specialEntity,
-        diContext = this
+        diContext = this,
+        isEditor = true
     )
 
     val divideManager = DivideManager(
@@ -154,7 +155,9 @@ object DIGenomeEditorContainer: DIContext, Disposable {
         worldCommandsManager = worldCommandsManager,
         particleEntity = particleEntity,
         gridManager = gridManager,
-        specialEntity = specialEntity
+        specialEntity = specialEntity,
+        organEntity = organEntity,
+        isEditor = true
     )
 
     val cellSystem = CellSystem(

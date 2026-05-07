@@ -11,19 +11,19 @@ import io.github.some_example_name.old.ui.screens.MyGame;
  * Launches the desktop (LWJGL3) application.
  */
 public class Lwjgl3Launcher {
-    public static void main(String[] args) {
-        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-            Logger.logCrash(throwable);
-            System.exit(1);
-        });
-        if (StartupHelper.startNewJvmIfRequired()) return;
-        createApplication();
-    }
 //    public static void main(String[] args) {
-//        if (StartupHelper.startNewJvmIfRequired())
-//            return; // This handles macOS support and helps on Windows.
+//        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+//            Logger.logCrash(throwable);
+//            System.exit(1);
+//        });
+//        if (StartupHelper.startNewJvmIfRequired()) return;
 //        createApplication();
 //    }
+    public static void main(String[] args) {
+        if (StartupHelper.startNewJvmIfRequired())
+            return; // This handles macOS support and helps on Windows.
+        createApplication();
+    }
 
     private static Lwjgl3Application createApplication() {
         return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null, null), getDefaultConfiguration());

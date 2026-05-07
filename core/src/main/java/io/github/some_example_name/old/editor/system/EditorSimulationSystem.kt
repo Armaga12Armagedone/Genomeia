@@ -174,6 +174,7 @@ class EditorSimulationSystem(
 
         worldCommandsManager.executingCommandsFromTheWorld()
         organManager.performOrgansNextStage()
+        worldCommandsManager.executingLastCommandsFromTheWorld()
     }
 
     fun getClickedCellIndex(

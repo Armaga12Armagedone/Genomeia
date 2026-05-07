@@ -118,8 +118,8 @@ class EditorLogicSystem(
         val id = cellEntity.cellGenomeId[index]
         val currentCellIndex = cellReplay.getCellIndex(currentTick, index)
         val isPhantom = currentCellIndex == null
-        val parentIndex = cellEntity.parentIndex[index]
-        val parentId = cellEntity.cellGenomeId[parentIndex]
+        val parentIndex = if (index != 0) { cellEntity.parentIndex[index] } else -1
+        val parentId = if (index != 0) { cellEntity.cellGenomeId[parentIndex] } else -1
         val action = if (currentStage != lastStage){
             editorSimulationSystem.genome.genomeStageInstruction[currentStage]
                 .cellActions[if (isPhantom) parentId else id]
@@ -446,7 +446,7 @@ class EditorLogicSystem(
     ) {
         val dialogMutate = MutateActionDialog(
             clickedCell = clickedCell,
-            parentCell = toEditorData(clickedCell.parentIndex),
+            parentCell = if (clickedCell.parentIndex != -1) toEditorData(clickedCell.parentIndex) else null,
             startCurrentStageTick = editorSimulationSystem.tickByStage[currentStage],
             eyeReplay = eyeReplay,
             neuralReplay = neuralReplay,

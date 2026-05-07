@@ -5,13 +5,14 @@ import io.github.some_example_name.old.cells.Eye
 import io.github.some_example_name.old.cells.Muscle
 import io.github.some_example_name.old.cells.Producer
 import io.github.some_example_name.old.cells.Tail
+import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.core.DISimulationContainer.cellsSettings
 import io.github.some_example_name.old.core.utils.collectParticles
-import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
+import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.systems.physics.GridManager
@@ -24,7 +25,9 @@ class MutateManager(
     val particleEntity: ParticleEntity,
     val worldCommandsManager: WorldCommandsManager,
     val gridManager: GridManager,
-    val specialEntity: SpecialEntity
+    val specialEntity: SpecialEntity,
+    val organEntity: OrganEntity,
+    val isEditor: Boolean
 ): Disposable {
 
     fun mutateCell(index: Int, threadId: Int) = with(cellEntity) {
@@ -112,7 +115,11 @@ class MutateManager(
                 setCellStiffness(index, cellsSettings[it].cellStiffness)
                 isNeural[index] = newCell.isNeural
 
-                newCell.onStart(index, threadId)
+                val genomeIndex = organEntity.genomeIndex[organIndex[index]]
+                if (newCell is Zygote && !isEditor) {
+                    cellGenomeId[index] = 0
+                }
+                newCell.onStart(index, threadId, genomeIndex)
             }
 
             if (isFromMuscleToAnother) {

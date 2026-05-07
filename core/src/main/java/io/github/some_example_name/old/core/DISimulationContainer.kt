@@ -191,7 +191,8 @@ object DISimulationContainer:  DIContext, Disposable {
         substancesEntity = substancesEntity,
         specialEntity = specialEntity,
         userCommandManager = userCommandManager,
-        diContext = this
+        diContext = this,
+        isEditor = false
     )
 
     val particlePhysicsSystem = ParticlePhysicsSystem(
@@ -224,7 +225,9 @@ object DISimulationContainer:  DIContext, Disposable {
         worldCommandsManager = worldCommandsManager,
         particleEntity = particleEntity,
         gridManager = gridManager,
-        specialEntity = specialEntity
+        specialEntity = specialEntity,
+        organEntity = organEntity,
+        isEditor = false
     )
 
     val cellSystem = CellSystem(

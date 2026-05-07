@@ -60,7 +60,7 @@ fun encodeColorToBits(r: Float, g: Float, b: Float): Int {
 
 class MutateActionDialog(
     val clickedCell: EditorCell,
-    val parentCell: EditorCell,
+    val parentCell: EditorCell?,
     val startCurrentStageTick: Int,
     val cellReplay: CellReplay,
     val eyeReplay: EyeReplay,
@@ -118,14 +118,18 @@ class MutateActionDialog(
     }
 
     fun getBaseAngleFromParent(): Float {
-        val dx = clickedCell.x - parentCell.x
-        val dy = clickedCell.y - parentCell.y
+        if (parentCell != null) {
+            val dx = clickedCell.x - parentCell.x
+            val dy = clickedCell.y - parentCell.y
 
-        val len = 1f / invSqrt(dx * dx + dy * dy)
-        val toChildCos = dx / len
-        val toChildSin = dy / len
+            val len = 1f / invSqrt(dx * dx + dy * dy)
+            val toChildCos = dx / len
+            val toChildSin = dy / len
 
-        return atan2(toChildSin, toChildCos)
+            return atan2(toChildSin, toChildCos)
+        } else {
+            return 0f
+        }
     }
 
     private var colorOfCellTo = colorOfCellFrom

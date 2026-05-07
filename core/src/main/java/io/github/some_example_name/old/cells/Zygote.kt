@@ -8,19 +8,27 @@ class Zygote(cellTypeId: Int) : Cell(
     cellTypeId = cellTypeId
 ) {
 
-    override fun onStart(cellIndex: Int, threadId: Int) {
+    override fun onStart(cellIndex: Int, threadId: Int, genomeIndex: Int) {
         with(cellEntity) {
             val parentOrganIndex = cellIndex
-            val genomeIndex = organEntity.genomeIndex[cellEntity.organIndex[parentOrganIndex]]
             val subGenome = 1//TODO subGenome
             val genome = genomeManager.genomes[genomeIndex]
             val genomeSize: Int = genome.genomeStageInstruction.size
             val dividedTimes: Int = genome.dividedTimes[0]
             val mutatedTimes: Int = genome.mutatedTimes[0]
 
-            worldCommandsManager.worldCommandBuffer[threadId].push(
+            val buffer = if (threadId != -1) { worldCommandsManager.worldCommandBuffer[threadId] } else worldCommandsManager.worldCommandLastBuffer
+
+            buffer.push(
                 type = WorldCommandType.ADD_ORGAN,
-                ints = intArrayOf(parentOrganIndex, genomeIndex, genomeSize, dividedTimes, mutatedTimes)
+                ints = intArrayOf(
+                    parentOrganIndex,
+                    genomeIndex,
+                    genomeSize,
+                    dividedTimes,
+                    mutatedTimes,
+                    cellIndex
+                )
             )
         }
     }
