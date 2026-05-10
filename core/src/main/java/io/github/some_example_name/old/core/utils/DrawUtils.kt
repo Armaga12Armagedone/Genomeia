@@ -28,12 +28,13 @@ fun ShapeRenderer.drawArrowWithRotation(
 
 fun ShapeRenderer.drawArrowWithRotationAngle(
     startX: Float, startY: Float,
-    baseAngle: Float,
+    angleCos: Float,
+    angleSin: Float,
     length: Float = 30f,
     isDrawWithoutTriangle: Boolean = false
 ) {
-    val endX = startX + cos(baseAngle) * length
-    val endY = startY + sin(baseAngle) * length
+    val endX = startX + angleCos * length
+    val endY = startY + angleSin * length
 
     this.line(startX, startY, endX, endY)
 
@@ -46,7 +47,7 @@ fun ShapeRenderer.drawTriangleEnd(
     c1y: Float,
     c2x: Float,
     c2y: Float,
-    arrowSize: Float = 2.5f
+    arrowSize: Float = 2.5f / 40f
 ) {
     // Вектор направления стрелки
     val dx = c2x - c1x

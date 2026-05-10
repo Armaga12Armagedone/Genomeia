@@ -1,19 +1,21 @@
 package io.github.some_example_name.old.systems.physics
-import io.github.some_example_name.old.core.DIContainer.chunkSize
-import io.github.some_example_name.old.core.DIContainer.totalChunks
+import io.github.some_example_name.old.core.DIContext
+import io.github.some_example_name.old.core.WorldResizable
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
 
 class GridManager (
-    val gridWidth: Int,
-    val gridHeight: Int
-) {
+    var gridWidth: Int,
+    var gridHeight: Int,
+    val diContext: DIContext,
+    val maxAmountOfParticles: Int
+): WorldResizable {
     var gridSize = gridWidth * gridHeight
-    val grid = IntArray(gridSize * MAX_AMOUNT_OF_PARTICLES) { -1 }
-    val particleCounts = IntArray(gridSize)
-    val mapMoreThenMax = Array(totalChunks * 2) { Int2ObjectOpenHashMap<IntArrayList>() }
+    var grid = IntArray(gridSize * maxAmountOfParticles) { -1 }
+    var particleCounts = IntArray(gridSize)
+    var mapMoreThenMax = Array(diContext.totalChunks * 2) { Int2ObjectOpenHashMap<IntArrayList>() }
 
-    private val halfChunkSize = chunkSize / 2
+    private var halfChunkSize = diContext.chunkSize / 2
     private fun getHalfChunkId(gridIndex: Int) = gridIndex / halfChunkSize
 
     fun addParticle(x: Int, y: Int, value: Int): Int {
@@ -22,7 +24,7 @@ class GridManager (
             throw Exception("Out of grid bounds")
         }
         val cellIndex = y * gridWidth + x
-        if (particleCounts[cellIndex] >= MAX_AMOUNT_OF_PARTICLES) {
+        if (particleCounts[cellIndex] >= maxAmountOfParticles) {
             val threadId = getHalfChunkId(cellIndex)
             var list = mapMoreThenMax[threadId].get(cellIndex)
             if (list == null) {
@@ -31,7 +33,25 @@ class GridManager (
             }
             list.add(value)
         } else {
-            val gridIndex = cellIndex * MAX_AMOUNT_OF_PARTICLES + particleCounts[cellIndex]
+            val gridIndex = cellIndex * maxAmountOfParticles + particleCounts[cellIndex]
+            grid[gridIndex] = value
+        }
+
+        particleCounts[cellIndex]++
+        return cellIndex
+    }
+
+    fun addCell(cellIndex: Int, value: Int): Int {
+        if (particleCounts[cellIndex] >= maxAmountOfParticles) {
+            val threadId = getHalfChunkId(cellIndex)
+            var list = mapMoreThenMax[threadId].get(cellIndex)
+            if (list == null) {
+                list = IntArrayList()
+                mapMoreThenMax[threadId].put(cellIndex, list)
+            }
+            list.add(value)
+        } else {
+            val gridIndex = cellIndex * maxAmountOfParticles + particleCounts[cellIndex]
             grid[gridIndex] = value
         }
 
@@ -44,8 +64,8 @@ class GridManager (
 //            throw Exception("Out of grid bounds")
 //        }
 //        val cellIndex = y * gridWidth + x
-        val start = cellIndex * MAX_AMOUNT_OF_PARTICLES
-        if (particleCounts[cellIndex] <= MAX_AMOUNT_OF_PARTICLES) {
+        val start = cellIndex * maxAmountOfParticles
+        if (particleCounts[cellIndex] <= maxAmountOfParticles) {
             val end = start + particleCounts[cellIndex] - 1
             for (i in start..end) {
                 if (grid[i] == value) {
@@ -56,7 +76,7 @@ class GridManager (
                 }
             }
         } else {
-            val end = start + MAX_AMOUNT_OF_PARTICLES - 1
+            val end = start + maxAmountOfParticles - 1
             val threadId = getHalfChunkId(cellIndex)
             val list = mapMoreThenMax[threadId].get(cellIndex)
             for (i in start..end) {
@@ -91,8 +111,8 @@ class GridManager (
 
     //TODO local every thread IntArray for return to avoid allocation
     fun getParticlesIndex(cellIndex: Int): IntArray {
-        val start = cellIndex * MAX_AMOUNT_OF_PARTICLES
-        return if (particleCounts[cellIndex] <= MAX_AMOUNT_OF_PARTICLES) {
+        val start = cellIndex * maxAmountOfParticles
+        return if (particleCounts[cellIndex] <= maxAmountOfParticles) {
             grid.copyOfRange(start, start + particleCounts[cellIndex])
         } else {
             val threadId = getHalfChunkId(cellIndex)
@@ -100,7 +120,7 @@ class GridManager (
             val extraSize = extraList.size
             IntArray(particleCounts[cellIndex]).apply {
                 if (extraSize > 0) System.arraycopy(extraList.elements(), 0, this, 0, extraSize)
-                System.arraycopy(grid, start, this, extraSize, MAX_AMOUNT_OF_PARTICLES)
+                System.arraycopy(grid, start, this, extraSize, maxAmountOfParticles)
             }
         }
     }
@@ -110,7 +130,14 @@ class GridManager (
         mapMoreThenMax.forEach { it.clear() }
     }
 
-    companion object {
-        const val MAX_AMOUNT_OF_PARTICLES = 4
+    override fun resize() {
+        gridWidth = diContext.gridWidth
+        gridHeight = diContext.gridHeight
+        gridSize = gridWidth * gridHeight
+        grid = IntArray(gridSize * maxAmountOfParticles) { -1 }
+        particleCounts = IntArray(gridSize)
+        halfChunkSize = diContext.chunkSize / 2
+        mapMoreThenMax = Array(diContext.totalChunks * 2) { Int2ObjectOpenHashMap<IntArrayList>() }
     }
+
 }

@@ -1,39 +1,37 @@
 package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.core.utils.blueColors
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
-class Tail: Cell(
+class Tail(cellTypeId: Int): Cell(
     defaultColor = blueColors.first(),
-    cellTypeId = 3,
-    isNeural = true
+    cellTypeId = cellTypeId,
+    isNeural = true,
+    isDirected = true
 ) {
 
-    override fun doOnTick(index: Int, threadId: Int) = with(cellEntity) {
-        if (energy[index] > 0) {
-            var impulse = neuronImpulseOutput[index]
+    override fun doOnTick(cellIndex: Int, threadId: Int) = with(cellEntity) {
+        if (energy[cellIndex] > 0) {
+            var impulse = neuronImpulseOutput[cellIndex]
             if (impulse < 0f) impulse = 0f
             if (impulse > 1f) impulse = 1f
-//            if (speed[index] < impulse) speed[index] += 0.012f else if (speed[index] > impulse) speed[index] -= 0.012f
-//            if (speed[index] <= 0.013f) return
-            val angleRad = angle[index] + PI.toFloat()
-            val cosA = cos(angleRad)
-            val sinA = sin(angleRad)
 
-            // Рассчитываем направление движения
-            // We calculate the direction of movement
-            val directionX = cosA
-            val directionY = sinA
-            if (directionX.isNaN() || directionY.isNaN()) throw Exception("TODO потом убрать // remove later")
+            val speed = with(specialEntity) {
+                val speed = getSpeed(cellIndex)
+                if (getSpeed(cellIndex) < impulse) {
+                    setSpeed(cellIndex, speed + 0.012f)
+                } else if (getSpeed(cellIndex) > impulse) {
+                    setSpeed(cellIndex, speed - 0.012f)
+                }
+                if (getSpeed(cellIndex) <= 0.013f) return
+                getSpeed(cellIndex)
+            }
 
             val tailMaxSpeedCoefficient = substrateSettings.data.tailMaxSpeedCoefficient
-            val vx = getVx(index)
-            val vy = getVy(index)
-            setVx(index, vx + directionX / 2/* * cm.speed[index]*/ * tailMaxSpeedCoefficient)
-            setVy(index, vy + directionY / 2/* * cm.speed[index]*/ * tailMaxSpeedCoefficient)
-            energy[index] -= substrateSettings.cellsSettings[cellType[index].toInt()].energyActionCost
+            val vx = getVx(cellIndex)
+            val vy = getVy(cellIndex)
+            setVx(cellIndex, vx - angleCos[cellIndex] * 0.5f * speed * tailMaxSpeedCoefficient)
+            setVy(cellIndex, vy - angleSin[cellIndex] * 0.5f * speed * tailMaxSpeedCoefficient)
+            energy[cellIndex] -= substrateSettings.cellsSettings[cellType[cellIndex].toInt()].energyActionCost
         }
     }
 }

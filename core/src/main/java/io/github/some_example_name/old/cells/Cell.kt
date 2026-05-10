@@ -1,7 +1,9 @@
 package io.github.some_example_name.old.cells
 
 import com.badlogic.gdx.graphics.Color
-import io.github.some_example_name.old.core.DIContainer
+import io.github.some_example_name.old.core.DIContext
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import kotlin.reflect.KClass
 
 sealed class Cell(
     val defaultColor: Color,
@@ -12,35 +14,52 @@ sealed class Cell(
     val isNeuronTransportable: Boolean = true,
     val effectOnContact: Boolean = false,
     val isCollidable: Boolean = true,
-    val descriptionBundle: String? = null
+    val descriptionBundle: String? = null,
+    val specialData: KClass<out SpecialModData> = Plug::class,
 ) {
     val name: String = this::class.simpleName ?: "UnknownCell"
-    val description = descriptionBundle?.let { DIContainer.bundle.get(descriptionBundle) } ?: ""
+    val description = descriptionBundle?.let { bundle.get(descriptionBundle) } ?: ""
+    val doesItHasSpecialModData = specialData != Plug::class
 
+    lateinit var context: DIContext
 
-    val cellEntity get() = DIContainer.cellEntity
-    val linkEntity get() = DIContainer.linkEntity
-    val simEntity get() = DIContainer.simEntity
-    val substrateSettings get() = DIContainer.substrateSettings
-    val commandsManager get() = DIContainer.worldCommandsManager
-    val organEntity get() = DIContainer.organEntity
-    val genomeManager get() = DIContainer.genomeManager
-    val pheromoneEntity get() = DIContainer.pheromoneEntity
+    //TODO передавать Di конеткст в методы, onStart, doOnTick, onContact и тд
+    val particleEntity get() = context.particleEntity
+    val cellEntity get() = context.cellEntity
+    val linkEntity get() = context.linkEntity
+    val substancesEntity get() = context.substancesEntity
+    val specialEntity get() = context.specialEntity
+    val substrateSettings get() = context.substrateSettings
+    val worldCommandsManager get() = context.worldCommandsManager
+    val organEntity get() = context.organEntity
+    val genomeManager get() = context.genomeManager
+    val pheromoneEntity get() = context.pheromoneEntity
 
-    open fun onStart(index: Int, threadId: Int) {
+    val gridManager get() = context.gridManager
+    val organManager get() = context.organManager
+
+    open fun onStart(cellIndex: Int, threadId: Int, genomeIndex: Int = -1) {
 
     }
 
-    open fun doOnTick(index: Int, threadId: Int) {
+    open fun doOnTick(cellIndex: Int, threadId: Int) {
 
     }
 
-    open fun onContact(index: Int, indexCollided: Int, threadId: Int) {
+    open fun onContact(cellIndex: Int, particleIndexCollided: Int, distance: Float, threadId: Int) {
 
     }
 
-    open fun onDie(index: Int, threadId: Int) {
+    open fun onDie(cellIndex: Int) {
+
+    }
+
+    open fun onLinkDeleted(cellIndex: Int, linkIndex: Int, threadId: Int) {
 
     }
 
 }
+
+interface SpecialModData
+
+object Plug: SpecialModData

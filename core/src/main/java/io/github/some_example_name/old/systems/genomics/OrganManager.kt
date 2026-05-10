@@ -7,7 +7,7 @@ import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 class OrganManager(
     private val organEntity: OrganEntity,
     private val genomeManager: GenomeManager,
-    private val cellEntity: CellEntity
+    private val cellEntity: CellEntity,
 ) {
 
     /*
@@ -33,7 +33,7 @@ class OrganManager(
                         dividedTimes[index] = currentGenome.dividedTimes[stage[index]]
                         mutatedTimes[index] = currentGenome.mutatedTimes[stage[index]]
                     } else {
-                        println("organism grown $index")
+//                        println("organism grown $index")
                         //TODO Delete grown organs
                         alreadyGrownUp[index] = true
                     }
@@ -53,9 +53,5 @@ class OrganManager(
                 organEntity.mutateCounterThisStage[organIndex]--
             }
         }
-    }
-
-    fun clear() {
-        organEntity.clear()
     }
 }

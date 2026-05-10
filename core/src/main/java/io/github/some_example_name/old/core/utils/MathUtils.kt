@@ -12,6 +12,7 @@ fun distanceTo(px: Float, py: Float, x: Float, y: Float): Float {
     return result
 }
 
+//TODO проверить и там где происходит деление на sqrt, делать деление
 fun invSqrt(x: Float): Float {
     val xhalf = 0.5f * x
     var i = java.lang.Float.floatToIntBits(x)

@@ -1,31 +1,57 @@
 #version 320 es
 precision highp float;
+precision highp sampler2DArray;
 
-in vec2 v_texCoord;
-in vec4 v_color;
+in vec2 ex_Quad;
+flat in vec2 ex_Centroid;
+//flat in vec2 ex_Velocity;
+flat in vec3 ex_Color;
+flat in float ex_R;
+flat in float ex_R_2;
+flat in float ex_Energy;
+in vec2 ex_UV;
+flat in float ex_AngleCos;
+flat in float ex_AngleSin;
+flat in int ex_cellType;
 
 out vec4 fragColor;
 
+uniform sampler2DArray u_textureArray;
+uniform float u_textureScale;
+uniform float u_colorScale;
+
 void main() {
+    vec2 diff = ex_Quad - ex_Centroid;
+    float dist2 = dot(diff, diff);
+    if (dist2 > ex_R_2) discard;
 
-    float dist = length(v_texCoord - vec2(0.5));
-    float r = dist / 0.5;
+    float normalized = dist2 / ex_R_2;
 
-    // ширина пикселя в экранном пространстве
-    float aa = fwidth(dist);
+    // === НОРМАЛЬ (псевдо 3D) ===
+    float z = ex_R * (1.0 - normalized * 0.5);
+    vec3 normal = normalize(vec3(diff, z));
 
-    // сглаженный край круга
-    float circle = 1.0 - smoothstep(0.5 - aa, 0.5 + aa, dist);
+    // === UV ПОВОРОТ ===
+    vec2 center = vec2(0.5);
+    vec2 offset = ex_UV - center;
 
-    float shade = 1.0;
+    float ca = ex_AngleCos;
+    float sa = ex_AngleSin;
 
-    // центр
-    float center = smoothstep(0.2 - aa, 0.2 + aa, r);
-    shade *= mix(0.6, 1.0, center);
+    vec2 rotatedOffset = vec2(ca * offset.x - sa * offset.y, sa * offset.x + ca * offset.y);
+    vec2 rotatedUV = center + rotatedOffset;
 
-    // край
-    float edge = smoothstep(0.8 - aa, 0.8 + aa, r);
-    shade *= mix(1.0, 0.7, edge);
+    // === РЕФРАКЦИЯ (искажение) ===
+    vec2 refraction = normal.xy * 0.13 * (1.0 - normalized);
+    vec2 distortedUV = rotatedUV * u_textureScale + refraction;
 
-    fragColor = vec4(v_color.rgb * shade, v_color.a * circle);
+    vec4 texColor = texture(u_textureArray, vec3(distortedUV, float(ex_cellType)));
+
+    // === СМЕШИВАНИЕ С ЦВЕТОМ КЛЕТКИ ===
+    vec3 finalColor = mix(texColor.rgb, ex_Color, u_colorScale);
+
+    fragColor = vec4(finalColor, 1.0);
+
+    // === DEPTH ===
+    gl_FragDepth = 1.0 - (z / ex_R);
 }

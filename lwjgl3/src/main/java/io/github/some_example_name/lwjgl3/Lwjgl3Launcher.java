@@ -5,8 +5,6 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.graphics.GL20;
 
-import io.github.some_example_name.old.good_one.CircleInstancingSSBO;
-import io.github.some_example_name.old.good_one.TripleBufferExample;
 import io.github.some_example_name.old.ui.screens.MyGame;
 
 /**
@@ -28,7 +26,7 @@ public class Lwjgl3Launcher {
     }
 
     private static Lwjgl3Application createApplication() {
-        return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null), getDefaultConfiguration());
+        return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null, null), getDefaultConfiguration());
     }
 
     private static Lwjgl3ApplicationConfiguration getDefaultConfiguration() {
@@ -43,6 +41,8 @@ public class Lwjgl3Launcher {
         //// If you remove the above line and set Vsync to false, you can get unlimited FPS, which can be
         //// useful for testing performance, but can also be very stressful to some hardware.
         //// You may also need to configure GPU drivers to fully disable Vsync; this can cause screen tearing.
+//        configuration.useVsync(false);
+//        configuration.setForegroundFPS(60);
         configuration.setWindowedMode(900, 900);
 //        configuration.setFullscreenMode(Lwjgl3ApplicationConfiguration.getDisplayMode());
         configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL32, 3, 2);

@@ -1,17 +1,18 @@
 package io.github.some_example_name.old.systems.genomics
 
+import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.base.activation
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.WorldCommandType
-import io.github.some_example_name.old.core.DIContainer.energyTransportRate
-import io.github.some_example_name.old.core.DIContainer.threadCount
+import io.github.some_example_name.old.core.DISimulationContainer.energyTransportRate
+import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.simulation.ThreadManager
-import kotlin.math.atan2
+import kotlin.math.sqrt
 
 class CellSystem(
     val cellEntity: CellEntity,
@@ -22,10 +23,11 @@ class CellSystem(
     val gridManager: GridManager,
     val divideManager: DivideManager,
     val mutateManager: MutateManager,
-    val threadManager: ThreadManager
-) {
+    val threadManager: ThreadManager?
+): Disposable {
 
     fun iterateCell() = with(cellEntity) {
+        if (threadManager == null) return@with
         val size = aliveList.size
 
         if (size == 0) return
@@ -64,7 +66,7 @@ class CellSystem(
             neuronImpulseOutput[cellIndex] = neuronImpulseInput[cellIndex]
         }
 
-        cellList[cellType[cellIndex].toInt()].doOnTick(index = cellIndex, threadId = threadId)
+        cellList[cellType[cellIndex].toInt()].doOnTick(cellIndex = cellIndex, threadId = threadId)
 
         if (isNeural) {
             neuronImpulseInput[cellIndex] = if (getIsSum(cellIndex)) 0f else 1f
@@ -72,35 +74,38 @@ class CellSystem(
             neuronImpulseInput[cellIndex] = 0f
         }
 
-        genomicTransformations(cellIndex, threadId)
-        processCellAngle(cellIndex)
-
-        if (energy[cellIndex] <= 0f) {
+        if (energy[cellIndex] < 0f) {
             worldCommandsManager.worldCommandBuffer[threadId].push(
                 type = WorldCommandType.DELETE_CELL,
-                ints = intArrayOf(cellIndex)
+                ints = intArrayOf(cellIndex, getGeneration(cellIndex))
             )
         }
+
+        genomicTransformations(cellIndex, threadId)
     }
 
-    //TODO возможно это можно через сами линки обрабатывать
-    private fun processCellAngle(cellIndex: Int) = with(cellEntity) {
-        if (parentIndex[cellIndex] != -1) {
-            val linkId = linkEntity.linkIndexMap.get(cellIndex, parentIndex[cellIndex])
-            if (linkId == -1) return //TODO потетсить всякие варинаты без этой защиты
-            val c1 = linkEntity.links1[linkId]
-            val c2 = linkEntity.links2[linkId]
-            val childCellIndex = if (cellIndex != c2) c2 else c1
+    fun processCellAngle(cellIndex: Int, parentCellIndex: Int) = with(cellEntity) {
+        val dx = getX(cellIndex) - getX(parentCellIndex)
+        val dy = getY(cellIndex) - getY(parentCellIndex)
 
-            val dx = getX(cellIndex) - getX(childCellIndex)
-            val dy = getY(cellIndex) - getY(childCellIndex)
-            val angleToChild = atan2(dy, dx)
+        val len = sqrt(dx * dx + dy * dy)
+        val toChildCos = dx / len
+        val toChildSin = dy / len
 
-            angle[cellIndex] = angleToChild + angleDiff[cellIndex]
-        }
+        val cd = angleCompensationCos[cellIndex]
+        val sd = angleCompensationSin[cellIndex]
+
+        val parentCos = toChildCos * cd - toChildSin * sd
+        val parentSin = toChildSin * cd + toChildCos * sd
+
+        val directedCos = angleDirectedCos[cellIndex]
+        val directedSin = angleDirectedSin[cellIndex]
+
+        angleCos[cellIndex] = parentCos * directedCos - parentSin * directedSin
+        angleSin[cellIndex] = parentSin * directedCos + parentCos * directedSin
     }
 
-    private fun genomicTransformations(cellIndex: Int, threadId: Int) = with(cellEntity) {
+    fun genomicTransformations(cellIndex: Int, threadId: Int = 0) = with(cellEntity) {
         val organIndex = organIndex[cellIndex]
         if (!organEntity.alreadyGrownUp[organIndex]) {
             if (organEntity.justChangedStage[organIndex]) {
@@ -117,7 +122,7 @@ class CellSystem(
 
                 if (isDivideNotNull) {
                     //TODO Make a more accurate energy calculation
-                    energyNecessaryToDivide[cellIndex] = 2.5f
+                    energyNecessaryToDivide[cellIndex] = 3.0f
                     worldCommandsManager.worldCommandBuffer[threadId].push(
                         type = WorldCommandType.DIVIDE_ALIVE_CELL_ACTION_COUNTER,
                         intArrayOf(organIndex)
@@ -126,7 +131,7 @@ class CellSystem(
 
                 if (isMutateNotNull) {
                     //TODO Make a more accurate energy calculation
-                    energyNecessaryToMutate[cellIndex] = 1.2f
+                    energyNecessaryToMutate[cellIndex] = 2.0f
                     worldCommandsManager.worldCommandBuffer[threadId].push(
                         type = WorldCommandType.MUTATE_ALIVE_CELL_ACTION_COUNTER,
                         intArrayOf(organIndex)
@@ -156,19 +161,22 @@ class CellSystem(
             val signalToCellIndex = if (directed) linkCell1 else linkCell2
             val signalFromCellIndex = if (directed) linkCell2 else linkCell1
 
-            val neuronImpulseInputSum = neuronImpulseInput[signalToCellIndex]
             val neuronImpulseOutput = neuronImpulseOutput[signalFromCellIndex]
 
             if (isNeural[signalToCellIndex]) {
                 if (getIsSum(signalToCellIndex)) {
-                    neuronImpulseInput[signalToCellIndex] = neuronImpulseInputSum + neuronImpulseOutput
+                    neuronImpulseInput[signalToCellIndex] += neuronImpulseOutput
                 } else {
-                    neuronImpulseInput[signalToCellIndex] = neuronImpulseInputSum * neuronImpulseOutput
+                    neuronImpulseInput[signalToCellIndex] *= neuronImpulseOutput
                 }
             } else {
-                neuronImpulseInput[signalToCellIndex] = neuronImpulseInputSum + neuronImpulseOutput
+                neuronImpulseInput[signalToCellIndex] += neuronImpulseOutput
             }
         }
+    }
+
+    override fun dispose() {
+
     }
 
 }

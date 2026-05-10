@@ -1,24 +1,52 @@
 package io.github.some_example_name.android
 
+import android.app.AlertDialog
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.Rect
+import android.net.Uri
+import android.opengl.GLES32
 import android.os.Bundle
+import android.text.InputType
+import android.util.Log
+import android.view.Gravity
+import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
-import io.github.some_example_name.old.good_one.MainGame
+import games.spooky.gdx.nativefilechooser.android.AndroidFileChooser
+import io.github.some_example_name.old.ui.screens.KeyBoardListener
+import io.github.some_example_name.old.ui.screens.MyGame
+import java.io.File
+import java.io.FileOutputStream
+import java.io.FileWriter
+import java.io.PrintWriter
+import java.io.StringWriter
 
-class AndroidLauncher : AndroidApplication() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+//class AndroidLauncher : AndroidApplication() {
+//    override fun onCreate(savedInstanceState: Bundle?) {
+//        super.onCreate(savedInstanceState)
+//
+//        val config = AndroidApplicationConfiguration().apply {
+//            useImmersiveMode = true
+//            useGL30 = true // Enable GLES 3.0+
+//        }
+//
+//        initialize(MyGame { ShaderManagerAndroidApi() }, config)
+//    }
+//}
 
-        val config = AndroidApplicationConfiguration().apply {
-            useImmersiveMode = true
-            useGL30 = true // Enable GLES 3.0+
-        }
-
-        initialize(MainGame { ShaderRenderer() }, config)
-    }
-}
-
-/*
 
 class AndroidLauncher : AndroidApplication(), KeyBoardListener {
 
@@ -44,9 +72,7 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         GLES32.glGenBuffers(1, buf, 0)
 
         val fileProvider = AndroidFileProvider(this, AndroidFileChooser(this))
-        val gameView = initializeForView(CircleInstancingSSBO(*/
-/*fileProvider*//*
-), config)
+        val gameView = initializeForView(MyGame(fileProvider, rendererFactory = { ShaderManagerAndroidApi() }), config)
 
         val rootLayout = FrameLayout(this)
         rootLayout.addView(gameView)
@@ -214,4 +240,3 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         }
     }
 }
-*/

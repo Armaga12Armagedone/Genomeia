@@ -1,24 +1,37 @@
 package io.github.some_example_name.old.systems.genomics
 
+import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.Eye
 import io.github.some_example_name.old.cells.Muscle
+import io.github.some_example_name.old.cells.Producer
+import io.github.some_example_name.old.cells.Tail
+import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
+import io.github.some_example_name.old.core.DISimulationContainer.cellsSettings
 import io.github.some_example_name.old.core.utils.collectParticles
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
+import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
+import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.systems.physics.GridManager
+import kotlin.math.cos
+import kotlin.math.sin
 
 class MutateManager(
     val cellEntity: CellEntity,
     val linkEntity: LinkEntity,
     val particleEntity: ParticleEntity,
     val worldCommandsManager: WorldCommandsManager,
-    val gridManager: GridManager
-) {
+    val gridManager: GridManager,
+    val specialEntity: SpecialEntity,
+    val organEntity: OrganEntity,
+    val isEditor: Boolean
+): Disposable {
 
     fun mutateCell(index: Int, threadId: Int) = with(cellEntity) {
+        //TODO очень легко запутсаться и потерять какие-то значения при мутации, нужно либо перепроверить, либо менять все параметры разом
         if (!isMutateInThisStage[index] && energy[index] >= energyNecessaryToMutate[index]) {
             isMutateInThisStage[index] = true
 
@@ -41,7 +54,7 @@ class MutateManager(
                 if (lastCell.isNeural && !newCell.isNeural) {
                     worldCommandsManager.worldCommandBuffer[threadId].push(
                         type = WorldCommandType.DELETE_NEURAL,
-                        ints = intArrayOf(index)
+                        ints = intArrayOf(index, getNeuralGeneration(index))
                     )
                 }
                 if (!lastCell.isNeural && newCell.isNeural) {
@@ -61,21 +74,52 @@ class MutateManager(
                 if (lastCell is Eye && newCell !is Eye) {
                     worldCommandsManager.worldCommandBuffer[threadId].push(
                         type = WorldCommandType.DELETE_EYE,
-                        ints = intArrayOf(index)
+                        ints = intArrayOf(index, specialEntity.getEyeGeneration(index))
                     )
                 }
                 if (lastCell !is Eye && newCell is Eye) {
                     worldCommandsManager.worldCommandBuffer[threadId].push(
                         type = WorldCommandType.ADD_EYE,
                         ints = intArrayOf(index, action.colorRecognition ?: 7),
-                        floats = floatArrayOf(action.lengthDirected ?: 170f)
+                        floats = floatArrayOf(action.lengthDirected ?: 4.25f)
+                    )
+                }
+                if (lastCell is Tail && newCell !is Tail) {
+                    worldCommandsManager.worldCommandBuffer[threadId].push(
+                        type = WorldCommandType.DELETE_TAIL,
+                        ints = intArrayOf(index, specialEntity.getTailGeneration(index))
+                    )
+                }
+                if (lastCell !is Tail && newCell is Tail) {
+                    worldCommandsManager.worldCommandBuffer[threadId].push(
+                        type = WorldCommandType.ADD_TAIL,
+                        ints = intArrayOf(index)
+                    )
+                }
+                if (lastCell is Producer && newCell !is Producer) {
+                    worldCommandsManager.worldCommandBuffer[threadId].push(
+                        type = WorldCommandType.DELETE_PRODUCER,
+                        ints = intArrayOf(index, specialEntity.getProducerGeneration(index))
+                    )
+                }
+                if (lastCell !is Producer && newCell is Producer) {
+                    worldCommandsManager.worldCommandBuffer[threadId].push(
+                        type = WorldCommandType.ADD_PRODUCER,
+                        ints = intArrayOf(index)
                     )
                 }
                 cellType[index] = it.toByte()
                 setDragCoefficient(index, substrateSettings.data.viscosityOfTheEnvironment)
                 setEffectOnContact(index, newCell.effectOnContact)
+                setIsCollidable(index, newCell.isCollidable)
+                setCellStiffness(index, cellsSettings[it].cellStiffness)
+                isNeural[index] = newCell.isNeural
 
-                newCell.onStart(index, threadId)
+                val genomeIndex = organEntity.genomeIndex[organIndex[index]]
+                if (newCell is Zygote && !isEditor) {
+                    cellGenomeId[index] = 0
+                }
+                newCell.onStart(index, threadId, genomeIndex)
             }
 
             if (isFromMuscleToAnother) {
@@ -90,13 +134,33 @@ class MutateManager(
                 action.b?.let { setB(index, it) }
                 action.c?.let { setC(index, it) }
                 action.isSum?.let { setIsSum(index, it) }
+                setIsNeuronTransportable(index, newCell.isNeuronTransportable)
             }
 
-            action.angleDirected?.let { angleDiff[index] = it }
+            action.angleDirected?.let {
+                val cosA = angleCos[index]
+                val sinA = angleSin[index]
+                val cosB = angleDirectedCos[index]
+                val sinB = angleDirectedSin[index]
+
+                angleCos[index] = cosA * cosB + sinA * sinB
+                angleSin[index] = sinA * cosB - cosA * sinB
+
+                angleDirectedCos[index] = cos(it)
+                angleDirectedSin[index] = sin(it)
+
+                val cosA2 = angleCos[index]
+                val sinA2 = angleSin[index]
+                val cosB2 = angleDirectedCos[index]
+                val sinB2 = angleDirectedSin[index]
+
+                angleCos[index] = cosA2 * cosB2 - sinA2 * sinB2
+                angleSin[index] = sinA2 * cosB2 + cosA2 * sinB2
+            }
 
             if (lastCell is Eye && newCell is Eye) {
-                action.colorRecognition?.let { setColorDifferentiation(index, it.toByte()) }
-                action.lengthDirected?.let { setVisibilityRange(index, it) }
+                action.colorRecognition?.let { specialEntity.setColorDifferentiation(index, it.toByte()) }
+                action.lengthDirected?.let { specialEntity.setVisibilityRange(index, it) }
             }
 
             if (action.physicalLink.isNotEmpty()) {
@@ -130,6 +194,7 @@ class MutateManager(
                                     val isNeuronLink: Boolean = linkData.isNeuronal
                                     val isLink1NeuralDirected: Boolean = linkData.directedNeuronLink == cellGenomeId[index]
 
+                                    if (otherCellIndex == -1) throw Exception("otherCellIndex == -1 in Mutate")
                                     worldCommandsManager.worldCommandBuffer[threadId].push(
                                         type = WorldCommandType.ADD_LINK,
                                         booleans = booleanArrayOf(
@@ -170,7 +235,7 @@ class MutateManager(
                             if (linkIndex != -1) {
                                 worldCommandsManager.worldCommandBuffer[threadId].push(
                                     type = WorldCommandType.DELETE_LINK,
-                                    ints = intArrayOf(linkIndex)
+                                    ints = intArrayOf(linkIndex, linkEntity.getGeneration(linkIndex))
                                 )
                             }
                         }
@@ -178,8 +243,12 @@ class MutateManager(
                 }
             }
 
-            energy[index] -= energyNecessaryToMutate[index]
+            energy[index] -= energyNecessaryToMutate[index] - 0.7f
         }
+    }
+
+    override fun dispose() {
+
     }
 
 }

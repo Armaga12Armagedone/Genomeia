@@ -1,10 +1,11 @@
 package io.github.some_example_name.old.systems.physics
 
+import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.WorldCommandType
-import io.github.some_example_name.old.core.DIContainer.linkMaxLength2
-import io.github.some_example_name.old.core.DIContainer.threadCount
-import io.github.some_example_name.old.core.DIContainer.threadManager
+import io.github.some_example_name.old.core.DISimulationContainer.linkMaxLength2
+import io.github.some_example_name.old.core.DISimulationContainer.threadCount
+import io.github.some_example_name.old.core.DISimulationContainer.threadManager
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.entities.CellEntity
@@ -19,7 +20,7 @@ class LinkPhysicsSystem(
     val cellEntity: CellEntity,
     val cellSystem: CellSystem,
     val worldCommandsManager: WorldCommandsManager
-) {
+): Disposable {
 
     fun iterateLinks() {
         for (chunk in 0..<threadCount) {
@@ -56,18 +57,22 @@ class LinkPhysicsSystem(
                 val linkIndex = links[idx]
                 val c1 = links1[linkIndex]
                 val c2 = links2[linkIndex]
-                val otherCellId = if (c1 != cellIndex) c1 else if (c2 != cellIndex) c2 else continue
+                if (!cellEntity.isAlive[c1] || !cellEntity.isAlive[c2]) {
+                    throw Exception("link $linkIndex exist, but some cell is deleted ($c1 $c2)")
+                }
+
+                val otherCellIndex = if (c1 != cellIndex) c1 else if (c2 != cellIndex) c2 else continue
                 val gridCellAId = getGridId(cellIndex)
-                val gridCellBId = getGridId(otherCellId)
+                val gridCellBId = getGridId(otherCellIndex)
                 if (gridCellAId < gridCellBId) {
                     processLink(linkIndex, threadId)
                 } else if (gridCellAId == gridCellBId) {
                     val yCellA = getY(cellIndex)
-                    val yCellB = getY(otherCellId)
+                    val yCellB = getY(otherCellIndex)
                     if (yCellA < yCellB) {
                         processLink(linkIndex, threadId)
                     } else if (yCellA == yCellB) {
-                        if (getX(cellIndex) < getX(otherCellId)) {
+                        if (getX(cellIndex) < getX(otherCellIndex)) {
                             processLink(linkIndex, threadId)
                         }
                     }
@@ -79,28 +84,37 @@ class LinkPhysicsSystem(
     private fun processLink(linkIndex: Int, threadId: Int) = with(particleEntity) {
         with(cellEntity){
             with(linkEntity) {
-                val linkCell1 = links1[linkIndex]
-                val linkCell2 = links2[linkIndex]
-                val linkParticle1 = particleIndex[linkCell1]
-                val linkParticle2 = particleIndex[linkCell2]
+                val linkCellA = links1[linkIndex]
+                val linkCellB = links2[linkIndex]
+                val linkParticleA = getParticleIndex(linkCellA)
+                val linkParticleB = getParticleIndex(linkCellB)
 
-                val dx = x[linkParticle1] - x[linkParticle2]
-                val dy = y[linkParticle1] - y[linkParticle2]
+                val dx = x[linkParticleA] - x[linkParticleB]
+                val dy = y[linkParticleA] - y[linkParticleB]
 
-                cellSystem.transportEnergy(linkCell1, linkCell2)
-                cellSystem.transportNeuralSignal(linkIndex, linkCell1, linkCell2)
-
+                cellSystem.transportEnergy(linkCellA, linkCellB)
+                cellSystem.transportNeuralSignal(linkIndex, linkCellA, linkCellB)
+                val parentCellA = parentIndex[linkCellA]
+                val parentCellB = parentIndex[linkCellB]
+                if (linkCellA == parentCellB) {
+                    cellSystem.processCellAngle(linkCellB, linkCellA)
+                }
+                if (linkCellB == parentCellA) {
+                    cellSystem.processCellAngle(linkCellA, linkCellB)
+                }
                 val distanceSquared = dx * dx + dy * dy
 
                 if (distanceSquared > linkMaxLength2) {
                     worldCommandsManager.worldCommandBuffer[threadId].push(
                         type = WorldCommandType.DELETE_LINK,
-                        ints = intArrayOf(linkIndex)
+                        ints = intArrayOf(linkIndex, linkEntity.getGeneration(linkIndex))
                     )
                     return
                 }
                 // TODO: for physical accuracy this should be changed to a harmonic mean
-                val stiffness = (cellStiffness[linkParticle1] + cellStiffness[linkParticle2]) / 2
+                val stiffnessA = cellStiffness[linkParticleA]
+                val stiffnessB = cellStiffness[linkParticleB]
+                val stiffness = 2 * stiffnessA * stiffnessB / (stiffnessA + stiffnessB)
 
                 if (distanceSquared < 0) throw Exception("distanceSquared < 0, distanceSquared = $distanceSquared")
                 val dist = 1.0f / invSqrt(distanceSquared)
@@ -111,8 +125,8 @@ class LinkPhysicsSystem(
                 val dirY = dy / dist
 
                 // Spring dampening
-                val dvx = vx[linkParticle1] - vx[linkParticle2]
-                val dvy = vy[linkParticle1] - vy[linkParticle2]
+                val dvx = vx[linkParticleA] - vx[linkParticleB]
+                val dvy = vy[linkParticleA] - vy[linkParticleB]
 
                 val dampeningConstant = 0.3f
                 val dampeningForce = dampeningConstant * (dvx * dirX + dvy * dirY)
@@ -120,12 +134,16 @@ class LinkPhysicsSystem(
                 val fx = (force + dampeningForce) * dirX
                 val fy = (force + dampeningForce) * dirY
 
-                vx[linkParticle2] += fx
-                vy[linkParticle2] += fy
-                vx[linkParticle1] -= fx
-                vy[linkParticle1] -= fy
+                vx[linkParticleB] += fx
+                vy[linkParticleB] += fy
+                vx[linkParticleA] -= fx
+                vy[linkParticleA] -= fy
             }
         }
+    }
+
+    override fun dispose() {
+
     }
 
     companion object {

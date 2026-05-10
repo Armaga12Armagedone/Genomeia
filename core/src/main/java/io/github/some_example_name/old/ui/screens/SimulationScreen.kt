@@ -4,8 +4,10 @@ import com.badlogic.gdx.*
 import com.badlogic.gdx.graphics.*
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.input.GestureDetector
 import com.badlogic.gdx.math.MathUtils
+import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.scenes.scene2d.InputEvent
@@ -17,9 +19,18 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextButton.VisTextButtonStyle
 import io.github.some_example_name.old.commands.PlayerCommand
-import io.github.some_example_name.old.core.DIContainer
+import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
+import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.DISimulationContainer.genomeManager
+import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
+import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
 import io.github.some_example_name.old.core.FileProvider
+import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
+import io.github.some_example_name.old.systems.render.usePostProcess
 import io.github.some_example_name.old.ui.dialogs.GenomeListDialog
+import io.github.some_example_name.old.ui.dialogs.SpeedUpDialog
+
+var isRenderUi = true
 
 class SimulationScreen(
     val multiPlatformFileProvider: FileProvider,
@@ -29,17 +40,18 @@ class SimulationScreen(
     val genomeName: String?
 ) : Screen, GestureDetector.GestureListener {
 
-    private val simEntity = DIContainer.simEntity
-    private val simulationSystem = DIContainer.simulationSystem
-    private val renderSystem = DIContainer.renderSystem
-    private val userCommandManager = DIContainer.userCommandManager
+    private val simEntity = DISimulationContainer.simulationData
+    private val simulationSystem = DISimulationContainer.simulationSystem
+    private val renderSystem = DISimulationContainer.renderSystem
+    private val userCommandManager = DISimulationContainer.userCommandManager
 
-    var isTouchedAfterPlay = false
     private lateinit var camera: OrthographicCamera
     private lateinit var spriteBatch: SpriteBatch
     private lateinit var font: BitmapFont
     private lateinit var stage: Stage
     private lateinit var root: Table
+    private lateinit var fontMatrix: Matrix4
+    private lateinit var shapeRenderer: ShapeRenderer
 
     private var currentScreenWidth = 0
     private var currentScreenHeight = 0
@@ -49,11 +61,15 @@ class SimulationScreen(
     private var putOrgs = true
     var onResize: (() -> Unit)? = null
 
+    private var initialZoom = 0f
+    private var currentPinchCenter: Vector2? = null
+
 
     override fun show() {
         spriteBatch = SpriteBatch()
         stage = Stage(ScreenViewport())
-
+        fontMatrix = Matrix4()
+        shapeRenderer = ShapeRenderer()
 
         val screenPos = Vector3()
         val worldBefore = Vector3()
@@ -98,33 +114,41 @@ class SimulationScreen(
         // Масштабируем шрифт симуляционной информации под DPI (density)
         // Это обеспечивает корректный размер текста при любом разрешении/DPI
         font.data.setScale(Gdx.graphics.density)
+        DISimulationContainer.resizeWorld()
 
         simulationSystem.startThread()
         root = Table()
         root.setFillParent(true)
         stage.addActor(root)
 
-        //TODO это должно находиться не тут
-        val reader = simulationSystem.genomeManager.genomeJsonReader
-        val assetsGenomes = reader.getGenomeFileNamesFromAssetsFolder("genomes")
-        val userGenomes = reader.getGenomeFileNamesFromFolder("user_genomes")
-        genomeNames = assetsGenomes + userGenomes
+        genomeNames = genomeManager.genomes.map { it.name }
 
         rebuildMenu()
         currentScreenWidth = Gdx.graphics.width
         currentScreenHeight = Gdx.graphics.height
 
-        renderSystem.create()
+        renderSystem.create(
+            fontMatrix = fontMatrix,
+            spriteBatch = spriteBatch,
+            font = font,
+            shapeRenderer = shapeRenderer,
+            camera = camera
+        )
 
-//        camera.rotate(-90f)
         camera.zoom = 0.08f
-        camera.translate(-430f, -430f)
+        camera.position.x = gridWidth / 2f
+        camera.position.y = gridHeight / 2f
+        camera.rotate(90f)
         camera.update()
     }
 
 
     override fun render(delta: Float) {
-        Gdx.gl.glClearColor(0.10f, 0.12f, 0.14f, 1f)
+        if (usePostProcess) {
+            Gdx.gl.glClearColor(0.0f, 0.0f, 0.0f, 1f)
+        } else {
+            Gdx.gl.glClearColor(1.0f * 0.7f, 0.969f * 0.7f, 0.855f * 0.7f, 1.0f)
+        }
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
         if (Gdx.input.isKeyPressed(Input.Keys.SPACE)) {
@@ -135,34 +159,46 @@ class SimulationScreen(
             camera.update()
         }
 
-        renderSystem.drawShader(camera)
-        renderSystem.drawTextSimInfo(spriteBatch, font)
+        shapeRenderer.projectionMatrix = camera.combined
+
+        renderSystem.render()
 
         stage.act(Gdx.graphics.deltaTime)
         stage.draw()
+
+        if (Gdx.input.isKeyPressed(Input.Keys.Z)) {
+            root.clear()
+            isRenderUi = false
+        }
+        if (Gdx.input.isKeyPressed(Input.Keys.Y)) {
+            rebuildMenu()
+            isRenderUi = true
+        }
     }
 
     override fun resize(width: Int, height: Int) {
         if (width == currentScreenWidth && height == currentScreenHeight) return
 
-        // Полноценный resize UI (Stage + Table + кнопки)
         stage.viewport.update(width, height, true)
 
         camera.viewportWidth = width.toFloat()
         camera.viewportHeight = height.toFloat()
         camera.update()
 
-        // Обновляем масштаб шрифта симуляционной информации (на случай редких изменений density)
         font.data.setScale(Gdx.graphics.density)
+
+        renderSystem.resize(width, height)
+        val uiProjection = fontMatrix.setToOrtho2D(
+            0f,
+            0f,
+            Gdx.graphics.width.toFloat(),
+            Gdx.graphics.height.toFloat()
+        )
+        spriteBatch.projectionMatrix = uiProjection
 
         currentScreenWidth = width
         currentScreenHeight = height
-
-        // Перестраиваем всё меню заново — теперь кнопки корректно переносятся в новые строки
-        // при любом изменении ширины (поворот экрана, ресайз окна, разные разрешения)
         rebuildMenu()
-
-        // Уведомляем открытый диалог (GenomeListDialog), если он есть — он сам пересчитает свой layout
         onResize?.invoke()
     }
 
@@ -177,22 +213,80 @@ class SimulationScreen(
     override fun hide() { }
 
     override fun pan(x: Float, y: Float, deltaX: Float, deltaY: Float): Boolean {
+        val dx = -deltaX * camera.zoom
+        val dy = deltaY * camera.zoom
+        val angle = -90 * MathUtils.degreesToRadians
+        val cos = MathUtils.cos(angle)
+        val sin = MathUtils.sin(angle)
+
+        val worldDx = dx * cos - dy * sin
+        val worldDy = dx * sin + dy * cos
+        //TODO есть подозрения что это вызывает краш cuncurent изменений
+        if (userCommandManager.grabbedParticleIndex != -1) {
+            val world = screenToWorld(x, y)
+            userCommandManager.push(
+                PlayerCommand.Drag(
+                    world.first,
+                    world.second,
+                    worldDx,
+                    worldDy
+                )
+            )
+        } else {
+            renderSystem.moveCamera(worldDx, worldDy)
+        }
         return true
     }
 
-    override fun pinchStop() {
+    override fun zoom(initialDistance: Float, distance: Float): Boolean {
+        if (currentPinchCenter == null) return false
+        val centerX = currentPinchCenter!!.x
+        val centerY = currentPinchCenter!!.y
+        val screenPos = Vector3(centerX, centerY, 0f)
+        val worldBefore = camera.unproject(screenPos.cpy())
+        val ratio = initialDistance / distance
+        camera.zoom = initialZoom * ratio
+        camera.zoom = MathUtils.clamp(camera.zoom, 0.001f, 1000f)
+        camera.update()
+        val worldAfter = camera.unproject(screenPos.cpy())
+        camera.position.add(worldBefore.x - worldAfter.x, worldBefore.y - worldAfter.y, 0f)
+        return true
     }
 
     override fun pinch(
-        initialPointer1: Vector2, initialPointer2: Vector2,
-        pointer1: Vector2, pointer2: Vector2
+        initialPointer1: Vector2?,
+        initialPointer2: Vector2?,
+        pointer1: Vector2?,
+        pointer2: Vector2?
     ): Boolean {
-        return true
+        if (initialPointer1 != null && initialPointer2 != null && currentPinchCenter == null) {
+            initialZoom = camera.zoom
+        }
+        if (pointer1 == null || pointer2 == null) {
+            currentPinchCenter = null
+            return false
+        }
+        currentPinchCenter = pointer1.cpy().add(pointer2).scl(0.5f)
+        return false
     }
 
-    // Остальные методы не используются, но должны быть реализованы
-    override fun zoom(initialDistance: Float, distance: Float) = false
+    override fun pinchStop() {
+        currentPinchCenter = null
+        initialZoom = 0f
+    }
+
     override fun tap(x: Float, y: Float, count: Int, button: Int): Boolean {
+        val world = screenToWorld(x, y)
+
+        when (button) {
+            Input.Buttons.LEFT -> {
+                userCommandManager.push(PlayerCommand.Tap(world.first, world.second, isLeftButton = putOrgs))
+            }
+            Input.Buttons.RIGHT -> {
+                userCommandManager.push(PlayerCommand.Tap(world.first, world.second, isLeftButton = !putOrgs))
+            }
+        }
+
         return true
     }
 
@@ -204,7 +298,7 @@ class SimulationScreen(
 
     override fun longPress(x: Float, y: Float) = false
     override fun fling(dx: Float, dy: Float, button: Int): Boolean {
-        userCommandManager.push(PlayerCommand.DragCell(dx, dy, 0))
+        userCommandManager.push(PlayerCommand.StopDrag)
         return true
     }
     override fun panStop(x: Float, y: Float, pointer: Int, button: Int): Boolean {
@@ -216,10 +310,10 @@ class SimulationScreen(
 
         when (button) {
             Input.Buttons.LEFT -> {
-                userCommandManager.push(PlayerCommand.SpawnCell(world.first, world.second))
+                userCommandManager.push(PlayerCommand.TouchDown(world.first, world.second, isLeftButton = true))
             }
             Input.Buttons.RIGHT -> {
-                userCommandManager.push(PlayerCommand.SpawnParticles(world.first, world.second))
+                userCommandManager.push(PlayerCommand.TouchDown(world.first, world.second, isLeftButton = false))
             }
         }
 
@@ -229,13 +323,12 @@ class SimulationScreen(
     override fun dispose() {
         renderSystem.dispose()
 
-        simulationSystem.simEntity.isFinish = true
+        simulationSystem.simulationData.isFinish = true
         simulationSystem.stopUpdateThread()
         stage.dispose()
         spriteBatch.dispose()
         font.dispose()
 
-        isTouchedAfterPlay = false
     }
 
 
@@ -256,14 +349,13 @@ class SimulationScreen(
         val putOrganismToggle = VisTextButton(bundle.get("button.putOrganism"), "toggle")
         putOrganismToggle.isChecked = putOrgs
         val selectGenomeButton = VisTextButton(bundle.get("button.selectGenome"))
-        val speedUpSimToggle = VisTextButton(bundle.get("button.speedUp"), "toggle")
-        speedUpSimToggle.isChecked = simEntity.maxSpeed
+        val speedUpSimToggle = VisTextButton(bundle.get("button.speedUp"))
         val pauseSimToggle = VisTextButton(bundle.get("button.pause"), "toggle")
         pauseSimToggle.isChecked = !simEntity.isPlay
         val restartSimulationButton = VisTextButton(bundle.get("button.restart"))
-        val chooseColorButton = VisTextButton(bundle.get("button.chooseColor"))
+//        val chooseColorButton = VisTextButton(bundle.get("button.chooseColor"))
         val drawRaysToggle = VisTextButton(bundle.get("button.drawRays"), "toggle")
-//        drawRaysToggle.isChecked = playGround.drawRays
+        drawRaysToggle.isChecked = usePostProcess
 //        chooseColorButton.addListener(object : ClickListener() {
 //            override fun clicked(event: InputEvent, x: Float, y: Float) {
 //                // Открываем палитру цветов
@@ -287,12 +379,12 @@ class SimulationScreen(
         val buttons = if (genomeName == null) {
             listOf(
                 menuButton, putOrganismToggle, selectGenomeButton, speedUpSimToggle,
-                pauseSimToggle, restartSimulationButton, chooseColorButton, drawRaysToggle
+                pauseSimToggle, restartSimulationButton/*, chooseColorButton*/, drawRaysToggle
             )
         } else {
             listOf(
                 menuButton, putOrganismToggle, speedUpSimToggle, pauseSimToggle,
-                restartSimulationButton, chooseColorButton, drawRaysToggle
+                restartSimulationButton/*, chooseColorButton*/, drawRaysToggle
             )
         }
 
@@ -323,12 +415,15 @@ class SimulationScreen(
 
         speedUpSimToggle.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                simEntity.maxSpeed = speedUpSimToggle.isChecked
+                SpeedUpDialog(
+                    game, bundle
+                ).show(stage)
             }
         })
 
         drawRaysToggle.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                usePostProcess = drawRaysToggle.isChecked
 //                playGround.drawRays = drawRaysToggle.isChecked
 //                simulationSystem.simEntity.drawRays = drawRaysToggle.isChecked
             }
@@ -349,7 +444,7 @@ class SimulationScreen(
 
         restartSimulationButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                simulationSystem.simEntity.isRestart = true
+                simulationSystem.simulationData.isRestart = true
             }
         })
 
@@ -359,8 +454,7 @@ class SimulationScreen(
                 if (genomeName == null)
                     game.screen = MenuScreen(game, multiPlatformFileProvider)
                 else {
-//                    game.screen =
-//                        GenomeEditorScreen(multiPlatformFileProvider, game, genomeName, bundle)
+                    game.screen = GenomeEditorScreen(game, genomeName.replace(".json", ""))
                 }
             }
         })
@@ -369,23 +463,22 @@ class SimulationScreen(
         selectGenomeButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 GenomeListDialog(
-                    genomesList = genomeNames,
-                    selectedGenomeIndex = simulationSystem.simEntity.currentGenomeIndex,
+                    genomesList = genomeManager.genomes.map { it.name },
+                    selectedGenomeIndex = simulationSystem.simulationData.currentGenomeIndex,
                     title = bundle.get("button.selectGenome"),
                     new = bundle.get("button.new"),
                     select = bundle.get("button.select"),
                     import = bundle.get("button.import"),
                     onNew = {
-//                        game.screen.dispose()
-//                        game.screen = GenomeEditorScreen(
-//                            multiPlatformFileProvider,
-//                            game,
-//                            genomeName = null,
-//                            bundle = bundle
-//                        )
+                        game.screen.dispose()
+                        game.screen = GenomeEditorScreen(
+                            game,
+                            genomeName = null
+                        )
                     },
                     onNext = { genomeName ->
-                        simulationSystem.simEntity.currentGenomeIndex = genomeNames.indexOf(genomeName)
+                        println("$genomeName ${genomeNames.indexOf(genomeName)}")
+                        simulationSystem.simulationData.currentGenomeIndex = genomeNames.indexOf(genomeName)
                     },
                     onRestart = {
                         val reader = simulationSystem.genomeManager.genomeJsonReader

@@ -3,7 +3,7 @@ package io.github.some_example_name.old.commands
 enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, val booleanParamsCount: Int) {
     ADD_CELL(
         intParamsCount = 7,
-        floatParamsCount = 9,
+        floatParamsCount = 11,
         booleanParamsCount = 1
     ),
     ADD_LINK(
@@ -17,8 +17,13 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         booleanParamsCount = 2
     ),
     ADD_SUBSTANCE(
-        intParamsCount = 0,
-        floatParamsCount = 4,
+        intParamsCount = 2, //color, subType
+        floatParamsCount = 3, //x, y, radius
+        booleanParamsCount = 0
+    ),
+    DELETE_SUBSTANCE(
+        intParamsCount = 2,
+        floatParamsCount = 0,
         booleanParamsCount = 0
     ),
     ADD_PARTICLE(
@@ -32,7 +37,7 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         booleanParamsCount = 0
     ),
     DELETE_ORGAN(
-        intParamsCount = 1,
+        intParamsCount = 2,
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
@@ -46,18 +51,18 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
-    DELETE_CELL( // cellIndex
-        intParamsCount = 1,
+    DELETE_CELL( // cellIndex, entityGeneration
+        intParamsCount = 2,
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
     DELETE_LINK( // linkIndex
-        intParamsCount = 1,
+        intParamsCount = 2,
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
     DELETE_PARTICLE( // particleIndex
-        intParamsCount = 1,
+        intParamsCount = 2,
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
@@ -81,7 +86,7 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         booleanParamsCount = 0
     ),
     DELETE_NEURAL(
-        intParamsCount = 1,
+        intParamsCount = 2,
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
@@ -91,7 +96,7 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         booleanParamsCount = 1
     ),
     DELETE_EYE(
-        intParamsCount = 1,
+        intParamsCount = 2,
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
@@ -99,11 +104,31 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         intParamsCount = 2,
         floatParamsCount = 1,
         booleanParamsCount = 0
+    ),
+    DELETE_TAIL(
+        intParamsCount = 2,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
+    ),
+    ADD_TAIL(
+        intParamsCount = 1,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
+    ),
+    DELETE_PRODUCER(
+        intParamsCount = 2,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
+    ),
+    ADD_PRODUCER(
+        intParamsCount = 1,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
     );
 
     companion object {
-        const val MAX_INT_PARAMS = 20    // Максимум int на команду (покрывает все)
-        const val MAX_FLOAT_PARAMS = 10  // Максимум float
-        const val MAX_BOOLEAN_PARAMS = 5 // Максимум boolean
+        const val MAX_INT_PARAMS = 7    // Максимум int на команду (покрывает все)
+        const val MAX_FLOAT_PARAMS = 11  // Максимум float
+        const val MAX_BOOLEAN_PARAMS = 3 // Максимум boolean
     }
 }

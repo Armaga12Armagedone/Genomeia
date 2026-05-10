@@ -2,58 +2,202 @@ package io.github.some_example_name.old.systems.render
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.GL20
+import com.badlogic.gdx.graphics.GL30
 import com.badlogic.gdx.graphics.GL31
 import com.badlogic.gdx.graphics.Mesh
+import com.badlogic.gdx.graphics.Pixmap
+import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.VertexAttribute
 import com.badlogic.gdx.graphics.VertexAttributes
+import com.badlogic.gdx.graphics.glutils.FrameBuffer
 import com.badlogic.gdx.graphics.glutils.ShaderProgram
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.BufferUtils
+import io.github.some_example_name.old.systems.render.RenderSystem.Companion.INITIAL_PARTICLE_CAPACITY
+import io.github.some_example_name.old.systems.render.RenderSystem.Companion.PARTICLE_STRUCT_SIZE
 import java.nio.ByteBuffer
-import java.nio.IntBuffer
 
-interface ShaderManager {
-    fun create()
-    fun render(currentRead: ByteBuffer, cameraProjection: Matrix4, isNewFrame: Boolean)
-    fun dispose()
-}
+
+var usePostProcess = true
+
+val texturePaths = arrayOf(
+    "leaf.png",                 //Leaf(0),
+    "fat.png",                  //Fat(1),
+    "bone.png",                 //Bone(2),
+    "tail.png",                 //Tail(3),
+    "neuron.png",               //Neuron(4),
+    "muscle.png",               //Muscle(5),
+    "sensor.png",               //Sensor(6),
+    "sucker.png",               //Sucker(7),
+    "not_cell.png",             //Mike(8),
+    "excreta.png",              //Excreta(9),
+    "SuctionCup.png",           //SuctionCup(10),
+    "sticky.png",               //Sticky(11),
+    "Pumper.png",               //Pumper(12),
+    "Chameleon.png",            //Chameleon(13),
+    "eye.png",                  //Eye(14),
+    "Compass.png",              //Compass(15),
+    "not_cell.png",             //Controller(16),
+    "TouchTrigger.png",         //TouchTrigger(17),
+    "zygote.png",               //Zygote(18),
+    "Producer.png",             //Producer(19),
+    "not_cell.png",             //Breakaway(20),
+    "not_cell.png",             //Vascular(21),
+    "PheromoneEmitter.png",     //PheromoneEmitter(22),
+    "PheromoneSensor.png",      //PheromoneSensor(23),
+    "punisher.png",             //Punisher(24)
+    "not_cell.png"              //Substance
+)
 
 class ShaderManagerLibgdxApi : ShaderManager {
-    // Три SSBO с динамическим размером (растут ×1.2, как на CPU)
-    private val ssboIds = IntArray(3)
-    private val ssboCapacities = IntArray(3)
-    private var currentSsboIndex = 0
-    private var activeSsboId = 0
-
-    // Начальный размер берём из TripleBufferManager (теперь он динамический)
-    private val INITIAL_BUFFER_BYTES = TripleBufferManager.INITIAL_CAPACITY * 16
+    //TODO вернуть 2 SSBO для интерполяции
+    private val ssbos = IntArray(/*2*/1)
+    private var currentReadIndex = 0
+    private val ssboCapacities = IntArray(/*2*/1)
 
     private lateinit var shader: ShaderProgram
     private lateinit var mesh: Mesh
+    private lateinit var sobelShader: ShaderProgram
+
+    private var textureArray: Int = 0
+    private var numLayers: Int = 0
+
+    // === НОВОЕ: пост-процессинг (FBO + лёгкий blur-шейдер) ===
+    private lateinit var fbo: FrameBuffer
+    private lateinit var blurShader: ShaderProgram
+
+    private lateinit var distortShader: ShaderProgram
+    private lateinit var distortFbo: FrameBuffer
+
+//    private lateinit var linesTexture: Texture
+
+    private lateinit var blurFbo: FrameBuffer
+
+//    private val invProjMatrix = Matrix4()
+
+    private fun createTextureArray() {
+
+        numLayers = texturePaths.size
+        if (numLayers == 0) throw IllegalStateException("Нет текстур для TextureArray!")
+
+        // Загружаем все пискмапы
+        val pixmaps = texturePaths.map { path ->
+            val file = Gdx.files.internal(path)
+            if (!file.exists()) throw IllegalArgumentException("Текстура не найдена: $path")
+            Pixmap(file)   // PNG с альфой отлично работает
+        }
+
+        val width = pixmaps[0].width
+        val height = pixmaps[0].height
+
+        // Все текстуры должны быть одного размера
+        for (p in pixmaps) {
+            if (p.width != width || p.height != height) {
+                throw IllegalStateException("Все текстуры в TextureArray должны быть одного размера! (${width}×${height})")
+            }
+        }
+
+        // Создаём Texture Array
+        val buffer = BufferUtils.newIntBuffer(1)
+        Gdx.gl31.glGenTextures(1, buffer)
+        textureArray = buffer.get(0)
+
+        Gdx.gl31.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, textureArray)
+
+        // Выделяем память (уровень 0)
+        Gdx.gl31.glTexImage3D(
+            GL30.GL_TEXTURE_2D_ARRAY,
+            0,                          // base level
+            GL30.GL_RGBA8,              // internal format
+            width, height, numLayers,
+            0,                          // border (всегда 0)
+            GL30.GL_RGBA,
+            GL30.GL_UNSIGNED_BYTE,
+            null                        // только выделяем память
+        )
+
+        // Заливаем каждый слой
+        for ((layer, pixmap) in pixmaps.withIndex()) {
+            Gdx.gl31.glTexSubImage3D(
+                GL30.GL_TEXTURE_2D_ARRAY,
+                0,                          // mip level
+                0, 0, layer,                // x, y, z (layer)
+                pixmap.width, pixmap.height, 1,
+                GL30.GL_RGBA,
+                GL30.GL_UNSIGNED_BYTE,
+                pixmap.getPixels()
+            )
+            pixmap.dispose()
+        }
+
+        // Генерируем мипмапы автоматически (очень важно для качества)
+        Gdx.gl.glGenerateMipmap(GL30.GL_TEXTURE_2D_ARRAY)
+
+        // Настройки фильтрации и повтора (идеально для твоего шейдера)
+        Gdx.gl31.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_MIN_FILTER, GL30.GL_LINEAR_MIPMAP_LINEAR)
+        Gdx.gl31.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_MAG_FILTER, GL30.GL_LINEAR)
+        Gdx.gl31.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_WRAP_S, GL30.GL_REPEAT)
+        Gdx.gl31.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_WRAP_T, GL30.GL_REPEAT)
+
+        Gdx.gl31.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, 0)
+
+        println("✅ TextureArray создан: $numLayers слоёв, ${width}×${height} px")
+    }
+
+    private fun createFBO() {
+        val width = Gdx.graphics.width /// 2
+        val height = Gdx.graphics.height /// 2
+        fbo = FrameBuffer(Pixmap.Format.RGBA8888, width, height, true) // true = имеет depth-буфер (для твоего depth-test)
+        println("✅ FBO создан: ${width}×${height} (для пост-процессинга)")
+    }
+
+    private fun createBlurFbo() {
+        val w = (Gdx.graphics.width /*/ 2*/).coerceAtLeast(1)
+        val h = (Gdx.graphics.height /*/ 2*/).coerceAtLeast(1)
+        blurFbo = FrameBuffer(Pixmap.Format.RGBA8888, w, h, false) // depth не нужен
+
+        // Линейная фильтрация — обязательна для красивого upsample
+        blurFbo.getColorBufferTexture().setFilter(
+            Texture.TextureFilter.Linear, Texture.TextureFilter.Linear
+        )
+        fbo.getColorBufferTexture().setFilter(
+            Texture.TextureFilter.Linear, Texture.TextureFilter.Linear
+        )
+
+        distortFbo = FrameBuffer(Pixmap.Format.RGBA8888, w, h, false)
+        distortFbo.colorBufferTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+    }
+
+    private fun createDistortShader() {
+        val vert = Gdx.files.internal("shaders/blur/blur.vert").readString() // тот же вертекс
+        val frag = Gdx.files.internal("shaders/blur/ca_distort.frag").readString()
+        distortShader = ShaderProgram(vert, frag)
+        if (!distortShader.isCompiled) throw RuntimeException("Distort shader failed: ${distortShader.log}")
+    }
+
+    private fun createBlurShader() {
+        val vertexShader = Gdx.files.internal("shaders/blur/blur.vert").readString()
+        val fragmentShader = Gdx.files.internal("shaders/blur/gaussian_blur.frag").readString()
+
+        blurShader = ShaderProgram(vertexShader, fragmentShader)
+        if (!blurShader.isCompiled) {
+            throw RuntimeException("Blur shader compilation failed: ${blurShader.log}")
+        }
+    }
+
+    private fun createSobelShader() {
+        val vertexShader = Gdx.files.internal("shaders/post_process/post_process.vert").readString()
+        val fragmentShader = Gdx.files.internal("shaders/post_process/post_process.frag").readString()
+
+        sobelShader = ShaderProgram(vertexShader, fragmentShader)
+        if (!sobelShader.isCompiled) {
+            throw RuntimeException("Sobel shader compilation failed: ${sobelShader.log}")
+        }
+    }
 
     override fun create() {
-        // Создаём три SSBO с маленьким начальным размером
-        val ssboBuffer: IntBuffer = BufferUtils.newIntBuffer(3)
-        Gdx.gl31.glGenBuffers(3, ssboBuffer)
-
-        for (i in 0 until 3) {
-            ssboIds[i] = ssboBuffer.get(i)
-            ssboCapacities[i] = INITIAL_BUFFER_BYTES
-
-            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssboIds[i])
-            Gdx.gl31.glBufferData(
-                GL31.GL_SHADER_STORAGE_BUFFER,
-                INITIAL_BUFFER_BYTES,
-                null,
-                GL20.GL_DYNAMIC_DRAW
-            )
-        }
-        Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, 0)
-
-        activeSsboId = ssboIds[0]
-        currentSsboIndex = 0
-
-        val vertexShader = Gdx.files.internal("shaders/debug/circle.vert").readString()
+        // Загружаем шейдеры (файлы будут обновлены ниже)
+        val vertexShader = Gdx.files.internal("shaders/debug/circle_pc.vert").readString()
         val fragmentShader = Gdx.files.internal("shaders/debug/circle.frag").readString()
         shader = ShaderProgram(vertexShader, fragmentShader)
         if (!shader.isCompiled) {
@@ -69,73 +213,240 @@ class ShaderManagerLibgdxApi : ShaderManager {
             )
         )
         mesh = Mesh(false, 4, 0, attributes).apply { setVertices(vertices) }
+
+        createTextureArray()
+        createFBO()           // ← НОВОЕ
+        createBlurFbo()
+        createDistortShader()
+        createBlurShader()    // ← НОВОЕ
+        createSobelShader()
+
+//        linesTexture = Texture(Gdx.files.internal("shaders/parallax/p2.jpg"))
+//        linesTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+//        linesTexture.setWrap(Texture.TextureWrap.Repeat, Texture.TextureWrap.Repeat)
+
+        create2SSBO()
     }
+
+    private fun create2SSBO() {
+        val ssboBuffer = BufferUtils.newIntBuffer(/*2*/1)
+        Gdx.gl31.glGenBuffers(/*2*/1, ssboBuffer)
+        ssbos[0] = ssboBuffer.get(0)
+//        ssbos[1] = ssboBuffer.get(1)
+
+        for (i in 0../*1*/0) {
+            ssboCapacities[i] = INITIAL_PARTICLE_CAPACITY * PARTICLE_STRUCT_SIZE
+            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssbos[i])
+            Gdx.gl31.glBufferData(GL31.GL_SHADER_STORAGE_BUFFER, INITIAL_PARTICLE_CAPACITY * PARTICLE_STRUCT_SIZE, null, GL20.GL_DYNAMIC_DRAW)
+            Gdx.gl31.glBindBufferBase(GL31.GL_SHADER_STORAGE_BUFFER, i, ssbos[i])
+        }
+
+        Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, 0)
+    }
+
+    private fun resize(dataSize: Int, targetIndex: Int, ssboId: Int) {
+        if (dataSize > ssboCapacities[targetIndex]) {
+            var newCapacity = ssboCapacities[targetIndex].toDouble()
+            do {
+                newCapacity *= 1.5
+            } while (newCapacity < dataSize)
+
+            val finalCapacity = newCapacity.toInt().coerceAtLeast(dataSize)
+
+            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssboId)
+            Gdx.gl31.glBufferData(GL31.GL_SHADER_STORAGE_BUFFER, finalCapacity, null, GL20.GL_DYNAMIC_DRAW)
+            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, 0)
+
+            ssboCapacities[targetIndex] = finalCapacity
+        }
+    }
+
+    // Новый resize для экрана (вызывай при изменении размера окна/камеры)
+    // Если у тебя уже есть метод resize(width, height) — просто добавь в него строку с FBO
+    override fun resize(width: Int, height: Int) {
+        val safeW = width.coerceAtLeast(1)
+        val safeH = height.coerceAtLeast(1)
+
+        if (::fbo.isInitialized) fbo.dispose()
+        fbo = FrameBuffer(
+            Pixmap.Format.RGBA8888,
+            (safeW/* / 2*/).coerceAtLeast(1),
+            (safeH/* / 2*/).coerceAtLeast(1),
+            true
+        )
+
+        if (::blurFbo.isInitialized) blurFbo.dispose()
+        val bw = (width /*/ 2*/).coerceAtLeast(1)
+        val bh = (height /*/ 2*/).coerceAtLeast(1)
+        blurFbo = FrameBuffer(Pixmap.Format.RGBA8888, bw, bh, false)
+
+        if (::distortFbo.isInitialized) distortFbo.dispose()
+        distortFbo = FrameBuffer(Pixmap.Format.RGBA8888, bw, bh, false)
+
+        // Linear фильтрация — обязательно для мягкого upsample и Sobel
+        fbo.colorBufferTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+        blurFbo.colorBufferTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+        distortFbo.colorBufferTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+
+        println("✅ FBOs resized → scene: ${width}×${height}, blur: ${bw}×${bh}")
+    }
+
+    var time = 0f
 
     override fun render(
         currentRead: ByteBuffer,
         cameraProjection: Matrix4,
-        isNewFrame: Boolean
+        isNewFrame: Boolean,
+        isClear: Boolean,
+        worldX: Float,
+        worldY: Float,
+        blurAmount: Float,
+        zoom: Float,
+        vignetteEnabled: Float
     ) {
+
         val dataSize = currentRead.remaining()
-        val numInstances = dataSize / 16
-        if (numInstances == 0) return
+        val numInstances = dataSize / PARTICLE_STRUCT_SIZE
 
-        // ←←← ТОЛЬКО ПРИ НОВОМ КАДРЕ: ротация + resize (если нужно) + загрузка
         if (isNewFrame) {
-            currentSsboIndex = (currentSsboIndex + 1) % 3
-            val targetIndex = currentSsboIndex
-            val ssboId = ssboIds[targetIndex]
-            activeSsboId = ssboId
+            val writeIndex = 0//1 - currentReadIndex
 
-            // Динамическое увеличение SSBO (точно как в TripleBufferManager)
-            if (dataSize > ssboCapacities[targetIndex]) {
-                var newCapacity = ssboCapacities[targetIndex].toDouble()
-                do {
-                    newCapacity *= 1.2
-                } while (newCapacity < dataSize)
+            if (dataSize > 0) {
+                resize(dataSize, writeIndex, ssbos[writeIndex])
 
-                val finalCapacity = newCapacity.toInt().coerceAtLeast(dataSize)
-
-                Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssboId)
-                Gdx.gl31.glBufferData(
-                    GL31.GL_SHADER_STORAGE_BUFFER,
-                    finalCapacity,
-                    null,
-                    GL20.GL_DYNAMIC_DRAW
-                )
+                Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssbos[writeIndex])
+                Gdx.gl31.glBufferSubData(GL31.GL_SHADER_STORAGE_BUFFER, 0, dataSize, currentRead)
                 Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, 0)
-
-                ssboCapacities[targetIndex] = finalCapacity
             }
 
-            // Загружаем данные
-            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssboId)
-            Gdx.gl31.glBufferSubData(GL31.GL_SHADER_STORAGE_BUFFER, 0, dataSize, currentRead)
-            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, 0)
+            currentReadIndex = writeIndex
         }
 
-        // Всегда рисуем текущий активный SSBO
-        Gdx.gl.glEnable(GL20.GL_BLEND)
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
+        if (usePostProcess) {
+            fbo.begin()
+        }
+
+        Gdx.gl.glDisable(GL20.GL_BLEND)
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST)
+        Gdx.gl.glDepthFunc(GL20.GL_LESS)
+        Gdx.gl.glDepthMask(true)
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT or GL20.GL_DEPTH_BUFFER_BIT)
 
         shader.bind()
         shader.setUniformMatrix("u_projTrans", cameraProjection)
+//        shader.setUniformi("u_currentBuffer", currentReadIndex)
+        shader.setUniformf("u_textureScale", 1.0f)
+        shader.setUniformf("u_colorScale", if (usePostProcess) 0f else 1.0f)
+        shader.setUniformi("u_textureArray", 0)
+
+        Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0)
+        Gdx.gl31.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, textureArray)
+
         mesh.bind(shader)
-
-        Gdx.gl31.glBindBufferBase(GL31.GL_SHADER_STORAGE_BUFFER, 0, activeSsboId)
         Gdx.gl31.glDrawArraysInstanced(GL20.GL_TRIANGLE_STRIP, 0, 4, numInstances)
-
         mesh.unbind(shader)
-        Gdx.gl31.glBindBufferBase(GL31.GL_SHADER_STORAGE_BUFFER, 0, 0)
+
+
+        if (usePostProcess) {
+            fbo.end()
+        }
+
+        if (usePostProcess) {
+//            if (blurAmount > 0.001f) {
+                blurFbo.begin()
+//            }
+            Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
+            Gdx.gl.glDisable(GL20.GL_BLEND)
+
+//            invProjMatrix.set(cameraProjection).inv()
+
+            sobelShader.bind()
+            sobelShader.setUniformi("u_texture", 0)
+            sobelShader.setUniformf("u_resolution", fbo.width.toFloat(), fbo.height.toFloat())
+            val zoomX10 = zoom * 10f
+            val sobel = if (zoomX10 < 0.16) 0.16f else if (zoomX10 > 0.24) 0.24f else zoomX10
+            sobelShader.setUniformf("u_zoom", sobel)
+            sobelShader.setUniformf("u_vignetteEnabled", vignetteEnabled)
+
+//            println(zoomX10)
+
+//            sobelShader.setUniformf("u_cameraPos", worldX, worldY)
+//            sobelShader.setUniformMatrix("u_invProj", invProjMatrix)
+//            sobelShader.setUniformf("u_parallaxStrength", 0.018f)
+
+            Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0)
+            fbo.colorBufferTexture.bind()
+
+//            Gdx.gl.glActiveTexture(GL20.GL_TEXTURE1)   // ← для lines
+//            linesTexture.bind()
+
+            mesh.bind(sobelShader)
+            Gdx.gl.glDrawArrays(GL20.GL_TRIANGLE_STRIP, 0, 4)
+            mesh.unbind(sobelShader)
+//            if (blurAmount > 0.001f) {
+                blurFbo.end()
+//            }
+
+//            if (blurAmount > 0.001f) {
+            distortFbo.begin()
+            Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
+            Gdx.gl.glDisable(GL20.GL_BLEND)
+
+            distortShader.bind()
+            distortShader.setUniformi("u_texture", 0)
+            distortShader.setUniformf("u_resolution", blurFbo.width.toFloat(), blurFbo.height.toFloat())
+
+            Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0)
+            blurFbo.colorBufferTexture.bind()
+
+            mesh.bind(distortShader)
+            Gdx.gl.glDrawArrays(GL20.GL_TRIANGLE_STRIP, 0, 4)
+            mesh.unbind(distortShader)
+
+            distortFbo.end()
+
+            // === 2. Blur pass ===
+            blurShader.bind()                     // теперь чистый Gaussian
+            blurShader.setUniformi("u_texture", 0)
+            blurShader.setUniformf("u_blurAmount", (blurAmount + 0.04f) * 0.5f)
+            blurShader.setUniformf("u_resolution", blurFbo.width.toFloat(), blurFbo.height.toFloat())
+
+            Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0)
+            distortFbo.colorBufferTexture.bind()
+
+            mesh.bind(blurShader)
+            Gdx.gl.glDrawArrays(GL20.GL_TRIANGLE_STRIP, 0, 4)
+            mesh.unbind(blurShader)
+//            }
+        }
+
+        Gdx.gl.glUseProgram(0)
     }
 
     override fun dispose() {
         shader.dispose()
-        val ssboBuffer: IntBuffer = BufferUtils.newIntBuffer(3)
-        for (id in ssboIds) {
-            ssboBuffer.put(id)
+        sobelShader.dispose()
+        mesh.dispose()
+
+        if (::fbo.isInitialized) fbo.dispose()
+        blurShader.dispose()
+        if (::blurFbo.isInitialized) blurFbo.dispose()
+//        if (::linesTexture.isInitialized) linesTexture.dispose()
+
+        if (textureArray != 0) {
+            val deleteBuf = BufferUtils.newIntBuffer(1).apply {
+                put(textureArray)
+                flip()
+            }
+            Gdx.gl31.glDeleteTextures(1, deleteBuf)
+            textureArray = 0
         }
-        ssboBuffer.flip()
-        Gdx.gl31.glDeleteBuffers(3, ssboBuffer)
+
+        val deleteBuffer = BufferUtils.newIntBuffer(2).apply {
+            put(ssbos[0])
+            put(ssbos[1])
+            flip()
+        }
+        Gdx.gl31.glDeleteBuffers(2, deleteBuffer)
     }
 }

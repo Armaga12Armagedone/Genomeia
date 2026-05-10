@@ -5,6 +5,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.utils.Json
 import com.badlogic.gdx.utils.JsonWriter
+import io.github.some_example_name.old.core.DISimulationContainer
 import java.io.File
 
 class GenomeJsonReader() {
@@ -86,12 +87,36 @@ class GenomeJsonReader() {
         return json.fromJson(CreatureJsonRead::class.java, fileHandle.readString())
     }
 
-    fun saveGenomeToFile(creature: CreatureJsonWrite, relativeFileName: String) {
+    fun saveGenomeToFile(genome: Genome, relativeFileName: String, name: String) {
         val fileHandle: FileHandle = saveDir.child(relativeFileName)
         fileHandle.parent().mkdirs() // Создать родительские директории, если нужно
-        val jsonString = json.prettyPrint(creature)
+        genome.name = name
+        val genomeJson = genome.domainToJson()
+        val jsonString = json.prettyPrint(genomeJson)
         fileHandle.writeString(jsonString, false)
-        println("Genome written to ${fileHandle.path()}")
+
+        //Костыль
+        val reservedCount = getGenomeFileNamesFromAssetsFolder("genomes").size
+
+        val genomeEditor = genome
+
+        val existingIndex = DISimulationContainer.genomeManager.genomes.indexOfFirst { it.name == genomeEditor.name }
+
+        if (existingIndex != -1) {
+            // Был элемент — удаляем и вставляем на то же место
+            DISimulationContainer.genomeManager.genomes.removeAt(existingIndex)
+            DISimulationContainer.genomeManager.genomes.add(existingIndex, genomeEditor)
+        } else {
+            // Не было — ищем позицию по сортировке (по имени)
+            val insertIndex = DISimulationContainer.genomeManager.genomes
+                .drop(reservedCount) // игнорируем первые reservedCount
+                .indexOfFirst { it.name > genomeEditor.name }
+                .let { idx ->
+                    if (idx == -1) DISimulationContainer.genomeManager.genomes.size else idx + reservedCount
+                }
+
+            DISimulationContainer.genomeManager.genomes.add(insertIndex, genomeEditor)
+        }
     }
 
     fun readAllGenomesFromFolder(relativeFolderName: String): List<CreatureJsonRead> {

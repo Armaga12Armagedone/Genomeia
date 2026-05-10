@@ -27,6 +27,7 @@ class ActionJsonRead(
     val indexOfNew: Int? = null,
     val physicalLink: HashMap<String, LinkDataJsonRead?> = hashMapOf(),
     val color: Color? = null,
+    val radius: Float? = null,
     val colorHsv: String? = null,
     val angleDirected: Float? = null,
     val startDirectionId: Int? = null,
@@ -119,6 +120,7 @@ private fun ActionJsonRead.toDomain(): Action {
         cellType = cellType,
         physicalLink = physicalLink.mapKeys { (k, _) -> k.toInt() }
             .mapValues { (_, v) -> v?.toDomain() } as HashMap<Int, LinkData?>,
+        radius = radius,
         color = color ?: if (colorHsv != null) Color.valueOf(colorHsv) else null,
         angleDirected = angleDirected,
         funActivation = funActivation,
@@ -127,7 +129,7 @@ private fun ActionJsonRead.toDomain(): Action {
         c = c,
         isSum = isSum,
         colorRecognition = colorRecognition,
-        lengthDirected = lengthDirected
+        lengthDirected = lengthDirected?.div(40f)
     )
 }
 
