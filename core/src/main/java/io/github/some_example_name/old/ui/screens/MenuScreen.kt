@@ -144,7 +144,8 @@ class MenuScreen(
         table.add(substrateSettingsButton).fillX().height(60f * density).row()
         substrateSettingsButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent, x: Float, y: Float) {
-                game.screen = JsonEditorScreen(game, multiPlatformFileProvider, bundle = bundle)
+//                game.screen = JsonEditorScreen(game, multiPlatformFileProvider, bundle = bundle)
+                game.screen = EcoSystemScreen(game, multiPlatformFileProvider, bundle = bundle)
             }
         })
 
