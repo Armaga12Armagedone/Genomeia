@@ -16,6 +16,7 @@ import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.badlogic.gdx.utils.I18NBundle
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
 import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
 import io.github.some_example_name.old.core.DISimulationContainer.heightMultiplier
@@ -207,7 +208,7 @@ class SettingsScreen(
         table.row()
 
         // === Кнопка назад ===
-        val backButton = VisTextButton(bundle.get("button.back")).apply {
+        val backButton = VisTextButton(bundle.get("button.back"), DISimulationContainer.roundStyle).apply {
             game.applyCustomFont(this)
             addListener { e ->
                 if (clicked(e)) {
@@ -218,7 +219,7 @@ class SettingsScreen(
         }
         table.add(backButton).colspan(2).center().padTop(30f)
             .width(180f * density)   // ширина
-            .height(40f * density)   // высота
+            .height(60f * density)   // высота
     }
 
     override fun render(delta: Float) {

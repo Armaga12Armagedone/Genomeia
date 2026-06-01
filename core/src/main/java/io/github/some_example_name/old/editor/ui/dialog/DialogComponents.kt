@@ -27,6 +27,7 @@ import kotlin.math.PI
 import kotlin.math.roundToInt
 import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.cells.base.formulaType
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.color_picker.ColorPicker
 import io.github.some_example_name.old.ui.screens.MyGame
 import io.github.some_example_name.old.ui.screens.applyCustomFont
@@ -65,7 +66,7 @@ fun actionButton(
     game: MyGame,
     onAction: () -> Unit
 ): VisTextButton {
-    val actionButton = VisTextButton(text).apply {
+    val actionButton = VisTextButton(text, DISimulationContainer.roundStyle).apply {
         addListener(
             object : ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {

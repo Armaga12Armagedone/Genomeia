@@ -9,22 +9,22 @@ import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import java.io.File
 
 data class GlobalSimulationSettings(
-    val amountOfSolarEnergy: Float = 0.06f,
-    val viscosityOfTheEnvironment: Float = 0.03f,
-    val tailMaxSpeedCoefficient: Float = 0.00625f,
-    val producerRestoreTimeTickCoefficient: Float = 4f,
-    val amountOfFoodEnergy: Float = 4f,
-    val rateOfEnergyTransferInLinks: Float = 0.03f,
-    val rateOfEnergyTransferForPumper: Float = 0.03f,
-    val rateOfPheromoneDiffusion: Float = 4.0e-3f,
-    val rateOfPheromoneDegradation: Float = 1.6e-4f,
-    val theNumberOfTicksHungryCellDies: Int = 200,
-    val gravity: Float = 0.0f,
-    val linkMaxLength: Float = 4f,
-    val cellsSettings: Map<String, CellSettings> = defaultCellSettingsMap()
+    var amountOfSolarEnergy: Float = 0.06f,
+    var viscosityOfTheEnvironment: Float = 0.03f,
+    var tailMaxSpeedCoefficient: Float = 0.00625f,
+    var producerRestoreTimeTickCoefficient: Float = 4f,
+    var amountOfFoodEnergy: Float = 4f,
+    var rateOfEnergyTransferInLinks: Float = 0.03f,
+    var rateOfEnergyTransferForPumper: Float = 0.03f,
+    var rateOfPheromoneDiffusion: Float = 4.0e-3f,
+    var rateOfPheromoneDegradation: Float = 1.6e-4f,
+    var theNumberOfTicksHungryCellDies: Int = 200,
+    var gravity: Float = 0.0f,
+    var linkMaxLength: Float = 4f,
+    var cellsSettings: MutableMap<String, CellSettings> = defaultCellSettingsMap()
 )
 
-fun defaultCellSettingsMap() = mapOf(
+fun defaultCellSettingsMap() = mutableMapOf(
     "Leaf" to CellSettings(
         maxEnergy = 5f,
         cellStiffness = 0.02f,
@@ -178,10 +178,10 @@ fun defaultCellSettingsMap() = mapOf(
 )
 
 data class CellSettings(
-    val maxEnergy: Float = 5f,
-    val cellStiffness: Float = 0.2f,
-    val linkStiffness: Float = 0.025f,
-    val energyActionCost: Float = 0.0005f,
+    var maxEnergy: Float = 5f,
+    var cellStiffness: Float = 0.2f,
+    var linkStiffness: Float = 0.025f,
+    var energyActionCost: Float = 0.0005f,
 )
 
 

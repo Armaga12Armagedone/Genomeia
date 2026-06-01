@@ -8,13 +8,9 @@ import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
-import com.badlogic.gdx.utils.I18NBundle
-import com.badlogic.gdx.utils.Json
-import com.badlogic.gdx.utils.JsonWriter
-import com.badlogic.gdx.utils.Timer
+import com.badlogic.gdx.utils.*
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.kotcrab.vis.ui.util.TableUtils
-import com.kotcrab.vis.ui.widget.ScrollableTextArea
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
@@ -23,19 +19,25 @@ import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.core.GlobalSimulationSettings
 import io.github.some_example_name.old.core.SubstrateSettings
+import kotlin.reflect.KMutableProperty
+import kotlin.reflect.KProperty1
+import kotlin.reflect.full.memberProperties
+import kotlin.reflect.jvm.isAccessible
 
-class JsonEditorScreen(
+
+class EcoSystemScreenGlobalSettings(
     val game: MyGame,
     val multiPlatformFileProvider: FileProvider,
     val bundle: I18NBundle
 ) : Screen {
 
     private lateinit var stage: Stage
-    private lateinit var textArea: ScrollableTextArea
+    //private lateinit var textArea: ScrollableTextArea
     private lateinit var errorLabel: VisLabel
     private lateinit var fileHandle: FileHandle
     private val json = Json()
     private var validationTask: Timer.Task? = null
+    private val values = mutableListOf<Pair<String, VisTextField>>()
 
     override fun show() {
         json.setOutputType(JsonWriter.OutputType.json)
@@ -59,19 +61,27 @@ class JsonEditorScreen(
         table.add(errorLabel).height(16f * Gdx.graphics.density).pad(10f)
         table.row()
 
-        textArea = ScrollableTextArea(loadJson())
-        val scrollPane = textArea.createCompatibleScrollPane()
-
-        scrollPane.style.vScrollKnob.minWidth = 32f * Gdx.graphics.density
-        scrollPane.style.vScroll.minWidth = 32f * Gdx.graphics.density
-        table.add(scrollPane).grow().pad(10f).row()
-        game.applyCustomFont(textArea)
-
-        textArea.setTextFieldListener(object : VisTextField.TextFieldListener {
-            override fun keyTyped(textField: VisTextField, c: Char) {
-                debounceValidate()
+        val settings = loadJson()
+        val allFields = GlobalSimulationSettings::class.memberProperties.associateWith { it.get(settings) }
+        val primitiveFields = allFields.filter { it.value !is List<*> }
+        for (element in primitiveFields) {
+            if (element.key.name == "cellsSettings") {
+                continue
             }
-        })
+            val parametr = VisLabel(element.key.name)
+            game.applyCustomFont(parametr)
+            parametr.setAlignment(Align.left)
+
+            val splitter = VisLabel(":")
+            game.applyCustomFont(splitter)
+
+            val input = VisTextField(element.value.toString())
+            table.add(parametr).left()
+            table.add(splitter)
+            table.add(input).padLeft(25f).row()
+
+            values.addLast(element.key.name to input)
+        }
 
         val buttonsTable = VisTable()
         buttonsTable.defaults().pad(10f)
@@ -96,63 +106,63 @@ class JsonEditorScreen(
         })
         buttonsTable.add(resetButton).height(60f * Gdx.graphics.density)
 
-        val menuButton = VisTextButton(bundle.get("button.menu"), roundStyle)
+        val menuButton = VisTextButton(bundle.get("button.back"), roundStyle)
         game.applyCustomFont(menuButton)
         menuButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
-                game.screen = MenuScreen(game, multiPlatformFileProvider)
+                game.screen = EcoSystemScreen(game, multiPlatformFileProvider, bundle = bundle)
             }
         })
         buttonsTable.add(menuButton).height(60f * Gdx.graphics.density)
 
-        val copyToClipboardButton = VisTextButton(bundle.get("button.copyToClipboard"), roundStyle)
-        game.applyCustomFont(copyToClipboardButton)
-        copyToClipboardButton.addListener(object : ChangeListener() {
-            override fun changed(event: ChangeEvent, actor: Actor?) {
-                Gdx.app.clipboard.contents = textArea.text
-            }
-        })
-        buttonsTable.add(copyToClipboardButton).height(60f * Gdx.graphics.density)
-
-        loadJson()
         table.add(buttonsTable).center()
         table.row()
         validateJson()
 
-        validationTask?.cancel()
-        validationTask = Timer.schedule(object : Timer.Task() {
-            override fun run() {
-                textArea.text = textArea.text + " "
-            }
-        }, 0.4f)
+        table.children.forEach { actor ->
+            println("Имя элемента: ${actor.name}")
+        }
+
     }
 
     private fun addSpaseForKeyboard() = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
 
-    private fun loadJson(): String {
+    private fun loadJson(): GlobalSimulationSettings {
         if (!fileHandle.exists()) {
             val defaultSettings = GlobalSimulationSettings()
-            val prettyJson = json.prettyPrint(defaultSettings)
-            fileHandle.writeString(prettyJson, false)
-            return prettyJson.replace("\t", "    ") + addSpaseForKeyboard()
+            return defaultSettings
         }
 
         val jsonString = fileHandle.readString()
         try {
             val settings = json.fromJson(GlobalSimulationSettings::class.java, jsonString)
-            val prettyJson = json.prettyPrint(settings)
-            return prettyJson.replace("\t", "    ") + addSpaseForKeyboard()
+            return settings
         } catch (e: Exception) {
             errorLabel.setText("Error: Invalid JSON - ${e.message}")
             println(e.message)
-            return jsonString.replace("\t", "    ") + addSpaseForKeyboard()
+            return GlobalSimulationSettings()
         }
     }
 
     private fun resetToDefault() {
         val defaultSettings = GlobalSimulationSettings()
-        textArea.text = json.prettyPrint(defaultSettings).replace("\t", "    ") + addSpaseForKeyboard()
-        validateJson()
+
+        for ((fieldName, textField) in values) {
+            val prop = defaultSettings::class.memberProperties.find { it.name == fieldName }
+            prop?.let {
+                it.isAccessible = true
+                @Suppress("UNCHECKED_CAST")
+                val value = (it as KProperty1<GlobalSimulationSettings, *>).get(defaultSettings)
+                textField.text = value.toString()
+            }
+        }
+
+        val prettyJson = json.prettyPrint(defaultSettings)
+        fileHandle.writeString(prettyJson, false)
+
+        DISimulationContainer.substrateSettings.update()
+
+        errorLabel.setText("")
     }
 
     private fun debounceValidate() {
@@ -165,23 +175,57 @@ class JsonEditorScreen(
     }
 
     private fun validateJson() {
-        val editedText = textArea.text
+        //val editedText = textArea.text
         try {
-            json.fromJson(GlobalSimulationSettings::class.java, editedText)
+            //json.fromJson(GlobalSimulationSettings::class.java, editedText)
+
             errorLabel.setText("")
         } catch (e: Exception) {
             errorLabel.setText("Error: Invalid JSON - ${e.message}")
         }
     }
 
+    fun setProperty(obj: Any, propName: String, value: String) {
+        val prop = obj::class.memberProperties.find { it.name == propName }
+        prop?.let {
+            it.isAccessible = true
+            val convertedValue = when (it.returnType.classifier) {
+                String::class -> value
+                Int::class -> value.toInt()
+                Boolean::class -> value.toBoolean()
+                Float::class -> value.toFloat()
+                Double::class -> value.toDouble()
+                Long::class -> value.toLong()
+                else -> throw IllegalArgumentException("Unsupported type: ${it.returnType}")
+            }
+
+            if (it is KMutableProperty<*>) {
+                it.setter.call(obj, convertedValue)
+            }
+        }
+    }
+
     private fun saveJson() {
-        val editedText = textArea.text
+        //val editedText = textArea.text
         try {
-            val settings = json.fromJson(GlobalSimulationSettings::class.java, editedText)
-            val prettyJson = json.prettyPrint(settings)
+            //val settings = json.fromJson(GlobalSimulationSettings::class.java, editedText)
+           // val prettyJson = json.prettyPrint(settings)
+            //fileHandle.writeString(prettyJson, false)
+            //textArea.text = prettyJson.replace("\t", "    ") + addSpaseForKeyboard()
+            val settings = loadJson()
+
+            for (element in values) {
+                setProperty(settings, element.component1(), element.component2().toString())
+            }
+            println(settings.amountOfSolarEnergy)
+
+            val jsonSettings = json.toJson(settings)
+            val prettyJson = json.prettyPrint(jsonSettings)
             fileHandle.writeString(prettyJson, false)
-            textArea.text = prettyJson.replace("\t", "    ") + addSpaseForKeyboard()
+
             errorLabel.setText("")
+
+            DISimulationContainer.substrateSettings.update()
         } catch (e: Exception) {
             errorLabel.setText("Error: Invalid JSON - ${e.message}")
         }

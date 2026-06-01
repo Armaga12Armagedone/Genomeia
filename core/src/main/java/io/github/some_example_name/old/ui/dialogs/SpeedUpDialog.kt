@@ -42,7 +42,7 @@ class SpeedUpDialog(
         contentTable.add(radiusSlider).fillX()
         contentTable.row()
 
-        val speedUpSimToggle = VisTextButton("max speed", "toggle")
+        val speedUpSimToggle = VisTextButton("max speed", DISimulationContainer.roundStyleToggle)
         speedUpSimToggle.isChecked = DISimulationContainer.simulationData.maxSpeed
         speedUpSimToggle.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
