@@ -48,14 +48,14 @@ class SymmetryDialog(
             applySelectedSymmetry()
             fadeOut()
         }.also {
-            it.pad(8f * density)
+            it.pad(15f * density)
             contentTable.add(it)
         }
 
         actionButton(bundle.get("button.cancel") ?: "Cancel", game = game) {
             fadeOut()
         }.also {
-            it.pad(8f * density)
+            it.pad(15f * density)
             contentTable.add(it).row()
         }
 

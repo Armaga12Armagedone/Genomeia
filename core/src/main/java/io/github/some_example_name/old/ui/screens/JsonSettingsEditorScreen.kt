@@ -19,6 +19,7 @@ import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.core.GlobalSimulationSettings
 import io.github.some_example_name.old.core.SubstrateSettings
@@ -75,41 +76,43 @@ class JsonEditorScreen(
         val buttonsTable = VisTable()
         buttonsTable.defaults().pad(10f)
 
-        val saveButton = VisTextButton(bundle.get("button.save"))
+        val roundStyle = DISimulationContainer.roundStyle
+
+        val saveButton = VisTextButton(bundle.get("button.save"), roundStyle)
         game.applyCustomFont(saveButton)
         saveButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
                 saveJson()
             }
         })
-        buttonsTable.add(saveButton).height(40f * Gdx.graphics.density)
+        buttonsTable.add(saveButton).height(60f * Gdx.graphics.density)
 
-        val resetButton = VisTextButton(bundle.get("button.reset"))
+        val resetButton = VisTextButton(bundle.get("button.reset"), roundStyle)
         game.applyCustomFont(resetButton)
         resetButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
                 resetToDefault()
             }
         })
-        buttonsTable.add(resetButton).height(40f * Gdx.graphics.density)
+        buttonsTable.add(resetButton).height(60f * Gdx.graphics.density)
 
-        val menuButton = VisTextButton(bundle.get("button.menu"))
+        val menuButton = VisTextButton(bundle.get("button.menu"), roundStyle)
         game.applyCustomFont(menuButton)
         menuButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
                 game.screen = MenuScreen(game, multiPlatformFileProvider)
             }
         })
-        buttonsTable.add(menuButton).height(40f * Gdx.graphics.density)
+        buttonsTable.add(menuButton).height(60f * Gdx.graphics.density)
 
-        val copyToClipboardButton = VisTextButton(bundle.get("button.copyToClipboard"))
+        val copyToClipboardButton = VisTextButton(bundle.get("button.copyToClipboard"), roundStyle)
         game.applyCustomFont(copyToClipboardButton)
         copyToClipboardButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
                 Gdx.app.clipboard.contents = textArea.text
             }
         })
-        buttonsTable.add(copyToClipboardButton).height(40f * Gdx.graphics.density)
+        buttonsTable.add(copyToClipboardButton).height(60f * Gdx.graphics.density)
 
         loadJson()
         table.add(buttonsTable).center()

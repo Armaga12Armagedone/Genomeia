@@ -13,6 +13,7 @@ import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.editor.commands.CtrlY
 import io.github.some_example_name.old.editor.commands.CtrlZ
@@ -98,21 +99,24 @@ class MenuUiBuilder(
             false
         }
 
-        val goToMenuButton = VisTextButton(bundle.get("button.menu"))
+        val roundStyle = DISimulationContainer.roundStyle
+        val roundStyleToggle = DISimulationContainer.roundStyleToggle
+
+        val goToMenuButton = VisTextButton(bundle.get("button.menu"), roundStyle)
         goToMenuButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent, x: Float, y: Float) {
                 saveDialog(true)
             }
         })
 
-        val chooseColorButton = VisTextButton(bundle.get("button.saveGenome"))
+        val chooseColorButton = VisTextButton(bundle.get("button.saveGenome"), roundStyle)
         chooseColorButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent, x: Float, y: Float) {
                 saveDialog(false)
             }
         })
 
-        val showPhysicalLinkButton = VisTextButton(bundle.get("button.showPhysicalLink"), "toggle")
+        val showPhysicalLinkButton = VisTextButton(bundle.get("button.showPhysicalLink"), roundStyleToggle)
         showPhysicalLinkButton.isChecked = renderSystem.showPhysicalLink
 
         // Toggle кнопка
@@ -122,7 +126,7 @@ class MenuUiBuilder(
             }
         })
 
-        val usePostProcessLinkButton = VisTextButton("Use post process", "toggle")
+        val usePostProcessLinkButton = VisTextButton("Use post process", roundStyleToggle)
         usePostProcessLinkButton.isChecked = usePostProcess
 
         // Toggle кнопка
@@ -132,7 +136,7 @@ class MenuUiBuilder(
             }
         })
 
-        val symmetryButton = VisTextButton("Symmetry")
+        val symmetryButton = VisTextButton("Symmetry", roundStyle)
         symmetryButton.isChecked = usePostProcess
 
         // Toggle кнопка
@@ -146,21 +150,21 @@ class MenuUiBuilder(
             }
         })
 
-        val ctrlZ = VisTextButton("Ctrl+z")
+        val ctrlZ = VisTextButton("Ctrl+z", roundStyle)
         ctrlZ.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 editorLogicSystem.putUiCommand(CtrlZ)
             }
         })
 
-        val ctrlY = VisTextButton("Ctrl+y")
+        val ctrlY = VisTextButton("Ctrl+y", roundStyle)
         ctrlY.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 editorLogicSystem.putUiCommand(CtrlY)
             }
         })
 
-        val ctrl = VisTextButton(bundle.get("button.neural-linking"), "toggle")
+        val ctrl = VisTextButton(bundle.get("button.neural-linking"), roundStyleToggle)
         ctrl.isChecked = isCtrl
         ctrl.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -169,7 +173,7 @@ class MenuUiBuilder(
             }
         })
 
-        val rightClick = VisTextButton(bundle.get("button.performLastAction"), "toggle")
+        val rightClick = VisTextButton(bundle.get("button.performLastAction"), roundStyleToggle)
         rightClick.isChecked = editorLogicSystem.isRightClick
         rightClick.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -207,7 +211,7 @@ class MenuUiBuilder(
                 rowTable.defaults().padLeft(8f * density).padRight(8f * density).center()
                 currentWidth = 0f
             }
-            rowTable.add(button).height(25f * density)
+            rowTable.add(button).height(50f * density)
             currentWidth += prefWidth
         }
         if (rowTable.hasChildren()) {

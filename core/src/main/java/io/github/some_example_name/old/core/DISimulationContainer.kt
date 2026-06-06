@@ -1,6 +1,13 @@
 package io.github.some_example_name.old.core
 
+import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.graphics.Texture
+import com.badlogic.gdx.graphics.g2d.NinePatch
+import com.badlogic.gdx.scenes.scene2d.utils.NinePatchDrawable
 import com.badlogic.gdx.utils.Disposable
+import com.kotcrab.vis.ui.VisUI
+import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.cells.base.CellListBuilder
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandsManager
@@ -51,11 +58,43 @@ object DISimulationContainer:  DIContext, Disposable {
     var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks
     var linkMaxLength2 = substrateSettings.data.linkMaxLength * substrateSettings.data.linkMaxLength
     var cellsSettings = substrateSettings.cellsSettings
+    var roundStyle: VisTextButton.VisTextButtonStyle
+    var roundStyleToggle: VisTextButton.VisTextButtonStyle
+
 
     init {
         if (gridHeight % heightMultiplier != 0) throw Exception("gridHeight should be a multiple of (halfChunkHeight * 2 * 2)")
         println("thread count: $threadCount")
         println("thread count: $heightMultiplier")
+        val patch = NinePatch(Texture(Gdx.files.internal("button.png")), 20, 20, 20, 20)
+
+        //разрабочтик привет, я тут тебе пару подсказок оставлю
+        //общие стили
+        val roundUp = NinePatchDrawable(patch).tint(Color(0.44f, 0.40f, 0.40f, 1f))
+        val roundDown = NinePatchDrawable(patch).tint(Color(0.2f,0.2f,0.2f,1f))
+        val roundOver = NinePatchDrawable(patch).tint(Color(0f, 0.9f, 1f, 1f))
+
+        val baseStyle = VisUI.getSkin().get("blue", VisTextButton.VisTextButtonStyle::class.java)
+//        val toggleRoundChecked = NinePatchDrawable(patch).tint(Color(0f, 0.9f, 1f, 1f))
+
+        //Стиль для обычных кнопок
+        roundStyle = VisTextButton.VisTextButtonStyle(baseStyle).apply {
+            up = roundUp
+            down = roundDown
+            over = roundOver
+        }
+
+        //
+        val toggleBaseStyle = VisUI.getSkin().get("toggle", VisTextButton.VisTextButtonStyle::class.java)
+        roundStyleToggle = VisTextButton.VisTextButtonStyle(toggleBaseStyle).apply {
+            up = roundUp
+            over = roundOver
+            down = roundDown
+
+            // Перезаписываем прямоугольные текстуры toggle на наши скругленные
+            checked = roundOver
+            checkedOver = roundOver
+        }
     }
 
     override val gridManager = GridManager(

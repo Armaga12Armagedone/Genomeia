@@ -343,18 +343,20 @@ class SimulationScreen(
         root.clear()
 
         root.top().left()
+        val roundStyle = DISimulationContainer.roundStyle
+        val roundStyleToggle = DISimulationContainer.roundStyleToggle
 
         val menuButton =
-            VisTextButton(if (genomeName == null) bundle.get("button.menu") else bundle.get("button.backToEditor"))
-        val putOrganismToggle = VisTextButton(bundle.get("button.putOrganism"), "toggle")
+            VisTextButton(if (genomeName == null) bundle.get("button.menu") else bundle.get("button.backToEditor"), roundStyle)
+        val putOrganismToggle = VisTextButton(bundle.get("button.putOrganism"), roundStyleToggle)
         putOrganismToggle.isChecked = putOrgs
-        val selectGenomeButton = VisTextButton(bundle.get("button.selectGenome"))
-        val speedUpSimToggle = VisTextButton(bundle.get("button.speedUp"))
-        val pauseSimToggle = VisTextButton(bundle.get("button.pause"), "toggle")
+        val selectGenomeButton = VisTextButton(bundle.get("button.selectGenome"), roundStyle)
+        val speedUpSimToggle = VisTextButton(bundle.get("button.speedUp"), roundStyle)
+        val pauseSimToggle = VisTextButton(bundle.get("button.pause"), roundStyleToggle)
         pauseSimToggle.isChecked = !simEntity.isPlay
-        val restartSimulationButton = VisTextButton(bundle.get("button.restart"))
+        val restartSimulationButton = VisTextButton(bundle.get("button.restart"), roundStyle)
 //        val chooseColorButton = VisTextButton(bundle.get("button.chooseColor"))
-        val drawRaysToggle = VisTextButton(bundle.get("button.drawRays"), "toggle")
+        val drawRaysToggle = VisTextButton(bundle.get("button.drawRays"), roundStyleToggle)
         drawRaysToggle.isChecked = usePostProcess
 //        chooseColorButton.addListener(object : ClickListener() {
 //            override fun clicked(event: InputEvent, x: Float, y: Float) {
@@ -404,7 +406,7 @@ class SimulationScreen(
                 rowTable.defaults().padLeft(8f * Gdx.graphics.density).padRight(8f * Gdx.graphics.density).left()
                 currentWidth = 0f
             }
-            rowTable.add(button).height(25f * Gdx.graphics.density)
+            rowTable.add(button).height(50f * Gdx.graphics.density)
             currentWidth += prefWidth
         }
         if (rowTable.hasChildren()) {
