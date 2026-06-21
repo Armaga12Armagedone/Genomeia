@@ -17,24 +17,23 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.kotcrab.vis.ui.VisUI
 import com.kotcrab.vis.ui.util.TableUtils
 import com.kotcrab.vis.ui.widget.*
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.core.GlobalSimulationSettings
 import io.github.some_example_name.old.core.SubstrateSettings
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
 import io.github.some_example_name.old.systems.render.texturePaths
 import io.github.some_example_name.old.ui.dialogs.CellSettings
-import io.github.some_example_name.old.ui.dialogs.SpeedUpDialog
 import kotlin.reflect.KMutableProperty
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
 
-class EcoSystemScreenCellsSettings(
-    val game: MyGame,
-    val multiPlatformFileProvider: FileProvider,
-    val bundle: I18NBundle
-) : Screen {
+class EcoSystemScreenCellsSettings: Screen {
 
     private lateinit var stage: Stage
     val gridTable = VisTable()
@@ -129,7 +128,7 @@ class EcoSystemScreenCellsSettings(
 
             panel.addListener(object : com.badlogic.gdx.scenes.scene2d.utils.ClickListener() {
                 override fun clicked(event: com.badlogic.gdx.scenes.scene2d.InputEvent?, x: Float, y: Float) {
-                    CellSettings(game, bundle = bundle, cell, iconName, settings).show(stage)
+                    CellSettings(cell, iconName, settings).show(stage)
                 }
             })
 
@@ -188,7 +187,7 @@ class EcoSystemScreenCellsSettings(
         game.applyCustomFont(menuButton)
         menuButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
-                game.screen = EcoSystemScreen(game, multiPlatformFileProvider, bundle = bundle)
+                game.screen = EcoSystemScreen()
             }
         })
         buttonsTable.add(menuButton).height(60f * Gdx.graphics.density)

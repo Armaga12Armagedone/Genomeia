@@ -4,7 +4,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
 import io.github.some_example_name.old.editor.entities.EditorCell
-import io.github.some_example_name.old.ui.screens.MyGame
+import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
 
 class MutateOrDivideDialog(

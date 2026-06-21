@@ -13,12 +13,10 @@ import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Timer
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisSlider
-import com.kotcrab.vis.ui.widget.VisTextButton
-import io.github.some_example_name.old.ui.screens.makeStyledButton
-import io.github.some_example_name.old.ui.screens.makeStyledSlider
+import io.github.some_example_name.old.ui.core.makeStyledButton
+import io.github.some_example_name.old.ui.core.makeStyledSlider
 import com.kotcrab.vis.ui.widget.color.ColorPickerAdapter
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
-import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.core.color_picker.ColorPicker
 import io.github.some_example_name.old.editor.system.logic.CtrlY
@@ -41,9 +39,9 @@ import io.github.some_example_name.old.editor.ui.dialog.SymmetryDialog
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import io.github.some_example_name.old.systems.render.usePostProcess
 import io.github.some_example_name.old.ui.screens.MenuScreen
-import io.github.some_example_name.old.ui.screens.MyGame
+import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.ui.screens.SimulationScreen
-import io.github.some_example_name.old.ui.screens.applyCustomFont
+import io.github.some_example_name.old.game.applyCustomFont
 
 
 class MenuUiBuilder(
@@ -345,19 +343,13 @@ class MenuUiBuilder(
             onSaveAndTest = { genomeNameForTest ->
                 game.screen.dispose()
                 game.screen = SimulationScreen(
-                    multiPlatformFileProvider = fileProvider,
-                    game = game,
-                    bundle = bundle,
                     map = null,
                     genomeName = genomeNameForTest
                 )
             },
             onGoMenu = {
                 game.screen.dispose()
-                game.screen = MenuScreen(
-                    multiPlatformFileProvider = fileProvider,
-                    game = game,
-                )
+                game.screen = MenuScreen()
             },
             game = game,
             bundle = bundle,

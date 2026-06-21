@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.ui.screens
 
+import ExampleScreen
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Screen
 import com.badlogic.gdx.graphics.Color
@@ -19,15 +20,15 @@ import com.badlogic.gdx.video.VideoPlayer
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
-import io.github.some_example_name.old.core.FileProvider
+import io.github.some_example_name.old.core.DIGameGlobalContainer.fileProvider
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
+import io.github.some_example_name.old.ui.core.STYLE_BEIGE
+import io.github.some_example_name.old.ui.core.makeStyledButton
 import io.github.some_example_name.old.ui.dialogs.GenomeListDialog
 
-class MenuScreen(
-    private val game: MyGame,
-    val multiPlatformFileProvider: FileProvider
-) : Screen {
+class MenuScreen: Screen {
 
     private val stage = Stage(ScreenViewport())
     private val batch = SpriteBatch()
@@ -85,13 +86,13 @@ class MenuScreen(
         val btns = listOf(
             Btn(bundle.get("button.empty")) {
                 val old = game.screen
-                game.screen = SimulationScreen(multiPlatformFileProvider, game, null, bundle, null)
+                game.screen = WorldEditorScreen()
                 old.dispose()
             },
             Btn(bundle.get("button.editor")) {
                 val genomes = genomeJsonReader.getGenomeFileNamesFromFolder("user_genomes")
                 if (genomes.isEmpty()) {
-                    game.screen = GenomeEditorScreen(game = game, genomeName = null)
+                    game.screen = GenomeEditorScreen(genomeName = null)
                 } else {
                     GenomeListDialog(
                         genomesList = genomes, selectedGenomeIndex = null,
@@ -99,8 +100,8 @@ class MenuScreen(
                         new    = bundle.get("button.new"),
                         select = bundle.get("button.select"),
                         import = bundle.get("button.import"),
-                        onNew  = { game.screen = GenomeEditorScreen(game = game, genomeName = null) },
-                        onNext = { n -> game.screen = GenomeEditorScreen(game = game, genomeName = n) },
+                        onNew  = { game.screen = GenomeEditorScreen(genomeName = null) },
+                        onNext = { n -> game.screen = GenomeEditorScreen(genomeName = n) },
                         onRestart = {},
                         game = game,
                         onResize = { h -> onResize = if (h == {}) null else h },
@@ -109,11 +110,13 @@ class MenuScreen(
                 }
             },
             Btn(bundle.get("button.options")) {
-                game.screen = SettingsScreen(game, multiPlatformFileProvider, bundle = bundle)
+                game.screen = SettingsScreen()
             },
             Btn(bundle.get("button.substrateSettings")) {
-                game.screen = EcoSystemScreen(game, multiPlatformFileProvider, bundle = bundle)
-//                game.screen = JsonEditorScreen(game, multiPlatformFileProvider, bundle = bundle)
+                game.screen = EcoSystemScreen()
+            },
+            Btn(bundle.get("label.support")) {
+                game.screen = VisSupportScreen()
             },
             Btn(bundle.get("button.exit")) { Gdx.app.exit() }
         )

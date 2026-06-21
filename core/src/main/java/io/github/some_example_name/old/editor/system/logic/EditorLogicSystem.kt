@@ -24,7 +24,7 @@ import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.physics.GridManager
-import io.github.some_example_name.old.ui.screens.MyGame
+import io.github.some_example_name.old.game.MyGame
 import kotlin.system.measureNanoTime
 
 class EditorLogicSystem(

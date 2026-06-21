@@ -16,10 +16,10 @@ import io.github.some_example_name.old.core.DISimulationContainer.simulationSyst
 import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
-import io.github.some_example_name.old.ui.screens.MyGame
-import io.github.some_example_name.old.ui.screens.applyCustomFont
-import io.github.some_example_name.old.ui.screens.makeStyledButton
-import io.github.some_example_name.old.ui.screens.makeStyledTextField
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
+import io.github.some_example_name.old.ui.core.makeStyledButton
+import io.github.some_example_name.old.ui.core.makeStyledTextField
 
 class SaveGenomeDialog(
     val genomeJsonReader: GenomeJsonReader,

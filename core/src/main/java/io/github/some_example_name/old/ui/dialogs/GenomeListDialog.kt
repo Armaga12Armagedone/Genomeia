@@ -13,9 +13,9 @@ import com.kotcrab.vis.ui.widget.VisCheckBox
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisRadioButton
 import com.kotcrab.vis.ui.widget.VisTable
-import io.github.some_example_name.old.ui.screens.MyGame
-import io.github.some_example_name.old.ui.screens.applyCustomFont
-import io.github.some_example_name.old.ui.screens.makeStyledButton
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
+import io.github.some_example_name.old.ui.core.makeStyledButton
 
 class GenomeListDialog(
     val genomesList: List<String>,

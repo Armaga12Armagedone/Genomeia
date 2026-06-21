@@ -15,22 +15,22 @@ import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.core.GlobalSimulationSettings
 import io.github.some_example_name.old.core.SubstrateSettings
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
 import kotlin.reflect.KMutableProperty
 import kotlin.reflect.KProperty1
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
 
-class EcoSystemScreenGlobalSettings(
-    val game: MyGame,
-    val multiPlatformFileProvider: FileProvider,
-    val bundle: I18NBundle
-) : Screen {
+class EcoSystemScreenGlobalSettings: Screen {
 
     private lateinit var stage: Stage
     //private lateinit var textArea: ScrollableTextArea
@@ -111,7 +111,7 @@ class EcoSystemScreenGlobalSettings(
         game.applyCustomFont(menuButton)
         menuButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
-                game.screen = EcoSystemScreen(game, multiPlatformFileProvider, bundle = bundle)
+                game.screen = EcoSystemScreen()
             }
         })
         buttonsTable.add(menuButton).height(60f * Gdx.graphics.density)

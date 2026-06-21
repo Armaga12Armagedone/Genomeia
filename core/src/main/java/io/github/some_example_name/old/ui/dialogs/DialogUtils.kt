@@ -6,9 +6,9 @@ import com.badlogic.gdx.scenes.scene2d.ui.ImageButton
 import com.badlogic.gdx.utils.Scaling
 import com.kotcrab.vis.ui.widget.VisImageButton
 import com.kotcrab.vis.ui.widget.VisWindow
-import io.github.some_example_name.old.ui.screens.MyGame
-import io.github.some_example_name.old.ui.screens.applyCustomFontMedium
-import io.github.some_example_name.old.ui.screens.roundCorners
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFontMedium
+import io.github.some_example_name.old.ui.core.roundCorners
 
 fun VisWindow.setupTitleSize(game: MyGame) {
     roundCorners()

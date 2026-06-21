@@ -18,29 +18,27 @@ import com.kotcrab.vis.ui.util.FloatDigitsOnlyFilter
 import com.kotcrab.vis.ui.widget.VisCheckBox
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisSelectBox
-import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTable
-import com.kotcrab.vis.ui.widget.VisTextField
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.cells.base.formulaType
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellsTypeNames
-import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.color_picker.ColorPicker
-import io.github.some_example_name.old.ui.screens.MyGame
-import io.github.some_example_name.old.ui.screens.applyCustomFont
-import io.github.some_example_name.old.ui.screens.applyCustomFontMedium
-import io.github.some_example_name.old.ui.screens.makeStyledSlider
-import io.github.some_example_name.old.ui.screens.makeStyledTextField
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
+import io.github.some_example_name.old.game.applyCustomFontMedium
+import io.github.some_example_name.old.ui.core.makeStyledButton
+import io.github.some_example_name.old.ui.core.makeStyledSlider
+import io.github.some_example_name.old.ui.core.makeStyledTextField
 
 fun actionButton(
     text: String,
     game: MyGame,
     onAction: () -> Unit
 ): VisTextButton {
-    val actionButton = VisTextButton(text, DISimulationContainer.roundStyle).apply {
+    val actionButton = makeStyledButton(text, game, mutableListOf()).apply {
         addListener(
             object : ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -59,7 +57,7 @@ fun colorPicker(
     game: MyGame,
     bundle: I18NBundle
 ): VisTextButton {
-    val colorButton = VisTextButton(bundle.get("button.chooseColorDialog")).apply {
+    val colorButton = makeStyledButton(bundle.get("button.chooseColorDialog"), game, mutableListOf()).apply {
         addListener(
             object : ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {

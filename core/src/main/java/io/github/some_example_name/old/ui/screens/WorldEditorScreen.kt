@@ -24,18 +24,19 @@ import com.kotcrab.vis.ui.widget.VisScrollPane
 import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.WorldGenerator
 import io.github.some_example_name.old.core.WorldGenerator.Companion.GENERATOR_DAY_NIGHT
 import io.github.some_example_name.old.core.WorldGenerator.Companion.GENERATOR_INTERPOLATE
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.core.utils.brownColors
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
+import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
 
-class WorldEditorScreen(
-    private val game: MyGame,
-    val multiPlatformFileProvider: FileProvider,
-    val bundle: I18NBundle
-) : Screen {
+class WorldEditorScreen: Screen {
     companion object {
         const val SCALE_FACTOR = 6.3f * 4f
         const val OFFSET = 0f
@@ -136,7 +137,7 @@ class WorldEditorScreen(
             game.applyCustomFont(this)
             addListener(object : ChangeListener() {
                 override fun changed(event: ChangeEvent, actor: Actor) {
-                    game.screen = MenuScreen(game, multiPlatformFileProvider)
+                    game.screen = MenuScreen()
                 }
             })
         }
@@ -160,7 +161,7 @@ class WorldEditorScreen(
                 override fun changed(event: ChangeEvent, actor: Actor) {
                     val oldScreen = game.screen
                     game.screen =
-                        SimulationScreen(multiPlatformFileProvider, game, map, bundle, null) // Передаем map
+                        SimulationScreen(map, null) // Передаем map
                     oldScreen.dispose()
                 }
             })

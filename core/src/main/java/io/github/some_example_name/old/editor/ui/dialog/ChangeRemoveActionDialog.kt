@@ -21,9 +21,9 @@ import io.github.some_example_name.old.core.color_picker.ColorPicker
 import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.systems.genomics.genome.SpecialData
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
-import io.github.some_example_name.old.ui.screens.MyGame
+import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
-import io.github.some_example_name.old.ui.screens.applyCustomFontMedium
+import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.ui.screens.valueChanged
 
 class ChangeRemoveActionDialog(

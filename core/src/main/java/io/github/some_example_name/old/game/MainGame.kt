@@ -1,10 +1,11 @@
-package io.github.some_example_name.old.ui.screens
+package io.github.some_example_name.old.game
 
 import com.badlogic.gdx.Application
 import com.badlogic.gdx.Game
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.audio.Music
 import com.badlogic.gdx.audio.Sound
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator
 import com.badlogic.gdx.graphics.Texture.TextureFilter
@@ -21,7 +22,6 @@ import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextButton.VisTextButtonStyle
 import com.kotcrab.vis.ui.widget.VisTextField
 import com.kotcrab.vis.ui.widget.VisValidatableTextField
-import io.github.some_example_name.old.core.DI
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.core.DISimulationContainer
@@ -32,6 +32,7 @@ import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.systems.pheromone.PheromoneShaderManager
 import io.github.some_example_name.old.systems.render.ShaderManager
 import com.badlogic.gdx.video.VideoPlayer
+import io.github.some_example_name.old.ui.screens.MenuScreen
 import kotlin.math.max
 
 interface KeyBoardListener {
@@ -77,6 +78,7 @@ class MyGame(
     override fun create() {
         VisUI.load()  // Загружаем дефолтный VisUI
         DIGameGlobalContainer.fileProvider = multiPlatformFileProvider
+        DIGameGlobalContainer.game = this
         DISimulationContainer
         DIGenomeEditorContainer
 
@@ -118,7 +120,7 @@ class MyGame(
         val desiredButtonSize = (48 * Gdx.graphics.density).toInt()
         parameter.size = max(MIN_GEN_SIZE, desiredButtonSize)
         parameter.borderWidth = 1.2f
-        parameter.borderColor = com.badlogic.gdx.graphics.Color.WHITE
+        parameter.borderColor = Color.WHITE
         buttonFont = generator.generateFont(parameter)
         parameter.borderWidth = 0f
         parameter.size = max(MIN_GEN_SIZE, desiredLargeSize)
@@ -144,7 +146,7 @@ class MyGame(
         openKeyBoardListenerGlobal = openKeyBoardListener
         shuffleTracks()
         playNextTrack()
-        setScreen(MenuScreen(this, multiPlatformFileProvider))
+        setScreen(MenuScreen())
 
         pikSounds = listOf<Sound>(
             Gdx.audio.newSound(Gdx.files.internal("pik1.mp3")),

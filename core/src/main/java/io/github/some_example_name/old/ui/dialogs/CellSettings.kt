@@ -3,29 +3,25 @@ package io.github.some_example_name.old.ui.dialogs
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.scenes.scene2d.InputEvent
-import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.I18NBundle
 import com.badlogic.gdx.utils.Scaling
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisImage
 import com.kotcrab.vis.ui.widget.VisLabel
-import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
 import io.github.some_example_name.old.core.CellSettings
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.GlobalSimulationSettings
-import io.github.some_example_name.old.systems.render.texturePaths
-import io.github.some_example_name.old.ui.screens.MyGame
-import io.github.some_example_name.old.ui.screens.applyCustomFontMedium
-import io.github.some_example_name.old.ui.screens.valueChanged
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFontMedium
 import kotlin.reflect.KMutableProperty
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
 class CellSettings(
-    val game: MyGame,
-    val bundle: I18NBundle,
     val cell: Map.Entry<String, CellSettings>,
     val icon: String,
     val settings: GlobalSimulationSettings

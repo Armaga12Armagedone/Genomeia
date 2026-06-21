@@ -9,30 +9,27 @@ import com.badlogic.gdx.scenes.scene2d.Event
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.kotcrab.vis.ui.VisUI
-import com.kotcrab.vis.ui.widget.VisCheckBox
 import com.kotcrab.vis.ui.widget.VisCheckBox.VisCheckBoxStyle
 import com.kotcrab.vis.ui.widget.VisLabel
-import com.kotcrab.vis.ui.widget.VisSlider
-import io.github.some_example_name.old.ui.screens.makeStyledSlider
+import io.github.some_example_name.old.ui.core.makeStyledSlider
 import com.kotcrab.vis.ui.widget.VisTable
-import com.kotcrab.vis.ui.widget.VisTextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.badlogic.gdx.utils.I18NBundle
-import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
 import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
 import io.github.some_example_name.old.core.DISimulationContainer.heightMultiplier
 import io.github.some_example_name.old.core.FileProvider
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
+import io.github.some_example_name.old.ui.core.makeStyledButton
 import io.github.some_example_name.old.ui.screens.GlobalSettings.GRAVITATION
 import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_HEIGHT
 import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_WIDTH
 import kotlin.math.round
 
-class SettingsScreen(
-    val game: MyGame,
-    val multiPlatformFileProvider: FileProvider,
-    val bundle: I18NBundle
-) : Screen {
+class SettingsScreen: Screen {
 
     private lateinit var stage: Stage
     private val extraTextures = mutableListOf<Texture>()
@@ -161,7 +158,7 @@ class SettingsScreen(
         val backButton = makeStyledButton(bundle.get("button.back"), game, extraTextures).apply {
             addListener { e ->
                 if (clicked(e)) {
-                    game.screen = MenuScreen(game, multiPlatformFileProvider)
+                    game.screen = MenuScreen()
                 }
                 false
             }

@@ -18,19 +18,17 @@ import com.kotcrab.vis.ui.util.TableUtils
 import com.kotcrab.vis.ui.widget.ScrollableTextArea
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
-import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
-import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.core.GlobalSimulationSettings
-import io.github.some_example_name.old.core.SubstrateSettings
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
+import io.github.some_example_name.old.ui.core.makeStyledButton
 
-class JsonEditorScreen(
-    val game: MyGame,
-    val multiPlatformFileProvider: FileProvider,
-    val bundle: I18NBundle
-) : Screen {
+class JsonEditorScreen: Screen {
 
     private lateinit var stage: Stage
     private lateinit var textArea: ScrollableTextArea
@@ -93,12 +91,13 @@ class JsonEditorScreen(
         val menuButton = makeStyledButton(bundle.get("button.menu"), game, extraTextures)
         menuButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
-                game.screen = MenuScreen(game, multiPlatformFileProvider)
+                game.screen = MenuScreen()
             }
         })
         buttonsTable.add(menuButton).height(btnH)
 
-        val copyToClipboardButton = makeStyledButton(bundle.get("button.copyToClipboard"), game, extraTextures)
+        val copyToClipboardButton =
+            makeStyledButton(bundle.get("button.copyToClipboard"), game, extraTextures)
         copyToClipboardButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
                 Gdx.app.clipboard.contents = textArea.text

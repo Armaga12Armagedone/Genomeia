@@ -4,7 +4,7 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.video.SilentVideoPlayer;
 
-import io.github.some_example_name.old.ui.screens.MyGame;
+import io.github.some_example_name.old.game.MyGame;
 
 import java.awt.Dimension;
 import java.awt.Toolkit;

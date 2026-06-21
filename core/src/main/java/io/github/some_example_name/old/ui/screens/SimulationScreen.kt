@@ -16,26 +16,26 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.I18NBundle
 import com.badlogic.gdx.utils.viewport.ScreenViewport
-import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.commands.PlayerCommand
-import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.fileProvider
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.genomeManager
 import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
 import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
+import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.systems.render.usePostProcess
+import io.github.some_example_name.old.ui.core.makeStyledButton
 import io.github.some_example_name.old.ui.dialogs.GenomeListDialog
 import io.github.some_example_name.old.ui.dialogs.SpeedUpDialog
 
 var isRenderUi = true
 
 class SimulationScreen(
-    val multiPlatformFileProvider: FileProvider,
-    val game: MyGame,
     val map: Array<BooleanArray>?,
-    val bundle: I18NBundle,
     val genomeName: String?
 ) : Screen, GestureDetector.GestureListener {
 
@@ -360,17 +360,23 @@ class SimulationScreen(
             if (genomeName == null) bundle.get("button.menu") else bundle.get("button.backToEditor"),
             game, extraTextures
         )
-        val putOrganismToggle = makeStyledButton(bundle.get("button.putOrganism"), game, extraTextures, toggle = true)
+        val putOrganismToggle =
+            makeStyledButton(bundle.get("button.putOrganism"), game, extraTextures, toggle = true)
         putOrganismToggle.isChecked = putOrgs
-        val selectGenomeButton = makeStyledButton(bundle.get("button.selectGenome"), game, extraTextures)
-        val speedUpSimToggle   = makeStyledButton(bundle.get("button.speedUp"),      game, extraTextures)
-        val pauseSimToggle     = makeStyledButton(bundle.get("button.pause"),         game, extraTextures, toggle = true)
+        val selectGenomeButton =
+            makeStyledButton(bundle.get("button.selectGenome"), game, extraTextures)
+        val speedUpSimToggle   = makeStyledButton(bundle.get("button.speedUp"), game, extraTextures)
+        val pauseSimToggle     =
+            makeStyledButton(bundle.get("button.pause"), game, extraTextures, toggle = true)
         pauseSimToggle.isChecked = !simEntity.isPlay
-        val restartSimulationButton = makeStyledButton(bundle.get("button.restart"), game, extraTextures)
-        val drawRaysToggle = makeStyledButton(bundle.get("button.drawRays"), game, extraTextures, toggle = true)
+        val restartSimulationButton =
+            makeStyledButton(bundle.get("button.restart"), game, extraTextures)
+        val drawRaysToggle =
+            makeStyledButton(bundle.get("button.drawRays"), game, extraTextures, toggle = true)
         drawRaysToggle.isChecked = usePostProcess
 
-        val controllerKeysToggle = makeStyledButton("Controller Keys", game, extraTextures, toggle = true)
+        val controllerKeysToggle =
+            makeStyledButton("Controller Keys", game, extraTextures, toggle = true)
         controllerKeysToggle.isChecked = simulationSystem.simulationData.showControllerKeys
 
         val buttons = if (genomeName == null) {
@@ -704,9 +710,9 @@ class SimulationScreen(
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 game.screen.dispose()
                 if (genomeName == null)
-                    game.screen = MenuScreen(game, multiPlatformFileProvider)
+                    game.screen = MenuScreen()
                 else {
-                    game.screen = GenomeEditorScreen(game, genomeName.replace(".json", ""))
+                    game.screen = GenomeEditorScreen(genomeName.replace(".json", ""))
                 }
             }
         })
@@ -723,10 +729,7 @@ class SimulationScreen(
                     import = bundle.get("button.import"),
                     onNew = {
                         game.screen.dispose()
-                        game.screen = GenomeEditorScreen(
-                            game,
-                            genomeName = null
-                        )
+                        game.screen = GenomeEditorScreen(genomeName = null)
                     },
                     onNext = { genomeName ->
                         println("$genomeName ${genomeNames.indexOf(genomeName)}")

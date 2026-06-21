@@ -2,15 +2,17 @@ package io.github.some_example_name.old.ui.dialogs
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Texture
+import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.actions.Actions
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisLabel
 import io.github.some_example_name.old.core.DISimulationContainer
-import io.github.some_example_name.old.ui.screens.MyGame
-import io.github.some_example_name.old.ui.screens.applyCustomFont
-import io.github.some_example_name.old.ui.screens.makeStyledButton
-import io.github.some_example_name.old.ui.screens.makeStyledSlider
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
+import io.github.some_example_name.old.ui.core.makeStyledButton
+import io.github.some_example_name.old.ui.core.makeStyledSlider
 import io.github.some_example_name.old.ui.screens.valueChanged
 
 class SpeedUpDialog(
@@ -45,16 +47,16 @@ class SpeedUpDialog(
         // Max speed toggle + close in one horizontal row
         val maxSpeedToggle = makeStyledButton("Max speed", game, textures, toggle = true).apply {
             isChecked = DISimulationContainer.simulationData.maxSpeed
-            addListener(object : com.badlogic.gdx.scenes.scene2d.utils.ChangeListener() {
-                override fun changed(event: ChangeEvent, actor: com.badlogic.gdx.scenes.scene2d.Actor?) {
+            addListener(object : ChangeListener() {
+                override fun changed(event: ChangeEvent, actor: Actor?) {
                     DISimulationContainer.simulationData.maxSpeed = isChecked
                 }
             })
         }
 
         val closeBtn = makeStyledButton(bundle.get("button.close") ?: "Close", game, textures).apply {
-            addListener(object : com.badlogic.gdx.scenes.scene2d.utils.ChangeListener() {
-                override fun changed(event: ChangeEvent, actor: com.badlogic.gdx.scenes.scene2d.Actor?) {
+            addListener(object : ChangeListener() {
+                override fun changed(event: ChangeEvent, actor: Actor?) {
                     fadeOut()
                 }
             })

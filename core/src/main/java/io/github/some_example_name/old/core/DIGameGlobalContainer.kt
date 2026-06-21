@@ -1,7 +1,6 @@
 package io.github.some_example_name.old.core
 
 import com.badlogic.gdx.Application
-import com.badlogic.gdx.Game
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.utils.I18NBundle
 import com.badlogic.gdx.utils.Json
@@ -9,10 +8,13 @@ import io.github.some_example_name.old.systems.genomics.Morphogenesis
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import io.github.some_example_name.old.systems.render.ShaderManager
 import io.github.some_example_name.old.systems.render.ShaderManagerLibgdxApi
-import io.github.some_example_name.old.ui.screens.androidRendererFactory
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.androidRendererFactory
 import java.util.Locale
 
 object DIGameGlobalContainer {
+
+    lateinit var game: MyGame
 
     var androidRenderer: ShaderManager? = androidRendererFactory?.invoke()
 

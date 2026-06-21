@@ -26,8 +26,8 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import games.spooky.gdx.nativefilechooser.android.AndroidFileChooser
-import io.github.some_example_name.old.ui.screens.KeyBoardListener
-import io.github.some_example_name.old.ui.screens.MyGame
+import io.github.some_example_name.old.game.KeyBoardListener
+import io.github.some_example_name.old.game.MyGame
 import java.io.File
 import java.io.FileOutputStream
 import java.io.FileWriter

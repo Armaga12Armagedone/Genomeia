@@ -1,4 +1,4 @@
-package io.github.some_example_name.old.ui.screens
+package io.github.some_example_name.old.ui.core
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
@@ -7,13 +7,26 @@ import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.Texture.TextureFilter
 import com.badlogic.gdx.graphics.g2d.NinePatch
 import com.badlogic.gdx.graphics.g2d.TextureRegion
+import com.badlogic.gdx.scenes.scene2d.Actor
+import com.badlogic.gdx.scenes.scene2d.InputEvent
+import com.badlogic.gdx.scenes.scene2d.InputListener
+import com.badlogic.gdx.scenes.scene2d.ui.List
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
+import com.badlogic.gdx.scenes.scene2d.ui.SelectBox
 import com.badlogic.gdx.scenes.scene2d.ui.Slider
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener.ChangeEvent
 import com.badlogic.gdx.scenes.scene2d.utils.NinePatchDrawable
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable
+import com.kotcrab.vis.ui.VisUI
+import com.kotcrab.vis.ui.widget.VisSelectBox
 import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTextField
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisWindow
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
+import io.github.some_example_name.old.game.MyGame
+import kotlin.jvm.java
 
 val STYLE_BEIGE = Color(0.84f, 0.77f, 0.62f, 1.00f)
 private val BTN_UP  = Color(0.16f, 0.16f, 0.18f, 0.82f)
@@ -112,6 +125,56 @@ fun VisWindow.roundCorners() {
 
 // ── Slider ──────────────────────────────────────────────────────────────────
 
+
+/** Ищет ближайшего предка нужного типа */
+fun Actor.findAncestorScrollPane(): ScrollPane? {
+    var current: Actor? = this.parent
+    while (current != null) {
+        if (current is ScrollPane) return current
+        current = current.parent
+    }
+    return null
+}
+
+/** Автоматически отключает flickScroll у родительского ScrollPane пока тянут слайдер */
+fun Slider.disableParentFlickScrollWhileDragging() {
+    addListener(object : InputListener() {
+        override fun touchDown(
+            event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int
+        ): Boolean {
+            findAncestorScrollPane()?.setFlickScroll(false)
+            return false // не поглощаем событие — слайдер должен работать!
+        }
+
+        override fun touchUp(
+            event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int
+        ) {
+            findAncestorScrollPane()?.setFlickScroll(true)
+        }
+    })
+}
+
+fun Slider.disableScrollWhileDragging() {
+    this.addListener(object : ChangeListener() {
+        override fun changed(event: ChangeEvent?, actor: Actor?) {
+        }
+    })
+
+    this.addListener(object : InputListener() {
+        override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
+            findAncestorScrollPane()?.setFlickScroll(false)
+            return true
+        }
+
+        override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
+            findAncestorScrollPane()?.setFlickScroll(true)
+        }
+
+        override fun touchDragged(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+        }
+    })
+}
+
 fun makeStyledSlider(
     min: Float, max: Float, step: Float, vertical: Boolean,
     textures: MutableList<Texture>
@@ -162,7 +225,12 @@ fun makeStyledSlider(
     style.knobOver   = knobD
     style.knobDown   = knobD
 
-    return VisSlider(min, max, step, vertical, style)
+    val slider = VisSlider(min, max, step, vertical, style)
+
+    // === ВОТ ЭТА СТРОКА РЕШАЕТ ВСЁ АВТОМАТИЧЕСКИ ===
+    slider.disableScrollWhileDragging()
+
+    return slider
 }
 
 fun makeStyledSlider(min: Float, max: Float, step: Float, vertical: Boolean): VisSlider =
@@ -205,4 +273,63 @@ fun makeStyledTextField(game: MyGame, textures: MutableList<Texture>): VisTextFi
     style.selection         = TextureRegionDrawable(TextureRegion(selTex))
 
     return VisTextField("", style)
+}
+
+fun makeCleanSelectBoxStyle(): SelectBox.SelectBoxStyle {
+    val base = VisUI.getSkin().get("default", SelectBox.SelectBoxStyle::class.java)
+    val style = SelectBox.SelectBoxStyle(base)
+
+    val d = Gdx.graphics.density
+
+    // === Главный фон SelectBox ===
+    val bg = makeStyledNP(
+        fill = BTN_UP,
+        border = Color(STYLE_BEIGE).also { it.a = 0.75f },
+        textures = mutableListOf()
+    )
+    bg.minWidth = 180f * d
+    bg.minHeight = 38f * d
+    style.background = bg
+
+    style.font = game.buttonFont
+    style.fontColor = STYLE_BEIGE
+    style.overFontColor = Color.WHITE
+    style.disabledFontColor = Color(0.5f, 0.5f, 0.5f, 1f)
+
+    // === Выпадающий список — БЕЗ внешней окантовки ===
+    // Создаём фон только с заливкой (без border)
+    val listBgPixmap = Pixmap(64, 64, Pixmap.Format.RGBA8888).apply {
+        blending = Pixmap.Blending.None
+        setColor(0f, 0f, 0f, 0f); fill()
+        setColor(Color(0.06f, 0.06f, 0.08f, 0.98f))
+        fillRoundedRect(this, 0, 0, 64, 64, 12)
+    }
+    val listBgTex = linearTex(listBgPixmap, mutableListOf())
+    val listBg = NinePatchDrawable(NinePatch(listBgTex, 12, 12, 12, 12))
+
+    // Highlight выбранного элемента
+    val itemHighlight = makeStyledNP(
+        fill = Color(0.30f, 0.27f, 0.23f, 0.95f),
+        border = Color(STYLE_BEIGE).also { it.a = 0.7f },
+        textures = mutableListOf()
+    )
+
+    val listStyle = List.ListStyle(base.listStyle).apply {
+        background = listBg
+        font = game.buttonFont
+        fontColorSelected = Color.WHITE
+        fontColorUnselected = STYLE_BEIGE
+
+        selection = itemHighlight
+        over = itemHighlight
+        down = itemHighlight
+    }
+
+    style.listStyle = listStyle
+
+    style.scrollStyle = ScrollPane.ScrollPaneStyle(base.scrollStyle).apply {
+        background = listBg
+    }
+
+    return style
 }

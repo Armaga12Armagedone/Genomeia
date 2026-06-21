@@ -29,7 +29,7 @@ import io.github.some_example_name.old.editor.ui.dialog.MutateOrDivideDialog
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.systems.genomics.genome.Action
-import io.github.some_example_name.old.ui.screens.MyGame
+import io.github.some_example_name.old.game.MyGame
 
 class LeftRightClickManager(
     val commandEditorStackManager: CommandEditorStackManager,

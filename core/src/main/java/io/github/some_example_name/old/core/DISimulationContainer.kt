@@ -42,13 +42,11 @@ import io.github.some_example_name.old.systems.physics.LinkPhysicsSystem
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem
 import io.github.some_example_name.old.systems.render.RenderBufferManager
 import io.github.some_example_name.old.systems.render.RenderSystem
-import io.github.some_example_name.old.systems.render.ShaderManager
 import io.github.some_example_name.old.systems.simulation.SimulationSystem
 import io.github.some_example_name.old.systems.simulation.ThreadManager
 import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_HEIGHT
 import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_WIDTH
-import io.github.some_example_name.old.ui.screens.androidPheromoneRendererFactory
-import io.github.some_example_name.old.ui.screens.androidRendererFactory
+import io.github.some_example_name.old.game.androidPheromoneRendererFactory
 import kotlin.getValue
 
 object DISimulationContainer:  DIContext, Disposable {

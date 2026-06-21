@@ -14,9 +14,9 @@ import io.github.some_example_name.old.editor.system.SquareGrid
 import io.github.some_example_name.old.editor.system.SymmetryManager
 import io.github.some_example_name.old.editor.system.TriangleGrid
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
-import io.github.some_example_name.old.ui.screens.MyGame
-import io.github.some_example_name.old.ui.screens.applyCustomFont
-import io.github.some_example_name.old.ui.screens.makeStyledButton
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFont
+import io.github.some_example_name.old.ui.core.makeStyledButton
 
 class SymmetryDialog(
     val game: MyGame,

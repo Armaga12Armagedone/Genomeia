@@ -17,6 +17,7 @@ import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import io.github.some_example_name.old.core.DIGameGlobalContainer
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.symmetryManager
 import io.github.some_example_name.old.editor.system.logic.CtrlY
@@ -31,7 +32,7 @@ import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.current
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.previousCtrlClicked
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
-import io.github.some_example_name.old.ui.screens.MyGame
+import io.github.some_example_name.old.game.MyGame
 
 data class GenomeEditorData(
     var currentTick: Int,
@@ -40,7 +41,6 @@ data class GenomeEditorData(
 )
 
 class GenomeEditorScreen(
-    val game: MyGame,
     val genomeName: String?
 ) : Screen, GestureListener {
 
