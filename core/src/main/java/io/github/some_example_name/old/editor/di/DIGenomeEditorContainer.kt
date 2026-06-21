@@ -66,7 +66,9 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         maxAmountOfParticles = 8
     )
 
-    private val cellListBuilder = CellListBuilder(this)
+    private val cellListBuilder = CellListBuilder().apply {
+        bindToDIContext(this@DIGenomeEditorContainer)
+    }
     val cellsTypeNames = cellListBuilder.instances.map { it.name }.toTypedArray()
     val cellList = cellListBuilder.instances
     val zygote = cellListBuilder.zygote

@@ -39,14 +39,14 @@ interface KeyBoardListener {
     fun showNativeInput(default: String, callback: (Float) -> Unit)
 }
 var openKeyBoardListenerGlobal: KeyBoardListener? = null
-var androidRendererFactory: (() -> ShaderManager)? = null
+var androidRendererFactory: ((texturePaths: List<String>) -> ShaderManager)? = null
 var androidPheromoneRendererFactory: (() -> PheromoneShaderManager)? = null
 
 //Entry point
 class MyGame(
     val multiPlatformFileProvider: FileProvider,
     val openKeyBoardListener: KeyBoardListener? = null,
-    rendererFactory: (() -> ShaderManager)? = null,
+    rendererFactory: ((texturePaths: List<String>) -> ShaderManager)? = null,
     rendererPheromoneShaderManagerLibgdx: (() -> PheromoneShaderManager)? = null,
     val videoFactory: (() -> VideoPlayer)? = null
 ) : Game() {
@@ -252,6 +252,12 @@ fun MyGame.applyCustomFontSmall(label: VisLabel) {
 fun MyGame.applyCustomFontMedium(label: Label) {
     val newStyle = Label.LabelStyle(label.style)
     newStyle.font = if (Gdx.app.type == Application.ApplicationType.Android) this.mediumFont else this.largeFont
+    label.style = newStyle
+}
+
+fun MyGame.applyCustomFontLarge(label: Label) {
+    val newStyle = Label.LabelStyle(label.style)
+    newStyle.font = if (Gdx.app.type == Application.ApplicationType.Android) this.largeFont else this.extraLargeFont
     label.style = newStyle
 }
 

@@ -5,6 +5,7 @@ import io.github.some_example_name.old.core.utils.blueColors
 class Tail(cellTypeId: Int): Cell(
     defaultColor = blueColors.first(),
     cellTypeId = cellTypeId,
+    textureName = "tail.png",
     isNeural = true,
     isDirected = true
 ) {

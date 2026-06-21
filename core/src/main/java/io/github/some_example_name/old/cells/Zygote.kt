@@ -1,12 +1,20 @@
 package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.commands.WorldCommandType
+import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.utils.pinkColors
 
 class Zygote(cellTypeId: Int) : Cell(
     defaultColor = pinkColors[0],
     cellTypeId = cellTypeId,
-    isDirected = true
+    textureName = "zygote.png",
+    isDirected = true,
+    defaultCellSettings = CellSettings(
+        maxEnergy = 10f,
+        cellStiffness = 0.02f,
+        linkStiffness = 0.0125f,
+        energyActionCost = 0f
+    )
 ) {
 
     override fun onStart(cellIndex: Int, threadId: Int, genomeIndex: Int) {

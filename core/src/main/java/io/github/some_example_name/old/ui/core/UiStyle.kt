@@ -28,6 +28,7 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.game.MyGame
 import kotlin.jvm.java
 
+val STYLE_DARK = Color(0.5f, 0.5f, 0.5f, 1.00f)
 val STYLE_BEIGE = Color(0.84f, 0.77f, 0.62f, 1.00f)
 private val BTN_UP  = Color(0.16f, 0.16f, 0.18f, 0.82f)
 private val BTN_OVR = Color(0.28f, 0.27f, 0.30f, 0.90f)

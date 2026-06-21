@@ -19,14 +19,12 @@ import com.kotcrab.vis.ui.util.TableUtils
 import com.kotcrab.vis.ui.widget.*
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
+import io.github.some_example_name.old.core.DIGameGlobalContainer.particleTexturePaths
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.core.DISimulationContainer
-import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.core.GlobalSimulationSettings
 import io.github.some_example_name.old.core.SubstrateSettings
-import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.game.applyCustomFont
-import io.github.some_example_name.old.systems.render.texturePaths
 import io.github.some_example_name.old.ui.dialogs.CellSettings
 import kotlin.reflect.KMutableProperty
 import kotlin.reflect.full.memberProperties
@@ -45,35 +43,6 @@ class EcoSystemScreenCellsSettings: Screen {
     private val panelSize = 280f
     private val panelsList = mutableListOf<VisTable>()
     private var settings: GlobalSimulationSettings = GlobalSimulationSettings()
-
-    val cellsToImage: Map<String, Int> = mapOf(
-        "Leaf" to 0,
-        "Fat" to 1,
-        "Bone" to 2,
-        "Tail" to 3,
-        "Neuron" to 4,
-        "Muscle" to 5,
-        "Sensor" to 6,
-        "Sucker" to 7,
-        "Mike" to 8,
-        "Excreta" to 9,
-        "SuctionCup" to 10,
-        "Sticky" to 11,
-        "Pumper" to 12,
-        "Chemeleon" to 13,
-        "Eye" to 14,
-        "Compass" to 15,
-        "Controller" to 16,
-        "TouchTrigger" to 17,
-        "Zygote" to 18,
-        "Producer" to 19,
-        "Breakaway" to 20,
-        "Vascular" to 21,
-        "PheromoneEmitter" to 22,
-        "PheromoneSensor" to 23,
-        "Punisher" to 24,
-        "Not_cell" to 25
-    )
 
     override fun show() {
         json.setOutputType(JsonWriter.OutputType.json)
@@ -118,7 +87,7 @@ class EcoSystemScreenCellsSettings: Screen {
             panel.background = VisUI.getSkin().getDrawable("window")
             panel.pad(20f)
 
-            val iconName = texturePaths[cellsToImage[cell.key] ?: 25]
+            val iconName = particleTexturePaths[i]
 
             val texture = Texture(Gdx.files.internal(iconName))
             val cellImage = VisImage(texture)

@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.cells
 
 import com.badlogic.gdx.graphics.Color
+import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import kotlin.reflect.KClass
@@ -8,6 +9,7 @@ import kotlin.reflect.KClass
 sealed class Cell(
     val defaultColor: Color,
     val cellTypeId: Int,
+    val textureName: String = "not_cell.png",
     val isDirected: Boolean = false,
     val isNeural: Boolean = false,
     val maxEnergy: Float = 5f,
@@ -16,6 +18,12 @@ sealed class Cell(
     val isCollidable: Boolean = true,
     val descriptionBundle: String? = null,
     val specialData: KClass<out SpecialModData> = Plug::class,
+    val defaultCellSettings: CellSettings = CellSettings(
+        maxEnergy = 5f,
+        cellStiffness = 0.02f,
+        linkStiffness = 0.025f,
+        energyActionCost = 0.0005f,
+    )
 ) {
     val name: String = this::class.simpleName ?: "UnknownCell"
     val description = descriptionBundle?.let { bundle.get(descriptionBundle) } ?: ""

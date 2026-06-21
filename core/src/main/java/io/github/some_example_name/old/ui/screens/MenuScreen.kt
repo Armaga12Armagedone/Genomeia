@@ -25,6 +25,7 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import io.github.some_example_name.old.ui.core.STYLE_BEIGE
+import io.github.some_example_name.old.ui.core.STYLE_DARK
 import io.github.some_example_name.old.ui.core.makeStyledButton
 import io.github.some_example_name.old.ui.dialogs.GenomeListDialog
 
@@ -70,13 +71,13 @@ class MenuScreen: Screen {
 
         val table = VisTable()
         table.setFillParent(true)
-        table.left()
+        table.center()
         table.pad(0f, (w * 0.04f).coerceAtLeast(24f), 0f, 0f)
 
         val titleLabel = VisLabel("GENOMEIA")
-        titleLabel.style = Label.LabelStyle(game.titleFont, Color(STYLE_BEIGE))
+        titleLabel.style = Label.LabelStyle(game.titleFont, Color(STYLE_DARK))
         titleLabel.setAlignment(Align.left)
-        table.add(titleLabel).left().padBottom(h * 0.018f).row()
+        table.add(titleLabel).center().padBottom(h * 0.018f).row()
 
         val btnW   = (w * 0.26f).coerceIn(180f * density, 520f * density)
         val btnGap = (h * 0.012f).coerceAtLeast(6f * density)
@@ -135,7 +136,7 @@ class MenuScreen: Screen {
             b.addListener(object : ClickListener() {
                 override fun clicked(event: InputEvent, x: Float, y: Float) = action()
             })
-            table.add(b).left().width(btnW).padBottom(btnGap).row()
+            table.add(b).center().width(btnW).padBottom(btnGap).row()
         }
 
         stage.addActor(table)

@@ -8,6 +8,7 @@ import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Com
 class Producer(cellTypeId: Int): Cell(
     defaultColor = redColors[4],
     cellTypeId = cellTypeId,
+    textureName = "Producer.png",
     isDirected = true,
     isNeural = true
 ) {

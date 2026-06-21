@@ -7,12 +7,11 @@ import com.badlogic.gdx.math.Matrix4
 import io.github.some_example_name.old.systems.render.RenderSystem.Companion.INITIAL_PARTICLE_CAPACITY
 import io.github.some_example_name.old.systems.render.RenderSystem.Companion.PARTICLE_STRUCT_SIZE
 import io.github.some_example_name.old.systems.render.ShaderManager
-import io.github.some_example_name.old.systems.render.texturePaths
 import io.github.some_example_name.old.systems.render.usePostProcess
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class ShaderManagerAndroidApi : ShaderManager {
+class ShaderManagerAndroidApi(val texturePaths: List<String>) : ShaderManager {
 
     // Particle VBO (вместо SSBO)
     private val particleVbo = IntArray(1)

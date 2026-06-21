@@ -1,14 +1,19 @@
 package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.commands.WorldCommandType
+import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.core.utils.orangeColors
 
 class Sucker(cellTypeId: Int) : Cell(
     defaultColor = orangeColors.first(),
     cellTypeId = cellTypeId,
+    textureName = "sucker.png",
     effectOnContact = true,
-    isCollidable = false
+    isCollidable = false,
+    defaultCellSettings = CellSettings(
+        maxEnergy = 8f
+    )
 ) {
 
     override fun onContact(cellIndex: Int, particleIndexCollided: Int, distance: Float, threadId: Int) {

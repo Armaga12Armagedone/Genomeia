@@ -10,7 +10,8 @@ import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Com
 
 class Stem(cellTypeId: Int): Cell(
     defaultColor = pinkColors[0],
-    cellTypeId = cellTypeId
+    cellTypeId = cellTypeId,
+    textureName = "Pumper.png"
 ) {
 
     override fun doOnTick(cellIndex: Int, threadId: Int) = with(cellEntity) {

@@ -6,6 +6,7 @@ import io.github.some_example_name.old.core.utils.blueColors
 class Compass(cellTypeId: Int) : Cell(
     defaultColor = blueColors[6],
     cellTypeId = cellTypeId,
+    textureName = "Compass.png",
     isDirected = true,
     isNeural = true,
     isNeuronTransportable = false

@@ -6,6 +6,7 @@ import io.github.some_example_name.old.core.utils.redColors
 class Punisher(cellTypeId: Int) : Cell(
     defaultColor = redColors[0],
     cellTypeId = cellTypeId,
+    textureName = "punisher.png",
     effectOnContact = true
 ) {
 

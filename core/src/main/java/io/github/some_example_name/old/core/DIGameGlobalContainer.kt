@@ -4,6 +4,8 @@ import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.utils.I18NBundle
 import com.badlogic.gdx.utils.Json
+import io.github.some_example_name.old.cells.base.CellListBuilder
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.systems.genomics.Morphogenesis
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import io.github.some_example_name.old.systems.render.ShaderManager
@@ -16,7 +18,6 @@ object DIGameGlobalContainer {
 
     lateinit var game: MyGame
 
-    var androidRenderer: ShaderManager? = androidRendererFactory?.invoke()
 
     lateinit var fileProvider: FileProvider
     val json by lazy { Json() }
@@ -29,8 +30,20 @@ object DIGameGlobalContainer {
 
     val genomeJsonReader = GenomeJsonReader()
 
+    private val cellListBuilder = CellListBuilder()
+
+    val particleTexturePaths: List<String> = cellListBuilder.instances.map {
+        it.textureName
+    } + "not_cell.png"
+
+    val defaultCellSettingsMap = cellListBuilder.instances.associate {
+        it.name to it.defaultCellSettings
+    }
+
+    var androidRenderer: ShaderManager? = androidRendererFactory?.invoke(particleTexturePaths)
+
     val shaderManager: ShaderManager = when (Gdx.app.type) {
-        Application.ApplicationType.Desktop -> ShaderManagerLibgdxApi()
+        Application.ApplicationType.Desktop -> ShaderManagerLibgdxApi(particleTexturePaths)
         Application.ApplicationType.Android -> androidRenderer!!
         Application.ApplicationType.HeadlessDesktop -> TODO()
         Application.ApplicationType.Applet -> TODO()

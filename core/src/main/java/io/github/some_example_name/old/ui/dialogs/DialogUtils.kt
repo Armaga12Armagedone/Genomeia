@@ -7,6 +7,7 @@ import com.badlogic.gdx.utils.Scaling
 import com.kotcrab.vis.ui.widget.VisImageButton
 import com.kotcrab.vis.ui.widget.VisWindow
 import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.game.applyCustomFontLarge
 import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.ui.core.roundCorners
 
@@ -17,7 +18,7 @@ fun VisWindow.setupTitleSize(game: MyGame) {
 
     val d = Gdx.graphics.density
     val titleLabel = getTitleLabel()
-    game.applyCustomFontMedium(titleLabel)
+    game.applyCustomFontLarge(titleLabel)
 
     val titleTable = getTitleTable()
     titleTable.pad(5f * d)

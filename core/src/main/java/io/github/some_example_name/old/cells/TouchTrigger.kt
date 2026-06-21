@@ -5,6 +5,7 @@ import io.github.some_example_name.old.core.utils.genomeEditorColor
 class TouchTrigger(cellTypeId: Int): Cell(
     defaultColor = genomeEditorColor[6],
     cellTypeId = cellTypeId,
+    textureName = "TouchTrigger.png",
     isNeural = true,
     isNeuronTransportable = true,
     effectOnContact = true

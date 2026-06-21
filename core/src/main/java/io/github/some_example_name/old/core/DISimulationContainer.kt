@@ -109,7 +109,9 @@ object DISimulationContainer:  DIContext, Disposable {
         diContext = this,
         maxAmountOfParticles = 4
     )
-    private val cellListBuilder = CellListBuilder(this)
+    private val cellListBuilder = CellListBuilder().apply {
+        bindToDIContext(this@DISimulationContainer)
+    }
     val cellList = cellListBuilder.instances
     val zygote = cellListBuilder.zygote
 

@@ -6,6 +6,7 @@ import io.github.some_example_name.old.core.utils.whiteColors
 class Chameleon(cellTypeId: Int) : Cell(
     defaultColor = whiteColors[0],
     cellTypeId = cellTypeId,
+    textureName = "Chameleon.png",
     isNeural = true
 ) {
 

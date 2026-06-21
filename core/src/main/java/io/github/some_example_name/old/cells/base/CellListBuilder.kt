@@ -6,14 +6,12 @@ import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.WorldResizable
 import java.util.BitSet
 
-class CellListBuilder(
-    val context: DIContext
-): WorldResizable {
+class CellListBuilder: WorldResizable {
 
-    val visitedBits = Array(threadCount) { BitSet(context.gridManager.gridSize) }
+    lateinit var context: DIContext
 
     val zygote = Zygote(18)
-    val eye = Eye(14, visitedBits)
+    val eye = Eye(14)
 
     val instances = listOf(
         Leaf(0),
@@ -48,8 +46,13 @@ class CellListBuilder(
         eye.checkedObjectListId = Array(threadCount) { IntArray(16) { -1 } }
     }
 
-    init {
+    fun bindToDIContext(context: DIContext) {
+        this.context = context
         instances.forEach {
+            if (it is Eye) {
+                it.visitedBits = Array(threadCount) { BitSet(context.gridManager.gridSize) }
+                it.checkedObjectListId = Array(threadCount) { IntArray(16) { -1 } }
+            }
             it.context = context
         }
     }

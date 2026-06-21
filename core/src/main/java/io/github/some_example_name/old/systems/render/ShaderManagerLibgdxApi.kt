@@ -20,36 +20,7 @@ import java.nio.ByteBuffer
 
 var usePostProcess = true
 
-val texturePaths = arrayOf(
-    "leaf.png",                 //Leaf(0),
-    "fat.png",                  //Fat(1),
-    "bone.png",                 //Bone(2),
-    "tail.png",                 //Tail(3),
-    "neuron.png",               //Neuron(4),
-    "muscle.png",               //Muscle(5),
-    "sensor.png",               //Sensor(6),
-    "sucker.png",               //Sucker(7),
-    "Pumper.png",             //Mike(8),
-    "excreta.png",              //Excreta(9),
-    "SuctionCup.png",           //SuctionCup(10),
-    "sticky.png",               //Sticky(11),
-    "not_cell.png",               //Pumper(12),
-    "Chameleon.png",            //Chameleon(13),
-    "eye.png",                  //Eye(14),
-    "Compass.png",              //Compass(15),
-    "not_cell.png",             //Controller(16),
-    "TouchTrigger.png",         //TouchTrigger(17),
-    "zygote.png",               //Zygote(18),
-    "Producer.png",             //Producer(19),
-    "not_cell.png",             //Breakaway(20),
-    "not_cell.png",             //Vascular(21),
-    "PheromoneEmitter.png",     //PheromoneEmitter(22),
-    "PheromoneSensor.png",      //PheromoneSensor(23),
-    "punisher.png",             //Punisher(24)
-    "not_cell.png",              //Substance
-)
-
-class ShaderManagerLibgdxApi : ShaderManager {
+class ShaderManagerLibgdxApi(val texturePaths: List<String>) : ShaderManager {
     //TODO вернуть 2 SSBO для интерполяции
     private val ssbos = IntArray(/*2*/1)
     private var currentReadIndex = 0

@@ -1,11 +1,13 @@
 package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.commands.WorldCommandType
+import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.utils.blueColors
 
 class PheromoneEmitter(cellTypeId: Int) : Cell(
     defaultColor = blueColors[3],
     cellTypeId = cellTypeId,
+    textureName = "PheromoneEmitter.png",
     isNeural = true
 ) {
 

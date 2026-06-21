@@ -1,7 +1,6 @@
 package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.cells.base.activation
-import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.core.utils.skyBlueColors
 import java.util.BitSet
@@ -11,13 +10,17 @@ import kotlin.math.pow
 import kotlin.math.round
 import kotlin.math.sqrt
 
-class Eye(cellTypeId: Int, var visitedBits: Array<BitSet>): Cell(
+class Eye(cellTypeId: Int): Cell(
     defaultColor = skyBlueColors[2],
     cellTypeId = cellTypeId,
+    textureName = "eye.png",
     isNeural = true,
     isNeuronTransportable = false,
     isDirected = true
 ) {
+
+    lateinit var visitedBits: Array<BitSet>
+    lateinit var checkedObjectListId: Array<IntArray>
 
     override fun doOnTick(cellIndex: Int, threadId: Int) = with(cellEntity) {
         //TODO у глаза будет другая система с диапозоном
@@ -261,8 +264,5 @@ class Eye(cellTypeId: Int, var visitedBits: Array<BitSet>): Cell(
         val distSq = (closestX - cx).pow(2) + (closestY - cy).pow(2)
         return distSq <= r * r
     }
-
-
-    var checkedObjectListId = Array(threadCount) { IntArray(16) { -1 } }  // Увеличен размер для безопасности
 
 }
