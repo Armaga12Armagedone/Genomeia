@@ -10,6 +10,7 @@ import io.github.some_example_name.old.cells.Eye
 import io.github.some_example_name.old.core.utils.drawArrowWithRotationAngle
 import io.github.some_example_name.old.core.utils.drawTriangleMiddle
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.linkColor
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.previousCtrlClicked
 import io.github.some_example_name.old.editor.entities.CellReplay
@@ -33,7 +34,6 @@ class EditorRenderSystem(
     val shaderManager: ShaderManager,
     val cellReplay: CellReplay,
     val linkReplay: LinkReplay,
-    val editorLogicSystem: EditorLogicSystem,
     val cellEntity: CellEntity,
     val particleEntity: ParticleEntity,
     val editorSimulationSystem: EditorSimulationSystem,
@@ -110,7 +110,7 @@ class EditorRenderSystem(
     fun render(touchedCellX: Float, touchedCellY: Float) {
         if (isUpdateBuffer) {
             (buffer as Buffer).clear()
-            cellReplay.forEachInTick(DIGenomeEditorContainer.currentTick) { cellType, index, _, angleCos, angleSin, color ->
+            cellReplay.forEachInTick(currentTick) { cellType, index, _, angleCos, angleSin, color ->
                 putBuffer(
                     cos = angleCos,
                     sin = angleSin,
@@ -122,7 +122,7 @@ class EditorRenderSystem(
                 )
             }
 
-            val stage = DIGenomeEditorContainer.currentStage
+            val stage = currentTick
             val stageInstructions = editorSimulationSystem.genome.genomeStageInstruction
             if (stage < stageInstructions.size) {
                 val genomeStage = editorSimulationSystem.genome.genomeStageInstruction[stage]
@@ -260,7 +260,7 @@ class EditorRenderSystem(
             }
         }
 
-        cellReplay.forEachInTick(DIGenomeEditorContainer.currentTick) { cellType, index, _, angleCos, angleSin, _ ->
+        cellReplay.forEachInTick(currentTick) { cellType, index, _, angleCos, angleSin, _ ->
             if (DIGenomeEditorContainer.grabbedCellIndex != index) {
                 val cell = cellList[cellType.toInt()]
 

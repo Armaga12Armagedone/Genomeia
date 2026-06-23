@@ -1,6 +1,5 @@
 package io.github.some_example_name.old.ui.screens
 
-import ExampleScreen
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Screen
 import com.badlogic.gdx.graphics.Color
@@ -20,11 +19,9 @@ import com.badlogic.gdx.video.VideoPlayer
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
-import io.github.some_example_name.old.core.DIGameGlobalContainer.fileProvider
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
 import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
-import io.github.some_example_name.old.ui.core.STYLE_BEIGE
 import io.github.some_example_name.old.ui.core.STYLE_DARK
 import io.github.some_example_name.old.ui.core.makeStyledButton
 import io.github.some_example_name.old.ui.dialogs.GenomeListDialog
@@ -117,7 +114,7 @@ class MenuScreen: Screen {
                 game.screen = EcoSystemScreen()
             },
             Btn(bundle.get("label.support")) {
-                game.screen = VisSupportScreen()
+                game.screen = VisSupportSimpleScreen()
             },
             Btn(bundle.get("button.exit")) { Gdx.app.exit() }
         )

@@ -1,4 +1,4 @@
-package io.github.some_example_name.old.ui.screens
+package io.github.some_example_name.old.ui.core
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Screen
@@ -7,10 +7,8 @@ import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.kotcrab.vis.ui.widget.VisTable
-import io.github.some_example_name.old.ui.core.globalVisTable
-import io.github.some_example_name.old.ui.core.visScrollPane
 
-abstract class VisScreen(
+abstract class VisSimpleScreen(
     val background: Color = Color(0.04f, 0.04f, 0.06f, 1f),
     val isScrollable: Boolean = false
 ) : Screen {

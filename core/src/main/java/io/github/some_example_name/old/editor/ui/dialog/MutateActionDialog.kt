@@ -12,6 +12,8 @@ import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.color.ColorPickerAdapter
 import io.github.some_example_name.old.cells.base.formulaType
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellsTypeNames
 import io.github.some_example_name.old.core.color_picker.ColorPicker
 import io.github.some_example_name.old.core.utils.invSqrt
@@ -65,9 +67,7 @@ class MutateActionDialog(
     val eyeReplay: EyeReplay,
     val neuralReplay: NeuralReplay,
     val clickedIndex: Int,
-    val onMutate: (Action) -> Unit,
-    val game: MyGame,
-    val bundle: I18NBundle
+    val onMutate: (Action) -> Unit
 ) : VisDialog("${bundle.get("button.cellId")} ${clickedCell.id}") {
 
     private val colorOfCellFrom = Color().also {
@@ -275,7 +275,6 @@ class MutateActionDialog(
         scrollContentTable.add(description).align(Align.left).row()
 
         val colorPicker = ColorPicker(
-            game = game,
             title = bundle.get("button.chooseColorDialog"),
             listener = object : ColorPickerAdapter() {
                 override fun changed(newColor: Color) {

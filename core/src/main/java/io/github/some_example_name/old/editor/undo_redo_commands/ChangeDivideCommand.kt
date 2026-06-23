@@ -8,14 +8,14 @@ class ChangeDivideCommand(
     val clickedCell: EditorCell,
     val divide: Action,
     stageInstruction: MutableList<GenomeStage>,
-    currentStage: Int
+    currentTick: Int
 ) : UndoRedoCommand(
-    stage = currentStage,
+    tick = currentTick,
     genomeStageInstruction = stageInstruction
 ) {
 
     override fun execute() {
-        genomeStageInstruction[stage].cellActions.compute(clickedCell.parentId) { _, oldValue ->
+        genomeStageInstruction[tick].cellActions.compute(clickedCell.parentId) { _, oldValue ->
             oldValue?.copy(divide = oldValue.divide?.copy(
                 cellType = divide.cellType,
                 radius = divide.radius,

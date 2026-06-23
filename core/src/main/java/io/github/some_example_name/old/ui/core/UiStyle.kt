@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.Texture.TextureFilter
+import com.badlogic.gdx.graphics.g2d.Batch
 import com.badlogic.gdx.graphics.g2d.NinePatch
 import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.scenes.scene2d.Actor
@@ -331,6 +332,86 @@ fun makeCleanSelectBoxStyle(): SelectBox.SelectBoxStyle {
     style.scrollStyle = ScrollPane.ScrollPaneStyle(base.scrollStyle).apply {
         background = listBg
     }
+
+    return style
+}
+
+
+// === Левая стрелка для кнопки Home ===
+private fun createLeftArrowTextureRegion(): TextureRegion {
+    val sz = 64
+    val p = Pixmap(sz, sz, Pixmap.Format.RGBA8888)
+    p.blending = Pixmap.Blending.None
+    p.setColor(0f, 0f, 0f, 0f)
+    p.fill()
+
+    p.setColor(STYLE_BEIGE)
+
+    val cx = sz / 2f
+    val cy = sz / 2f
+    val headSize = 20f
+    val shaftThickness = 7f
+    val shaftLength = 22f
+
+    // Вертикальная черта (стержень стрелки)
+    p.fillRectangle(
+        (cx - shaftThickness / 2f).toInt(),
+        (cy - shaftLength / 2f).toInt(),
+        shaftThickness.toInt(),
+        shaftLength.toInt()
+    )
+
+    // Треугольник-остриё стрелки (влево)
+    val triangle = floatArrayOf(
+        cx - 6f, cy - headSize,           // верхняя точка
+        cx - 6f, cy + headSize,           // нижняя точка
+        cx - 6f - headSize, cy            // остриё слева
+    )
+    p.fillTriangle(
+        triangle[0].toInt(), triangle[1].toInt(),
+        triangle[2].toInt(), triangle[3].toInt(),
+        triangle[4].toInt(), triangle[5].toInt()
+    )
+
+    val tex = Texture(p)
+    tex.setFilter(TextureFilter.Linear, TextureFilter.Linear)
+    p.dispose()
+
+    return TextureRegion(tex)
+}
+
+class StyledLeftArrowButton : VisTextButton("", makeCleanButtonStyle()) {
+
+    companion object {
+        private val arrowRegion: TextureRegion by lazy {
+            createLeftArrowTextureRegion()
+        }
+        private const val ARROW_SIZE = 60f
+    }
+
+    override fun draw(batch: Batch, parentAlpha: Float) {
+        super.draw(batch, parentAlpha)
+
+        // Центрируем стрелку внутри кнопки
+        val arrowSize = ARROW_SIZE.dp()
+        val arrowX = x + (width - arrowSize) / 1.6f
+        val arrowY = y + (height - arrowSize) / 2f
+
+        batch.draw(arrowRegion, arrowX, arrowY, arrowSize, arrowSize)
+    }
+}
+
+/** Вспомогательная функция для создания чистого стиля кнопки (аналог makeCleanSelectBoxStyle) */
+private fun makeCleanButtonStyle(): VisTextButton.VisTextButtonStyle {
+    val style = VisTextButton.VisTextButtonStyle()
+    style.font = game.buttonFont          // или Fonts.button
+    style.fontColor = Color(STYLE_BEIGE)
+    style.overFontColor = Color.WHITE
+    style.downFontColor = Color.WHITE
+
+    style.up   = makeStyledNP(BTN_UP,  Color(STYLE_BEIGE).also { it.a = 0.75f }, mutableListOf())
+    style.over = makeStyledNP(BTN_OVR, Color(STYLE_BEIGE), mutableListOf())
+    style.down = makeStyledNP(BTN_DWN, Color.WHITE, mutableListOf())
 
     return style
 }

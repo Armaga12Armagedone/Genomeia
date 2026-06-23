@@ -14,6 +14,7 @@ import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisWindow
 import com.kotcrab.vis.ui.widget.color.ColorPickerListener
 import com.kotcrab.vis.ui.widget.color.ColorPickerStyle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.game.applyCustomFont
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
@@ -24,7 +25,6 @@ class ColorPicker(
     styleName: String = "default",
     title: String = "Color Picker",
     listener: ColorPickerListener? = null,
-    val game: MyGame,
     val colorInit: Color
 ) : VisWindow(title, VisUI.getSkin().get(styleName, ColorPickerStyle::class.java)), Disposable {
 

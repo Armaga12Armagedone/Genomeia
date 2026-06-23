@@ -16,9 +16,9 @@ class DivideCellCommand(
     val newPoint: Pair<Float, Float>,
     val doesNeedAddNewStage: Boolean,
     stageInstruction: MutableList<GenomeStage>,
-    currentStage: Int
+    currentTick: Int
 ) : UndoRedoCommand(
-    stage = currentStage,
+    tick = currentTick,
     genomeStageInstruction = stageInstruction
 ) {
 
@@ -47,7 +47,7 @@ class DivideCellCommand(
             physicalLink = physicalLink
         )
 
-        genomeStageInstruction[stage].cellActions.compute(clickedCell.id) { _, oldValue ->
+        genomeStageInstruction[tick].cellActions.compute(clickedCell.id) { _, oldValue ->
             oldValue?.copy(divide = divideAction) ?: CellAction(
                 divide = divideAction
             )

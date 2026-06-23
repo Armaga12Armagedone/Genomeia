@@ -119,14 +119,16 @@ fun VisTable.visTable(
  */
 fun VisTable.visLabel(
     text: String,
+    textColor: Color = STYLE_BEIGE,
+    align: Int = Align.left,
     cellInit: (Cell<VisLabel>.() -> Unit) = {}
 ): VisLabel {
     val label = VisLabel(text)
-    label.style = Label.LabelStyle(game.titleFont, Color(STYLE_BEIGE))
-    label.setAlignment(Align.left)
+    label.style = Label.LabelStyle(game.titleFont, textColor)
+    label.setAlignment(align)                    // ← вот это главное
+
     val cell = this.add(label) as Cell<VisLabel>
     cellInit(cell)
-
     return label
 }
 
@@ -147,6 +149,34 @@ fun VisTable.visTextButton(
             }
         })
     }
+    val cell = this.add(button) as Cell<VisTextButton>
+    cellInit(cell)
+    return button
+}
+
+/**
+ * Toggle-кнопка в стиле Jetpack Compose.
+ * Полностью использует твой makeStyledButton с toggle=true.
+ */
+fun VisTable.visToggleButton(
+    text: String,
+    checked: Boolean = false,
+    onCheckedChange: ((Boolean) -> Unit)? = null,
+    cellInit: (Cell<VisTextButton>.() -> Unit) = {}
+): VisTextButton {
+    val button = makeStyledButton(text, game, mutableListOf(), toggle = true)
+
+//    button.toggle = true          // ← вот так правильно (публичное поле Button)
+    button.isChecked = checked
+
+    if (onCheckedChange != null) {
+        button.addListener(object : ChangeListener() {
+            override fun changed(event: ChangeEvent?, actor: Actor?) {
+                onCheckedChange(button.isChecked)
+            }
+        })
+    }
+
     val cell = this.add(button) as Cell<VisTextButton>
     cellInit(cell)
     return button
@@ -414,3 +444,121 @@ fun VisTable.visSlider(
     return slider
 }
 
+
+fun VisTable.visLeftArrowButton(
+    onClick: (() -> Unit)? = null,
+    cellInit: (Cell<StyledLeftArrowButton>.() -> Unit) = {}
+): StyledLeftArrowButton {
+    val button = StyledLeftArrowButton()
+
+    if (onClick != null) {
+        button.addListener(object : ChangeListener() {
+            override fun changed(event: ChangeEvent?, actor: Actor?) {
+                onClick()
+            }
+        })
+    }
+
+    val cell = this.add(button) as Cell<StyledLeftArrowButton>
+    cellInit(cell)
+    return button
+}
+
+
+// ==================== visFlowRow (Flow / Wrap Row) ====================
+
+/**
+ * Выравнивание строк в visFlowRow.
+ */
+enum class FlowAlignment {
+    Start, Center, End
+}
+
+/**
+ * visFlowRow — горизонтальный контейнер с переносом элементов на новую строку.
+ * Полностью в стиле Jetpack Compose.
+ *
+ * Пример использования:
+ * visFlowRow(alignment = FlowAlignment.Center, horizontalSpacing = 12f.dp()) {
+ *     if (Gdx.app.type == Application.ApplicationType.Android) {
+ *         add(ctrlZ)
+ *         add(ctrlY)
+ *         add(ctrl)
+ *         add(rightClick)
+ *     }
+ * }
+ */
+fun VisTable.visFlowRow(
+    alignment: FlowAlignment = FlowAlignment.Start,
+    horizontalSpacing: Float = 8f.dp(),
+    verticalSpacing: Float = 8f.dp(),
+    maxWidth: Float = w,
+    content: VisTable.() -> Unit
+) {
+    // Выполняем лямбду на временной таблице, чтобы все visTextButton / visLeftArrowButton { ... } работали как обычно
+    val tempTable = VisTable(true)
+    tempTable.content()
+
+    // Забираем всех добавленных актёров
+    val actors = mutableListOf<Actor>()
+    tempTable.children.forEach { actors += it }
+    tempTable.clearChildren()
+
+    if (actors.isEmpty()) return
+
+    layoutFlowRow(this, actors, alignment, horizontalSpacing, verticalSpacing, maxWidth)
+}
+
+private fun layoutFlowRow(
+    container: VisTable,
+    actors: List<Actor>,
+    alignment: FlowAlignment,
+    hSpacing: Float,
+    vSpacing: Float,
+    maxW: Float
+) {
+    var currentRow = VisTable(true)
+    currentRow.defaults()
+        .padLeft(hSpacing)
+        .padRight(hSpacing)
+        .padTop(vSpacing * 0.5f)
+        .padBottom(vSpacing * 0.5f)
+
+    var currentWidth = 0f
+
+    for (actor in actors) {
+        val baseW = if (actor is com.badlogic.gdx.scenes.scene2d.ui.Widget) actor.prefWidth else actor.width
+        val prefW = baseW + hSpacing * 2f
+
+        if (currentWidth + prefW > maxW && currentWidth > 0f) {
+            addFlowRowToContainer(container, currentRow, alignment)
+            currentRow = VisTable(true)
+            currentRow.defaults()
+                .padLeft(hSpacing)
+                .padRight(hSpacing)
+                .padTop(vSpacing * 0.5f)
+                .padBottom(vSpacing * 0.5f)
+            currentWidth = 0f
+        }
+        currentRow.add(actor)
+        currentWidth += prefW
+    }
+
+    if (currentRow.hasChildren()) {
+        addFlowRowToContainer(container, currentRow, alignment)
+    }
+}
+
+private fun addFlowRowToContainer(
+    container: VisTable,
+    rowTable: VisTable,
+    alignment: FlowAlignment
+) {
+    val cell = container.add(rowTable) as Cell<VisTable>
+    when (alignment) {
+        FlowAlignment.Start  -> cell.left().growX()
+        FlowAlignment.Center -> cell.center().growX()
+        FlowAlignment.End    -> cell.right().growX()
+    }
+    container.row()
+}

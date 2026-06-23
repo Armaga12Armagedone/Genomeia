@@ -4,6 +4,7 @@ import io.github.some_example_name.old.systems.genomics.genome.Action
 
 data class EditorCell(
     val id: Int,
+    val index: Int,
     val parentIndex: Int,
     val parentId: Int,
     var x: Float,

@@ -15,6 +15,8 @@ import io.github.some_example_name.old.cells.NonWorkingCell1
 import io.github.some_example_name.old.cells.Eye
 import io.github.some_example_name.old.cells.PheromoneEmitter
 import io.github.some_example_name.old.cells.PheromoneSensor
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellList
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.core.color_picker.ColorPicker
@@ -30,9 +32,7 @@ class ChangeRemoveActionDialog(
     val clickedCell: EditorCell,
     var divide: Action,
     val onChange: (Action) -> Unit,
-    val onRemove: () -> Unit,
-    val game: MyGame,
-    val bundle: I18NBundle
+    val onRemove: () -> Unit
 ) : VisDialog("${bundle.get("button.cellId")} ${clickedCell.id}") {
 
     val scrollPane: ScrollPane
@@ -90,7 +90,6 @@ class ChangeRemoveActionDialog(
         }.also { scrollContentTable.add(it).padBottom(15f * density).size(200f * density, 35f * density).row() }
 
         val colorPicker = ColorPicker(
-            game = game,
             title = bundle.get("button.chooseColorDialog"),
             listener = object : ColorPickerAdapter() {
                 override fun changed(newColor: Color) {

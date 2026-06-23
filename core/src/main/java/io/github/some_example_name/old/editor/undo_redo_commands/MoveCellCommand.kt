@@ -13,10 +13,10 @@ class MoveCellCommand(
     val newNeighbours: List<EditorCell>,
     val newX: Float,
     val newY: Float,
-    currentStage: Int,
+    currentTick: Int,
     stageInstruction: MutableList<GenomeStage>
 ) : UndoRedoCommand(
-    stage = currentStage,
+    tick = currentTick,
     genomeStageInstruction = stageInstruction
 ) {
 

@@ -3,7 +3,7 @@ package io.github.some_example_name.old.editor.undo_redo_commands
 import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
 
 abstract class UndoRedoCommand(
-    val stage: Int,
+    val tick: Int,
     val genomeStageInstruction: MutableList<GenomeStage>,
 ) {
     //TODO копировать только одну стадию на которой происходит изменение, в RemoveCellCommand осторожно, так как там меняется куча стадий

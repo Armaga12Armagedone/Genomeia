@@ -8,27 +8,32 @@ import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
+import io.github.some_example_name.old.ui.core.VisSimpleScreen
 import io.github.some_example_name.old.ui.core.dp
 import io.github.some_example_name.old.ui.core.h
 import io.github.some_example_name.old.ui.core.repeat
 import io.github.some_example_name.old.ui.core.visImage
 import io.github.some_example_name.old.ui.core.visLabel
+import io.github.some_example_name.old.ui.core.visLeftArrowButton
 import io.github.some_example_name.old.ui.core.visTable
 import io.github.some_example_name.old.ui.core.visTextButton
 import io.github.some_example_name.old.ui.core.w
 
-class VisSupportScreen : VisScreen(isScrollable = true) {
+class VisSupportSimpleScreen : VisSimpleScreen(isScrollable = true) {
 
     private val qrTextures = mutableListOf<Texture>()
 
     override fun VisTable.compose() {
-        visTextButton(
-            text = bundle.get("label.backToMenu"),
-            onClick = { game.screen = MenuScreen() }
+
+        visLeftArrowButton(
+            onClick = {
+                game.screen = MenuScreen()
+            }
         ) {
             left()
             padTop(32.dp())
         }
+
         row()
 
         visLabel(bundle.get("label.support")) {

@@ -1,9 +1,8 @@
 package io.github.some_example_name.old.editor.system.logic
 
 import io.github.some_example_name.old.core.utils.invSqrt
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentStage
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastStage
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
 import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
@@ -24,8 +23,8 @@ class ToEditorDataMapper(
         val isPhantom = currentCellIndex == null
         val parentIndex = if (index != 0) { cellEntity.parentIndex[index] } else -1
         val parentId = if (index != 0) { cellEntity.cellGenomeId[parentIndex] } else -1
-        val action = if (currentStage != lastStage){
-            editorSimulationSystem.genome.genomeStageInstruction[currentStage]
+        val action = if (currentTick != lastTick){
+            editorSimulationSystem.genome.genomeStageInstruction[currentTick]
                 .cellActions[if (isPhantom) parentId else id]
         } else null
 
@@ -42,6 +41,7 @@ class ToEditorDataMapper(
 
         return EditorCell(
             id = id,
+            index = index,
             parentIndex = parentIndex,
             parentId = parentId,
             x = particleEntity.x[index],

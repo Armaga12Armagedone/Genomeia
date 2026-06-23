@@ -11,6 +11,8 @@ import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisLabel
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.simulationSystem
 import io.github.some_example_name.old.systems.genomics.genome.Genome
@@ -26,8 +28,6 @@ class SaveGenomeDialog(
     val genome: Genome,
     val onSaveAndTest: (String) -> Unit,
     val onGoMenu: () -> Unit,
-    val game: MyGame,
-    val bundle: I18NBundle,
     isGoToMenu: Boolean
 ) : VisDialog(bundle.get("button.saveGenome")) {
 

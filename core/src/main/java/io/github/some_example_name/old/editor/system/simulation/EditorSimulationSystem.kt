@@ -32,8 +32,6 @@ class EditorSimulationSystem(
 
     val baseOrganIndex = 0
     var genome = genomeManager.genomes[0]
-    var tickByStage = IntArray(0)
-    var stageByTick = StageTimelineBinarySearch(tickByStage)
     var mapCellGenomeIdToIndex = Int2IntOpenHashMap().apply { defaultReturnValue(-1) }
 
     var maxCellId = 0
@@ -77,29 +75,16 @@ class EditorSimulationSystem(
         userCommandManager.processingCommandsFromUser()
         worldCommandsManager.mapCellGenomeIdToIndex.put(0, 0)
 
-        val stagesAmount = genome.genomeStageInstruction.size
-        var stageCounter = 1
-        tickByStage = IntArray(stagesAmount + 1)
-
         replays.forEach { it.reset() }
 
         for (tick in 0..TIME_SIMULATION) {
             updateTick()
             replays.forEach { it.copy() }
 
-            if (organEntity.alreadyGrownUp[baseOrganIndex]) {
-                tickByStage[stageCounter] = tick
-                break
-            }
+            if (organEntity.alreadyGrownUp[baseOrganIndex]) break
 
-            if (organEntity.justChangedStage[baseOrganIndex]) {
-                tickByStage[stageCounter] = tick
-                stageCounter++
-            }
             if (tick == TIME_SIMULATION) throw Exception("Too long simulation!")
         }
-
-        stageByTick = StageTimelineBinarySearch(tickByStage)
 
         mapCellGenomeIdToIndex.putAll(worldCommandsManager.mapCellGenomeIdToIndex)
     }

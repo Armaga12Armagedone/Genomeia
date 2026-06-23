@@ -3,28 +3,24 @@ package io.github.some_example_name.old.editor.system.logic
 import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.OrthographicCamera
-import com.badlogic.gdx.scenes.scene2d.Stage
-import io.github.some_example_name.old.core.utils.setMinMaxDistForChildCellToParent
 import io.github.some_example_name.old.editor.system.command.CommandEditorStackManager
-import io.github.some_example_name.old.editor.undo_redo_commands.MoveCellCommand
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentStage
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.grabbedCellIndex
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isDruggingCamera
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isRightClick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastGrabbedCellX
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastGrabbedCellY
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastStage
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.uiScreenCommands
 import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.system.CellSearchManager
 import io.github.some_example_name.old.editor.system.control.LeftRightClickManager
+import io.github.some_example_name.old.editor.system.control.TryActionManager
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
-import io.github.some_example_name.old.editor.system.SymmetryManager
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.physics.GridManager
-import io.github.some_example_name.old.game.MyGame
 import kotlin.system.measureNanoTime
 
 class EditorLogicSystem(
@@ -34,31 +30,24 @@ class EditorLogicSystem(
     val cellEntity: CellEntity,
     val particleEntity: ParticleEntity,
     val linkEntity: LinkEntity,
-    val symmetryManager: SymmetryManager,
     val gridManager: GridManager,
     val cellSearchManager: CellSearchManager,
     val toEditorDataMapper: ToEditorDataMapper,
-    val leftRightClickManager: LeftRightClickManager
+    val leftRightClickManager: LeftRightClickManager,
+    val moveCellManager: MoveCellManager,
+    val tryActionManager: TryActionManager
 ): RestartSimulationCallBack {
 
-    private var isDruggingCamera = false
     private lateinit var camera: OrthographicCamera
-    private lateinit var game: MyGame
-    private var stage: Stage? = null
 
     init {
         commandEditorStackManager.bind(this)
     }
 
     fun bindToScreen(
-        camera: OrthographicCamera,
-        game: MyGame,
-        stage: Stage
+        camera: OrthographicCamera
     ) {
         this.camera = camera
-        this.game = game
-        this.stage = stage
-        leftRightClickManager.bindToScreen(camera, game, stage)
     }
 
     override fun restartSimulation() {
@@ -67,11 +56,7 @@ class EditorLogicSystem(
         }
         println("simulate: ${nanoTime / 1_000_000.0} ms")
         lastTick = cellReplay.getTickCount() - 1
-        lastStage = editorSimulationSystem.genome.genomeStageInstruction.size
-        if (lastTick < currentTick) {
-            currentTick = lastTick
-            currentStage = editorSimulationSystem.stageByTick.getStage(currentTick)
-        }
+        if (lastTick < currentTick) currentTick = lastTick
     }
 
     fun putUiCommand(command: UiEditorCommands) {
@@ -105,118 +90,24 @@ class EditorLogicSystem(
                         camera.translate(command.deltaX, command.deltaY, 0f)
                     }
                 } else {
-                    val parentIndex = cellEntity.parentIndex[grabbedCellIndex]
-                    val parentCellX = particleEntity.x[parentIndex]
-                    val parentCellY = particleEntity.y[parentIndex]
-
-                    val (finalX, finalY) = setMinMaxDistForChildCellToParent(
-                        command.x,
-                        command.y,
-                        parentCellX,
-                        parentCellY
-                    )
-
-                    particleEntity.x[grabbedCellIndex] = finalX
-                    particleEntity.y[grabbedCellIndex] = finalY
+                    moveCellManager.movingCell(command)
                 }
             }
 
             FlingScreen -> {
                 if (grabbedCellIndex != -1) {
-                    val genomeStageInstruction = editorSimulationSystem.genome.genomeStageInstruction
-
-                    val grabbedEditorCell = toEditorDataMapper.mapToEditorData(grabbedCellIndex)
-
-                    val (x, y) = symmetryManager.snapPosition(
-                        particleEntity.x[grabbedCellIndex],
-                        particleEntity.y[grabbedCellIndex],
-                        cellIndex = grabbedCellIndex
-                    )
-
-                    particleEntity.x[grabbedCellIndex] = x
-                    particleEntity.y[grabbedCellIndex] = y
-
-                    val newX = particleEntity.x[grabbedCellIndex]
-                    val newY = particleEntity.y[grabbedCellIndex]
-                    val parentIndex = cellEntity.parentIndex[grabbedCellIndex]
-
-                    val oldNeighboursIds = cellSearchManager.getAllCloseNeighboursEditor(
-                        lastGrabbedCellX,
-                        lastGrabbedCellY,
-                        grabbedRadius = particleEntity.radius[grabbedCellIndex],
-                        grabbedCellIndex,
-                    )
-                    val oldNeighboursJustAdded = oldNeighboursIds.map { id ->
-                        toEditorDataMapper.mapToEditorData(id)
-                    }
-
-                    val newNeighboursIds = cellSearchManager.getAllCloseNeighboursEditor(
-                        newX,
-                        newY,
-                        grabbedRadius = particleEntity.radius[grabbedCellIndex],
-                        grabbedCellIndex
-                    )
-
-                    val newNeighbours = newNeighboursIds.map { id ->
-                        toEditorDataMapper.mapToEditorData(id)
-                    }
-
-                    commandEditorStackManager.executeCommand(MoveCellCommand(
-                        grabbedEditorCell = grabbedEditorCell,
-                        parentEditorCell = toEditorDataMapper.mapToEditorData(parentIndex),
-                        oldNeighboursJustAdded = oldNeighboursJustAdded,
-                        newNeighbours = newNeighbours,
-                        newX = newX,
-                        newY = newY,
-                        currentStage = currentStage,
-                        stageInstruction = genomeStageInstruction
-                    ))
-
+                    moveCellManager.cellMoved()
                 }
+
                 grabbedCellIndex = -1
                 lastGrabbedCellX = -1.0f
                 lastGrabbedCellY = -1.0f
                 isDruggingCamera = false
             }
 
-            NextTickButtonTap -> {
-                if (currentTick < cellReplay.getTickCount() - 1) {
-                    currentTick++
-                    currentStage = editorSimulationSystem.stageByTick.getStage(currentTick)
-                }
-            }
+            NextTickButtonTap -> if (currentTick < lastTick) currentTick++
 
-            PrevStageButtonTap -> {
-                if (currentStage > 0) {
-                    currentStage--
-                    currentTick = editorSimulationSystem.tickByStage[currentStage]
-                }
-            }
-
-            PrevTickButtonTap -> {
-                if (currentTick > 0) {
-                    currentTick--
-                    currentStage = editorSimulationSystem.stageByTick.getStage(currentTick)
-                }
-            }
-
-            NextStageButtonTap -> {
-                if (currentStage < editorSimulationSystem.tickByStage.size - 1) {
-                    currentStage++
-                    currentTick = editorSimulationSystem.tickByStage[currentStage]
-                }
-            }
-
-            is NextTickButtonClamped -> {
-                if (command.isFinish) {
-                    // Завершение долгого нажатия
-                } else {
-                    if (currentTick < cellReplay.getTickCount() - 1) {
-                        currentTick++
-                        currentStage = editorSimulationSystem.stageByTick.getStage(currentTick)
-                    }
-                }
-            }
+            PrevTickButtonTap -> if (currentTick > 0) currentTick--
 
             is TapScreen -> {
                 cellSearchManager.getClickedCellIndex(
@@ -226,24 +117,13 @@ class EditorLogicSystem(
                     val clickedIndex = it.first
                     val clickedCell = toEditorDataMapper.mapToEditorData(clickedIndex)
                     grabbedCellIndex = -1
-                    if (Gdx.app.type == Application.ApplicationType.Desktop) {
-                        if (command.isLeft) {
-                            leftRightClickManager.leftClick(clickedIndex, clickedCell, command.isCtrl)
-                        } else {
-                            if (!command.isCtrl) {
-                                leftRightClickManager.rightClick(clickedIndex, clickedCell)
-                            }
-                        }
-                    } else {
-                        if (!command.isCtrl) {
-                            if (isRightClick) {
-                                leftRightClickManager.rightClick(clickedIndex, clickedCell)
-                            } else {
-                                leftRightClickManager.leftClick(clickedIndex, clickedCell, false)
-                            }
-                        } else {
-                            leftRightClickManager.leftClick(clickedIndex, clickedCell, true)
-                        }
+                    val isDesktop = Gdx.app.type == Application.ApplicationType.Desktop
+
+                    val isLeftClick = if (isDesktop) command.isLeft else command.isCtrl || !isRightClick
+
+                    when {
+                        isLeftClick -> leftRightClickManager.leftClick(clickedIndex, clickedCell, command.isCtrl)
+                        !command.isCtrl -> leftRightClickManager.rightClick(clickedIndex, clickedCell)
                     }
                 }
 
@@ -253,23 +133,36 @@ class EditorLogicSystem(
                 isDruggingCamera = false
             }
 
-            GoToEndOfTimeLine -> {
-                currentTick = cellReplay.tickStartIndices.size - 1
-                currentStage = editorSimulationSystem.stageByTick.getStage(currentTick)
-            }
+            GoToEndOfTimeLine -> currentTick = lastTick
 
-            is TimeSlider -> {
-                currentTick = command.value
-                if (command.isDragging) {
-                    currentTick = command.value
-                    currentStage = editorSimulationSystem.stageByTick.getStage(currentTick)
-                }
-            }
+            GoToStartOfTimeLine -> currentTick = 0
+
+            is TimeSlider -> currentTick = command.value
+
+            is DivideDialog -> uiScreenCommands = ShowDivideDialog(
+                clickedCell = command.clickedCell,
+                newDividedCellPosition = command.newDividedCellPosition
+            )
+            is MutateDialog -> uiScreenCommands = ShowMutateDialog(
+                clickedCell = command.clickedCell,
+                parentCell = command.parentCell,
+                currentTick = command.currentTick,
+            )
+
+            is TryToChange -> tryActionManager.tryToChange(
+                clickedIndex = command.clickedCellIndex,
+                divide = command.divide
+            )
+            is TryToDivide -> tryActionManager.tryToDivide(
+                clickedCellIndex = command.clickedCellIndex,
+                newDividedCellPosition = command.newDividedCellPosition,
+                action = command.divide
+            )
+            is TryToMutate -> tryActionManager.tryToMutate(
+                clickedCellIndex = command.clickedCellIndex,
+                action = command.mutate
+            )
+            is TryToRemove -> tryActionManager.tryToRemove(clickedCellIndex = command.clickedCellIndex)
         }
     }
-
-    fun dispose() {
-        stage = null
-    }
-
 }

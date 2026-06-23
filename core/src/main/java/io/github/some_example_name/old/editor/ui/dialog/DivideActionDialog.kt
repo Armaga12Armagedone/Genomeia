@@ -5,31 +5,28 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
-import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.color.ColorPickerAdapter
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.core.color_picker.ColorPicker
 import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.systems.genomics.genome.SpecialData
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
-import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
 import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.ui.screens.valueChanged
 import kotlin.math.PI
 import kotlin.math.atan2
 
-
 class DivideActionDialog(
     val clickedCell: EditorCell,
     val newDividedCellPosition: Pair<Float, Float>,
-    val onDivide: (Action) -> Unit,
-    val game: MyGame,
-    val bundle: I18NBundle
+    val onDivide: (Action) -> Unit
 ) : VisDialog("${bundle.get("button.cellId")} ${clickedCell.id}") {
 
     private var colorOfCell = getCellColor(0).cpy()
@@ -94,7 +91,6 @@ class DivideActionDialog(
         scrollContentTable.add(previewTable).row()
 
         val colorPicker = ColorPicker(
-            game = game,
             title = bundle.get("button.chooseColorDialog"),
             listener = object : ColorPickerAdapter() {
                 override fun changed(newColor: Color) {

@@ -18,7 +18,10 @@ import io.github.some_example_name.old.editor.system.logic.EditorLogicSystem
 import io.github.some_example_name.old.editor.system.render.EditorRenderSystem
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
 import io.github.some_example_name.old.editor.system.SymmetryManager
+import io.github.some_example_name.old.editor.system.control.TryActionManager
+import io.github.some_example_name.old.editor.system.logic.MoveCellManager
 import io.github.some_example_name.old.editor.system.logic.ToEditorDataMapper
+import io.github.some_example_name.old.editor.system.logic.UiScreenCommands
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.EyeEntity
 import io.github.some_example_name.old.entities.LinkEntity
@@ -49,12 +52,11 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     override var totalChunks = 1
 
     override var currentTick = 0
-    override var currentStage = 0
     override var lastTick = 0
-    override var lastStage = 0
     override var grabbedCellIndex = -1
     override var lastGrabbedCellX = 0.0f
     override var lastGrabbedCellY = 0.0f
+    override var isDruggingCamera = false
     override var isRightClick = false
     var previousCtrlClicked = -1
     var linkColor: Color = Color.CYAN
@@ -278,8 +280,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         userCommandManager = userCommandManager
     )
 
-    val nextStageTick
-        get() = editorSimulationSystem.tickByStage[(currentStage + 1).coerceIn(0, lastStage)]
+    val nextStageTick get() = (currentTick + 1).coerceIn(0, lastTick)
 
     val commandEditorStackManager = CommandEditorStackManager()
 
@@ -302,15 +303,34 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         cellSearchManager = cellSearchManager
     )
 
+    val tryActionManager = TryActionManager(
+        commandEditorStackManager = commandEditorStackManager,
+        editorSimulationSystem = editorSimulationSystem,
+        cellEntity = cellEntity,
+        linkEntity = linkEntity,
+        cellSearchManager = cellSearchManager,
+        toEditorDataMapper = toEditorDataMapper,
+    )
+
     val leftRightClickManager = LeftRightClickManager(
         commandEditorStackManager = commandEditorStackManager,
         editorSimulationSystem = editorSimulationSystem,
-        cellReplay = cellReplay,
         linkReplay = linkReplay,
-        eyeReplay = eyeReplay,
-        neuralReplay = neuralReplay,
         cellEntity = cellEntity,
         linkEntity = linkEntity,
+        symmetryManager = symmetryManager,
+        cellSearchManager = cellSearchManager,
+        toEditorDataMapper = toEditorDataMapper,
+        tryActionManager = tryActionManager
+    )
+
+    var uiScreenCommands: UiScreenCommands? = null
+
+    val moveCellManager = MoveCellManager(
+        commandEditorStackManager = commandEditorStackManager,
+        editorSimulationSystem = editorSimulationSystem,
+        cellEntity = cellEntity,
+        particleEntity = particleEntity,
         symmetryManager = symmetryManager,
         cellSearchManager = cellSearchManager,
         toEditorDataMapper = toEditorDataMapper
@@ -323,18 +343,18 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         cellEntity = cellEntity,
         particleEntity = particleEntity,
         linkEntity = linkEntity,
-        symmetryManager = symmetryManager,
         gridManager = gridManager,
         cellSearchManager = cellSearchManager,
         toEditorDataMapper = toEditorDataMapper,
-        leftRightClickManager = leftRightClickManager
+        leftRightClickManager = leftRightClickManager,
+        moveCellManager = moveCellManager,
+        tryActionManager = tryActionManager
     )
 
     val editorRenderSystem = EditorRenderSystem(
         shaderManager = DIGameGlobalContainer.shaderManager,
         cellReplay = cellReplay,
         linkReplay = linkReplay,
-        editorLogicSystem = editorLogicSystem,
         cellEntity = cellEntity,
         particleEntity = particleEntity,
         editorSimulationSystem = editorSimulationSystem,

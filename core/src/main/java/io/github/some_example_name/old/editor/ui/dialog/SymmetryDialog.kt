@@ -8,6 +8,8 @@ import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisRadioButton
 import com.kotcrab.vis.ui.widget.VisTable
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.system.Axial
 import io.github.some_example_name.old.editor.system.NoSymmetry
 import io.github.some_example_name.old.editor.system.SquareGrid
@@ -19,8 +21,6 @@ import io.github.some_example_name.old.game.applyCustomFont
 import io.github.some_example_name.old.ui.core.makeStyledButton
 
 class SymmetryDialog(
-    val game: MyGame,
-    val bundle: I18NBundle,
     val symmetryManager: SymmetryManager
 ) : VisDialog(bundle.get("dialog.select_symmetry") ?: "Select symmetry") {
 

@@ -3,6 +3,8 @@ package io.github.some_example_name.old.editor.ui.dialog
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
@@ -11,8 +13,6 @@ class MutateOrDivideDialog(
     val clickedCell: EditorCell,
     val onDivide: () -> Unit,
     val onMutate: () -> Unit,
-    val game: MyGame,
-    val bundle: I18NBundle
 ) : VisDialog("${bundle.get("button.cellId")} ${clickedCell.id}") {
 
     init {

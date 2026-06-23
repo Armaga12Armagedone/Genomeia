@@ -25,10 +25,17 @@ import io.github.some_example_name.old.core.DISimulationContainer.genomeManager
 import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
 import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
 import io.github.some_example_name.old.core.FileProvider
+import io.github.some_example_name.old.editor.system.logic.FlingScreen
+import io.github.some_example_name.old.editor.system.logic.PanScreen
+import io.github.some_example_name.old.editor.system.logic.TapScreen
+import io.github.some_example_name.old.editor.system.logic.TouchDown
 import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
 import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.systems.render.usePostProcess
+import io.github.some_example_name.old.ui.core.CameraControl
+import io.github.some_example_name.old.ui.core.h
 import io.github.some_example_name.old.ui.core.makeStyledButton
+import io.github.some_example_name.old.ui.core.w
 import io.github.some_example_name.old.ui.dialogs.GenomeListDialog
 import io.github.some_example_name.old.ui.dialogs.SpeedUpDialog
 
@@ -37,14 +44,48 @@ var isRenderUi = true
 class SimulationScreen(
     val map: Array<BooleanArray>?,
     val genomeName: String?
-) : Screen, GestureDetector.GestureListener {
+) : Screen {
 
     private val simEntity = DISimulationContainer.simulationData
     private val simulationSystem = DISimulationContainer.simulationSystem
     private val renderSystem = DISimulationContainer.renderSystem
     private val userCommandManager = DISimulationContainer.userCommandManager
 
-    private lateinit var camera: OrthographicCamera
+    private val camera = OrthographicCamera().apply { setToOrtho(false, w, h) }
+
+    val cameraControl = CameraControl(
+        camera = camera,
+        zoom = 0.08f,
+        positionX = gridWidth / 2f,
+        positionY = gridHeight / 2f,
+        onTouchDown = { x, y, isLeft ->
+            if (isLeft) {
+                userCommandManager.push(PlayerCommand.TouchDown(x, y, isLeftButton = true))
+            } else {
+                userCommandManager.push(PlayerCommand.TouchDown(x, y, isLeftButton = false))
+            }
+        },
+        onTap = { x, y, isLeft ->
+            if (isLeft) {
+                userCommandManager.push(PlayerCommand.Tap(x, y, isLeftButton = putOrgs))
+            } else {
+                userCommandManager.push(PlayerCommand.Tap(x, y, isLeftButton = !putOrgs))
+            }
+        },
+        onFling = {
+            userCommandManager.push(PlayerCommand.StopDrag)
+        },
+        onPan = { x, y, dx, dy ->
+            if (userCommandManager.grabbedParticleIndex != -1) {
+                userCommandManager.push(
+                    PlayerCommand.Drag(x, y, dx, dy)
+                )
+            } else {
+                renderSystem.moveCamera(dx, dy)
+            }
+        }
+    )
+
     private lateinit var spriteBatch: SpriteBatch
     private lateinit var font: BitmapFont
     private lateinit var stage: Stage
@@ -61,54 +102,13 @@ class SimulationScreen(
     var onResize: (() -> Unit)? = null
     private val extraTextures = mutableListOf<Texture>()
 
-    private var initialZoom = 0f
-    private var currentPinchCenter: Vector2? = null
-
-
     override fun show() {
         spriteBatch = SpriteBatch()
         stage = Stage(ScreenViewport())
         fontMatrix = Matrix4()
         shapeRenderer = ShapeRenderer()
 
-        val screenPos = Vector3()
-        val worldBefore = Vector3()
-        val worldAfter = Vector3()
-        val multiplexer = InputMultiplexer()
-        val playGroundProcessor = object : InputAdapter() {
-            override fun scrolled(amountX: Float, amountY: Float): Boolean {
-
-                screenPos.set(Gdx.input.x.toFloat(), Gdx.input.y.toFloat(), 0f)
-
-                camera.unproject(worldBefore.set(screenPos))
-
-                val zoomFactor = if (amountY > 0) 1.05f else 0.95f
-                val newZoom = MathUtils.clamp(camera.zoom * zoomFactor, 0.001f, 1000f)
-
-                camera.zoom = newZoom
-                camera.update()
-
-                camera.unproject(worldAfter.set(screenPos))
-
-                camera.position.sub(worldAfter.x - worldBefore.x, worldAfter.y - worldBefore.y, 0f)
-
-                camera.update()
-                return true
-            }
-        }
-        multiplexer.addProcessor(playGroundProcessor)
-        multiplexer.addProcessor(stage)
-        val gestureDetector = GestureDetector(this)
-        multiplexer.addProcessor(gestureDetector)
-        Gdx.input.inputProcessor = multiplexer
-
-        camera = OrthographicCamera().apply {
-            setToOrtho(
-                false,
-                Gdx.graphics.width.toFloat(),
-                Gdx.graphics.height.toFloat()
-            )
-        }
+        Gdx.input.inputProcessor = cameraControl.getInputMultiplexer(stage)
 
         font = BitmapFont()
         // Масштабируем шрифт симуляционной информации под DPI (density)
@@ -136,12 +136,6 @@ class SimulationScreen(
         )
 
         DISimulationContainer.simulationSystem.initWorld(map)
-
-        camera.zoom = 0.08f
-        camera.position.x = gridWidth / 2f
-        camera.position.y = gridHeight / 2f
-//        camera.rotate(90f)
-        camera.update()
     }
 
     val keyCodes = intArrayOf(
@@ -229,114 +223,6 @@ class SimulationScreen(
     }
 
     override fun hide() { }
-
-    override fun pan(x: Float, y: Float, deltaX: Float, deltaY: Float): Boolean {
-        val dx = -deltaX * camera.zoom
-        val dy = deltaY * camera.zoom
-        val angle = -0/*90*/ * MathUtils.degreesToRadians
-        val cos = MathUtils.cos(angle)
-        val sin = MathUtils.sin(angle)
-
-        val worldDx = dx * cos - dy * sin
-        val worldDy = dx * sin + dy * cos
-        //TODO есть подозрения что это вызывает краш cuncurent изменений
-        if (userCommandManager.grabbedParticleIndex != -1) {
-            val world = screenToWorld(x, y)
-            userCommandManager.push(
-                PlayerCommand.Drag(
-                    world.first,
-                    world.second,
-                    worldDx,
-                    worldDy
-                )
-            )
-        } else {
-            renderSystem.moveCamera(worldDx, worldDy)
-        }
-        return true
-    }
-
-    override fun zoom(initialDistance: Float, distance: Float): Boolean {
-        if (currentPinchCenter == null) return false
-        val centerX = currentPinchCenter!!.x
-        val centerY = currentPinchCenter!!.y
-        val screenPos = Vector3(centerX, centerY, 0f)
-        val worldBefore = camera.unproject(screenPos.cpy())
-        val ratio = initialDistance / distance
-        camera.zoom = initialZoom * ratio
-        camera.zoom = MathUtils.clamp(camera.zoom, 0.001f, 1000f)
-        camera.update()
-        val worldAfter = camera.unproject(screenPos.cpy())
-        camera.position.add(worldBefore.x - worldAfter.x, worldBefore.y - worldAfter.y, 0f)
-        return true
-    }
-
-    override fun pinch(
-        initialPointer1: Vector2?,
-        initialPointer2: Vector2?,
-        pointer1: Vector2?,
-        pointer2: Vector2?
-    ): Boolean {
-        if (initialPointer1 != null && initialPointer2 != null && currentPinchCenter == null) {
-            initialZoom = camera.zoom
-        }
-        if (pointer1 == null || pointer2 == null) {
-            currentPinchCenter = null
-            return false
-        }
-        currentPinchCenter = pointer1.cpy().add(pointer2).scl(0.5f)
-        return false
-    }
-
-    override fun pinchStop() {
-        currentPinchCenter = null
-        initialZoom = 0f
-    }
-
-    override fun tap(x: Float, y: Float, count: Int, button: Int): Boolean {
-        val world = screenToWorld(x, y)
-
-        when (button) {
-            Input.Buttons.LEFT -> {
-                userCommandManager.push(PlayerCommand.Tap(world.first, world.second, isLeftButton = putOrgs))
-            }
-            Input.Buttons.RIGHT -> {
-                userCommandManager.push(PlayerCommand.Tap(world.first, world.second, isLeftButton = !putOrgs))
-            }
-        }
-
-        return true
-    }
-
-    private fun screenToWorld(screenX: Float, screenY: Float): Pair<Float, Float> {
-        val screenPos = Vector3(screenX, screenY, 0f)
-        val worldPos = camera.unproject(screenPos)
-        return Pair(worldPos.x, worldPos.y)
-    }
-
-    override fun longPress(x: Float, y: Float) = false
-    override fun fling(dx: Float, dy: Float, button: Int): Boolean {
-        userCommandManager.push(PlayerCommand.StopDrag)
-        return true
-    }
-    override fun panStop(x: Float, y: Float, pointer: Int, button: Int): Boolean {
-        return true
-    }
-
-    override fun touchDown(x: Float, y: Float, pointer: Int, button: Int): Boolean {
-        val world = screenToWorld(x, y)
-
-        when (button) {
-            Input.Buttons.LEFT -> {
-                userCommandManager.push(PlayerCommand.TouchDown(world.first, world.second, isLeftButton = true))
-            }
-            Input.Buttons.RIGHT -> {
-                userCommandManager.push(PlayerCommand.TouchDown(world.first, world.second, isLeftButton = false))
-            }
-        }
-
-        return true
-    }
 
     override fun dispose() {
         renderSystem.dispose()

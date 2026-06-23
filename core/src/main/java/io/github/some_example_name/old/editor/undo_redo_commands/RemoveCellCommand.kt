@@ -7,15 +7,15 @@ class RemoveCellCommand(
     val clickedCell: EditorCell,
     val parentCell: EditorCell,
     stageInstruction: MutableList<GenomeStage>,
-    currentStage: Int
+    currentTick: Int
 ) : UndoRedoCommand(
-    stage = currentStage,
+    tick = currentTick,
     genomeStageInstruction = stageInstruction
 ) {
 
     override fun execute() {
         val clickedCellDivideId = parentCell.divide?.id ?: return
-        removeIfMutateNull(parentCell.id, stage)
+        removeIfMutateNull(parentCell.id, tick)
 
         val deleteCellsIdList = mutableListOf<Int>()
         deleteCellsIdList.add(clickedCellDivideId)
@@ -23,7 +23,7 @@ class RemoveCellCommand(
         val deleteEmptyStageLists = mutableListOf<Int>()
 
         val addDeleteCellsIdList = mutableListOf<Int>()
-        for (stage in stage + 1 until genomeStageInstruction.size ) {
+        for (stage in tick + 1 until genomeStageInstruction.size ) {
             deleteCellsIdList.forEach {
                 genomeStageInstruction[stage].cellActions.compute(it) { _, current ->
                     if (current == null) return@compute null
@@ -55,8 +55,8 @@ class RemoveCellCommand(
         }
     }
 
-    fun removeIfMutateNull(cellId: Int, currentStage: Int) {
-        genomeStageInstruction[currentStage].cellActions.compute(cellId) { _, current ->
+    fun removeIfMutateNull(cellId: Int, currentTick: Int) {
+        genomeStageInstruction[currentTick].cellActions.compute(cellId) { _, current ->
             if (current == null) return@compute null
             current.divide = null
             if (current.mutate == null) null else current

@@ -20,9 +20,9 @@ class AddNeuralLinkCommand(
     val cellAId: Int,
     val cellBId: Int,
     stageInstruction: MutableList<GenomeStage>,
-    currentStage: Int
+    currentTick: Int
 ) : UndoRedoCommand(
-    stage = currentStage,
+    tick = currentTick,
     genomeStageInstruction = stageInstruction
 ) {
 
@@ -145,7 +145,7 @@ class AddNeuralLinkCommand(
 
                 val mutate = Action(physicalLink = hashMapOf(otherCellId to linkData))
 
-                genomeStageInstruction[stage].cellActions.compute(parentCell) { _, current ->
+                genomeStageInstruction[tick].cellActions.compute(parentCell) { _, current ->
                     return@compute when {
                         current == null -> {
                             CellAction(mutate = mutate)
@@ -183,7 +183,7 @@ class AddNeuralLinkCommand(
                     }
                 }
 
-                if (genomeStageInstruction[stage].cellActions.isEmpty()) {
+                if (genomeStageInstruction[tick].cellActions.isEmpty()) {
                     genomeStageInstruction.removeAt(genomeStageInstruction.lastIndex)
                 }
             }

@@ -10,9 +10,9 @@ class MutateCellCommand(
     val clickedCell: EditorCell,
     val doesNeedAddNewStage: Boolean,
     stageInstruction: MutableList<GenomeStage>,
-    currentStage: Int
+    currentTick: Int
 ) : UndoRedoCommand(
-    stage = currentStage,
+    tick = currentTick,
     genomeStageInstruction = stageInstruction
 ) {
 
@@ -21,7 +21,7 @@ class MutateCellCommand(
             genomeStageInstruction.add(GenomeStage())
         }
 
-        genomeStageInstruction[stage].cellActions.compute(clickedCell.id) { _, oldValue ->
+        genomeStageInstruction[tick].cellActions.compute(clickedCell.id) { _, oldValue ->
             if (oldValue == null) return@compute CellAction(
                 mutate = action
             )
