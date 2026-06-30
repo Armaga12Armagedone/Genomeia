@@ -3,6 +3,7 @@ package io.github.some_example_name.old.systems.simulation
 import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.UserCommandManager
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.entities.CellEntity
@@ -88,6 +89,7 @@ class SimulationSystem(
         userCommandManager.processingCommandsFromUser()
         worldCommandsManager.executingLastCommandsFromTheWorld()
 
+
         renderBufferManager.updateBuffer()
     }
 
@@ -145,6 +147,7 @@ class SimulationSystem(
         entityList.forEach { it.clear() }
         simulationData.clear()
         worldCommandsManager.dispose()
+        DISimulationContainer.logSaver.close()
     }
 
     private fun restartSim() {

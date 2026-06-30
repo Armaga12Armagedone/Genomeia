@@ -7,6 +7,7 @@ import io.github.some_example_name.old.cells.ControllerData
 import io.github.some_example_name.old.cells.SpecialModData
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.core.DIContext
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.WorldResizable
 import io.github.some_example_name.old.core.utils.OrderedIntPairMap
@@ -22,8 +23,13 @@ import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.genomics.OrganManager
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.GridManager
+import io.github.some_example_name.old.ui.screens.GlobalSettings
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import java.io.DataOutputStream
+import java.io.File
+import io.github.some_example_name.old.systems.debug.LogSaver
+import io.github.some_example_name.old.ui.screens.GlobalSettings.DEBUG_MODE
 import kotlin.collections.map
 import kotlin.math.sqrt
 
@@ -67,8 +73,14 @@ class WorldCommandsManager(
     var oddLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
 
     fun executingCommandsFromTheWorld() {
+        var ticked = false
         worldCommandBuffer.forEachIndexed { threadId, worldCommandBuffer ->
+            if (worldCommandBuffer.size > 0 && !ticked && DEBUG_MODE) {
+                DISimulationContainer.logSaver.saveTick()
+                ticked = true
+            }
             worldCommandBuffer.consume { type, ints, floats, booleans ->
+                DISimulationContainer.logSaver.save(type, ints, floats, booleans)
                 when (type) {
                     WorldCommandType.DIVIDE_ALIVE_CELL_ACTION_COUNTER -> {
                         organEntity.divideCounterThisStage[ints[0]]++
@@ -87,6 +99,7 @@ class WorldCommandsManager(
 //                        )
                     }
                     WorldCommandType.ADD_LINK -> {
+                        println(ints[0])
                         val cellIndex = if (ints[0] == -1) {
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
@@ -175,6 +188,7 @@ class WorldCommandsManager(
                                 c = floats[10],
                                 isSum = booleans[0],
                                 activationFuncType = ints[6].toByte(),
+                                cellEnergy = 5f,
                                 pheromoneType = ints[7],
                                 specialModData = if (specialModDataIndex == -1) null else worldCommandSpecialModDataBuffer[threadId][specialModDataIndex]
                             )
@@ -329,6 +343,7 @@ class WorldCommandsManager(
 
         worldCommandSecondBuffer.forEachIndexed { threadId, worldCommandBuffer ->
             worldCommandBuffer.consume { type, ints, floats, booleans ->
+                DISimulationContainer.logSaver.save(type, ints, floats, booleans)
                 when (type) {
                     WorldCommandType.ADD_LINK_BY_ID -> {
                         val cellId = ints[0]
@@ -360,11 +375,27 @@ class WorldCommandsManager(
             }
         }
 
+        if (ticked) {
+//            DISimulationContainer.logSaver.closeTick()
+        }
+
+
         organIndexCellIdMapIndex.clear()
     }
 
     fun executingLastCommandsFromTheWorld() {
+//        var ticked = false
+//        if (worldCommandBuffer.size > 0 && !ticked) {
+//            DISimulationContainer.logSaver.saveTick()
+//            ticked = true
+//        }
+        if (worldCommandLastBuffer.size > 0 && DEBUG_MODE)
+        {
+            DISimulationContainer.logSaver.saveTick()
+        }
+
         worldCommandLastBuffer.consume { type, ints, floats, booleans ->
+            DISimulationContainer.logSaver.save(type, ints, floats, booleans)
             when (type) {
                 WorldCommandType.ADD_ORGAN -> {
                     if (!isEditor) {

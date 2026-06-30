@@ -29,6 +29,8 @@ import io.github.some_example_name.old.entities.SpecialModDataEntity
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.entities.TailEntity
+import io.github.some_example_name.old.systems.debug.LogReplay
+import io.github.some_example_name.old.systems.debug.LogSaver
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.DivideManager
@@ -68,6 +70,8 @@ object DISimulationContainer:  DIContext, Disposable {
     var cellsSettings = substrateSettings.cellsSettings
     var roundStyle: VisTextButton.VisTextButtonStyle
     var roundStyleToggle: VisTextButton.VisTextButtonStyle
+    var logSaver: LogSaver = LogSaver()
+    var logReplay: LogReplay = LogReplay()
 
 
     init {
@@ -364,6 +368,7 @@ object DISimulationContainer:  DIContext, Disposable {
 
     override fun dispose() {
         TODO("Not yet implemented")
+        logSaver.close()
     }
 
     fun resizeWorld() {

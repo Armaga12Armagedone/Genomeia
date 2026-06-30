@@ -5,6 +5,7 @@ import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.cells.Zygote
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.DISimulationContainer.worldCommandsManager
 import io.github.some_example_name.old.core.utils.collectParticles
@@ -16,6 +17,7 @@ import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
+import io.github.some_example_name.old.ui.screens.GlobalSettings.DEBUG_MODE
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.collections.forEach
 import kotlin.math.cos
@@ -51,6 +53,11 @@ class UserCommandManager(
         while (true) {
             val cmd = commandQueue.poll() ?: break
 
+//            println("from usre manager: ${cmd}")
+
+//            var floats = FloatArray(4)
+//            var bools = BooleanArray(1)
+
             when (cmd) {
                 PlayerCommand.StopDrag -> {
                     grabbedParticleIndex = -1
@@ -59,6 +66,9 @@ class UserCommandManager(
                 }
 
                 is PlayerCommand.TouchDown -> {
+//                    floats = FloatArray(2) {cmd.x; cmd.y}
+//                    bools = BooleanArray(1) {cmd.isLeftButton}
+
                     val neighborsCellIndexes =
                         gridManager.collectParticles(cmd.x.toInt(), cmd.y.toInt(), radius = 1)
                     grabbedParticleIndex = neighborsCellIndexes
@@ -81,6 +91,8 @@ class UserCommandManager(
 
                 is PlayerCommand.Drag -> {
                     if (grabbedParticleIndex != -1) {
+                        // floats = FloatArray(4) {cmd.x; cmd.y; particleEntity.x[grabbedParticleIndex]; particleEntity.y[grabbedParticleIndex]}
+
                         isAlreadyDragged = true
                         val grabDrag = 0.5f // To reduce oscillations
 
@@ -99,6 +111,9 @@ class UserCommandManager(
                 }
 
                 is PlayerCommand.Tap -> {
+//                    floats = FloatArray(2) {cmd.x; cmd.y}
+//                    bools = BooleanArray(1) {cmd.isLeftButton}
+
                     val neighborsCellIndexes =
                         gridManager.collectParticles(cmd.x.toInt(), cmd.y.toInt(), radius = 1)
                     val grabbedParticleIndexTap = neighborsCellIndexes
@@ -142,6 +157,8 @@ class UserCommandManager(
                                     angleCos = cos(randomAngle),
                                     angleSin = sin(randomAngle)
                                 )
+
+                                // DISimulationContainer.logSaver.saveUserCommand(0, floatArrayOf(tapX, tapY), isDragging) //для создания клеток
                             }
                         } else {
                             val radius = 7.0f
@@ -189,6 +206,10 @@ class UserCommandManager(
 
 //                    println("Tap (${cmd.x}, ${cmd.y} ${cmd.isLeftButton} ${grabbedParticleIndex})")
                 }
+            }
+
+            if (DEBUG_MODE) {
+                DISimulationContainer.logSaver.saveUserCommand(cmd)
             }
         }
 
