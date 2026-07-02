@@ -28,7 +28,7 @@ class ParticlePhysicsSystem(
     val pheromonesManager: PheromonesManager
 ) {
 
-    val halfChunkHeight2 = HALF_CHUNK_HEIGHT * HALF_CHUNK_HEIGHT
+    val halfChunkHeight2 = HALF_CHUNK_HEIGHT * HALF_CHUNK_HEIGHT / 56.25f
 
     fun processGridChunkPhysics(start: Int, end: Int, threadId: Int, isOdd: Boolean) {
         for (i in start until end) {
@@ -273,8 +273,8 @@ class ParticlePhysicsSystem(
             vy[particleIndex] *= invLen
         }
 
-        x[particleIndex] += vx[particleIndex]
-        y[particleIndex] += vy[particleIndex]
+        x[particleIndex] += vx[particleIndex] * 7.5f
+        y[particleIndex] += vy[particleIndex] * 7.5f
 
         processWorldBorders(particleIndex)
         val x = x[particleIndex]

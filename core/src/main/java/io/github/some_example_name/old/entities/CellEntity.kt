@@ -67,6 +67,7 @@ class CellEntity(
     var isOnEdge = BooleanArray(maxAmount)
     var degreeOfShortening = FloatArray(maxAmount) { 1f }
     var pheromoneType = IntArray(maxAmount) { -1 }
+    var linkAmount = IntArray(maxAmount) { 0 }
 
     //Neural entity
     var neuralIndexes = IntArray(maxAmount) { -1 }
@@ -177,6 +178,7 @@ class CellEntity(
         isOnEdge[cellIndex] = true
         this.degreeOfShortening[cellIndex] = 1f
         this.pheromoneType[cellIndex] = pheromoneType
+        linkAmount[cellIndex] = 0
         val cell = cellList[cellType]
 
         if (cell.isNeural) {
@@ -230,6 +232,7 @@ class CellEntity(
         isOnEdge[cellIndex] = true
         this.degreeOfShortening[cellIndex] = 1f
         pheromoneType[cellIndex] = -1
+        linkAmount[cellIndex] = 0
 
         deleteNeural(cellIndex = cellIndex)
 
@@ -270,6 +273,7 @@ class CellEntity(
         isOnEdge.clear(true)
         degreeOfShortening.clear(1f)
         pheromoneType.clear(-1)
+        linkAmount.clear(0)
     }
 
     override fun onResize(oldMax: Int) {
@@ -302,5 +306,6 @@ class CellEntity(
         isOnEdge = isOnEdge.resize(true)
         degreeOfShortening = degreeOfShortening.resize(1f)
         pheromoneType = pheromoneType.resize(-1)
+        linkAmount = linkAmount.resize(0)
     }
 }

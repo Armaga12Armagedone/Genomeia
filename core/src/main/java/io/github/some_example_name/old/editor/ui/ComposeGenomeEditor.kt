@@ -10,7 +10,9 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isRightClick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.linkColor
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.previousCtrlClicked
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.showPhysicalLink
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.symmetryManager
 import io.github.some_example_name.old.editor.system.logic.CtrlY
 import io.github.some_example_name.old.editor.system.logic.CtrlZ
@@ -71,14 +73,17 @@ class ComposeGenomeEditor {
 
                 visToggleButton(
                     text = bundle.get("button.showPhysicalLink"),
-                    checked = renderSystem.showPhysicalLink,
+                    checked = showPhysicalLink,
                     onCheckedChange = {
-                        renderSystem.showPhysicalLink = it
+                        showPhysicalLink = it
                     }
                 )
 
                 visTextButton("Neural link color", onClick = {
-                    stage.colorPickerDialog()
+                    stage.colorPickerDialog(
+                        initColor = linkColor,
+                        onFinished = { linkColor = it }
+                    )
                 })
 
                 visTextButton("Symmetry", onClick = {

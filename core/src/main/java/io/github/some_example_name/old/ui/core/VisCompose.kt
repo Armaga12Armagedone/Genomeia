@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.Batch
+import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
@@ -24,6 +25,7 @@ import com.kotcrab.vis.ui.widget.VisSelectBox
 import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
+import com.kotcrab.vis.ui.widget.VisTextField
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import com.badlogic.gdx.utils.Array as GdxArray
 
@@ -121,10 +123,11 @@ fun VisTable.visLabel(
     text: String,
     textColor: Color = STYLE_BEIGE,
     align: Int = Align.left,
+    font: BitmapFont = game.titleFont,
     cellInit: (Cell<VisLabel>.() -> Unit) = {}
 ): VisLabel {
     val label = VisLabel(text)
-    label.style = Label.LabelStyle(game.titleFont, textColor)
+    label.style = Label.LabelStyle(font, textColor)
     label.setAlignment(align)                    // ← вот это главное
 
     val cell = this.add(label) as Cell<VisLabel>
@@ -243,7 +246,7 @@ class StyledSelectBox<T> : VisSelectBox<T>(makeCleanSelectBoxStyle()) {
 fun <T> VisTable.visSelectBox(
     items: Array<T>,
     selectedIndex: Int = 0,
-    onChange: ((T) -> Unit)? = null,
+    onChange: ((T, Int) -> Unit)? = null,
     cellInit: (Cell<StyledSelectBox<T>>.() -> Unit) = {}
 ): StyledSelectBox<T> {
     val selectBox = StyledSelectBox<T>()
@@ -258,7 +261,7 @@ fun <T> VisTable.visSelectBox(
         selectBox.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent?, actor: Actor?) {
                 @Suppress("UNCHECKED_CAST")
-                onChange(selectBox.selected as T)
+                onChange(selectBox.selected as T, selectBox.selectedIndex)
             }
         })
     }
@@ -561,4 +564,46 @@ private fun addFlowRowToContainer(
         FlowAlignment.End    -> cell.right().growX()
     }
     container.row()
+}
+
+
+/**
+ * VisTextField — поле ввода текста, стилизованное под Jetpack Compose.
+ * Использует makeStyledTextField из UiStyle.kt (rounded corners, custom colors).
+ *
+ * Полностью в стиле Compose:
+ *   visTextField(
+ *       text = currentText,
+ *       hint = "Введите имя...",
+ *       onTextChange = { newText -> currentText = newText }  // state hoisting
+ *   ) { expandX().fillX().pad(8f) }
+ */
+fun VisTable.visTextField(
+    text: String = "",
+    hint: String = "",
+    textFieldFilter: VisTextField.TextFieldFilter? = null,   // ← вот это новое
+    onTextChange: ((String) -> Unit)? = null,
+    cellInit: (Cell<VisTextField>.() -> Unit) = {}
+): VisTextField {
+    val textField = makeStyledTextField(game, mutableListOf()).also {
+        textFieldFilter?.let { filter ->
+            it.textFieldFilter = filter
+        }
+    }
+    textField.text = text
+    if (hint.isNotBlank()) {
+        textField.messageText = hint
+    }
+
+    if (onTextChange != null) {
+        textField.addListener(object : ChangeListener() {
+            override fun changed(event: ChangeEvent?, actor: Actor?) {
+                onTextChange(textField.text)
+            }
+        })
+    }
+
+    val cell = this.add(textField) as Cell<VisTextField>
+    cellInit(cell)
+    return textField
 }

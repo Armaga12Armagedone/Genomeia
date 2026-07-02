@@ -159,9 +159,6 @@ class GenomeEditorScreen(
             )
             is ShowMutateDialog -> stage.mutateActionDialog(
                 command = uiScreenCommands,
-                eyeReplay = eyeReplay,
-                neuralReplay = neuralReplay,
-                cellReplay = cellReplay,
                 onMutate = { editorLogicSystem.putUiCommand(it) }
             )
             is ShowMutateOrDivideDialog -> stage.mutateOrDivideDialog(

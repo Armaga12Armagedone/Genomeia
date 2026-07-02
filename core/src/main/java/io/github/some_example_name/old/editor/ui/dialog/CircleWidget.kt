@@ -9,9 +9,12 @@ import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.Batch
 import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.graphics.glutils.ShaderProgram
+import com.badlogic.gdx.scenes.scene2d.ui.Cell
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.SpriteDrawable
 import com.kotcrab.vis.ui.VisUI
+import com.kotcrab.vis.ui.widget.VisTable
+import io.github.some_example_name.old.ui.core.dp
 
 class CircleWidget(initialColor: Color, private val smallCircleRadius: Float, initialDirectedAngle: Float?) : Table() {
     private val shader: ShaderProgram
@@ -225,4 +228,17 @@ class CircleWidget(initialColor: Color, private val smallCircleRadius: Float, in
             whiteRegion.texture.dispose()
         }
     }
+}
+
+fun VisTable.visCircleWidget(
+    initialColor: Color,
+    smallCircleRadius: Float = 2f,
+    initialDirectedAngle: Float? = null,
+    cellInit: (Cell<CircleWidget>.() -> Unit) = {}
+): CircleWidget {
+    val widget = CircleWidget(initialColor, smallCircleRadius, initialDirectedAngle)
+
+    val cell = (this.add(widget).size(100f.dp(), 100f.dp())) as Cell<CircleWidget>
+    cellInit(cell)
+    return widget
 }

@@ -1,20 +1,26 @@
 package io.github.some_example_name.old.editor.system.logic
 
+import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
 import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.entities.EditorCell
+import io.github.some_example_name.old.editor.entities.EyeReplay
+import io.github.some_example_name.old.editor.entities.NeuralReplay
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.ParticleEntity
+import io.github.some_example_name.old.systems.genomics.genome.Action
 import kotlin.math.atan2
 
 class ToEditorDataMapper(
     val cellEntity: CellEntity,
     val cellReplay: CellReplay,
     val editorSimulationSystem: EditorSimulationSystem,
-    val particleEntity: ParticleEntity
+    val particleEntity: ParticleEntity,
+    val neuralReplay: NeuralReplay,
+    val eyeReplay: EyeReplay
 ) {
 
     fun mapToEditorData(index: Int): EditorCell {
@@ -23,7 +29,7 @@ class ToEditorDataMapper(
         val isPhantom = currentCellIndex == null
         val parentIndex = if (index != 0) { cellEntity.parentIndex[index] } else -1
         val parentId = if (index != 0) { cellEntity.cellGenomeId[parentIndex] } else -1
-        val action = if (currentTick != lastTick){
+        val action = if (currentTick != lastTick) {
             editorSimulationSystem.genome.genomeStageInstruction[currentTick]
                 .cellActions[if (isPhantom) parentId else id]
         } else null
@@ -39,6 +45,31 @@ class ToEditorDataMapper(
             atan2(toChildSin, toChildCos)
         } else 0f
 
+        val actual = if (!isPhantom) {
+            val neuralIndex = cellReplay.getNeuralIndexes(currentTick, index)
+            val eyeIndex = cellReplay.getSpecialTypeIndexes(currentTick, index)
+            val colorOfCellFrom = Color().also {
+                val argb = cellReplay.getColor(currentTick, index)
+                val rgba = ((argb shr 16) and 0xFF) or (argb and 0xFF00) or ((argb shl 16) and 0xFF0000) or (argb and -0x1000000)
+                Color.argb8888ToColor(it, rgba)
+            }
+            Action(
+                color = colorOfCellFrom,
+                cellType = cellReplay.getCellType(currentTick, index).toInt(),
+                angleDirected = 0f,
+                funActivation = neuralReplay.getActivationFuncType(currentTick, neuralIndex)?.toInt(),
+                a = neuralReplay.getA(currentTick, neuralIndex),
+                b = neuralReplay.getB(currentTick, neuralIndex),
+                c = neuralReplay.getC(currentTick, neuralIndex),
+                isSum = neuralReplay.getIsSum(currentTick, neuralIndex),
+                colorRecognition = eyeReplay.getColorDifferentiation(currentTick, eyeIndex)?.toInt(),
+                lengthDirected = eyeReplay.getVisibilityRange(currentTick, eyeIndex),
+                pheromoneType = cellReplay.getPheromone(currentTick, index)
+            )
+        } else {
+            null
+        }
+
         return EditorCell(
             id = id,
             index = index,
@@ -49,11 +80,14 @@ class ToEditorDataMapper(
             radius = particleEntity.radius[index],
             isPhantom = isPhantom,
             angleToParent = angleToParent,
+            angleDirected = if (!isPhantom) {
+                val sin = cellReplay.getAngleSin(currentTick, index)
+                val cos = cellReplay.getAngleCos(currentTick, index)
+                atan2(sin, cos) - angleToParent
+            } else null,
             divide = action?.divide,
-            mutate = action?.mutate
+            mutate = action?.mutate,
+            actual = actual
         )
     }
-
 }
-
-

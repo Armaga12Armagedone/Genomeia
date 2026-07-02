@@ -16,11 +16,9 @@ import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.ui.SelectBox
 import com.badlogic.gdx.scenes.scene2d.ui.Slider
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
-import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener.ChangeEvent
 import com.badlogic.gdx.scenes.scene2d.utils.NinePatchDrawable
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable
 import com.kotcrab.vis.ui.VisUI
-import com.kotcrab.vis.ui.widget.VisSelectBox
 import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTextField
 import com.kotcrab.vis.ui.widget.VisTextButton
@@ -91,16 +89,13 @@ private var _dialogBgDrawable: NinePatchDrawable? = null
 
 private fun getDialogBackground(): NinePatchDrawable {
     if (_dialogBgDrawable == null) {
-        val sz = 64; val r = 16; val bw = 2
-        val p = Pixmap(sz, sz, Pixmap.Format.RGBA8888)
-        p.blending = Pixmap.Blending.None
-        p.setColor(0f, 0f, 0f, 0f); p.fill()
-        p.setColor(Color(STYLE_BEIGE).also { it.a = 0.40f })
-        fillRoundedRect(p, 0, 0, sz, sz, r)
-        p.setColor(Color(0.10f, 0.10f, 0.12f, 0.97f))
-        fillRoundedRect(p, bw, bw, sz - 2 * bw, sz - 2 * bw, r - bw)
-        val tex = Texture(p); tex.setFilter(TextureFilter.Linear, TextureFilter.Linear); p.dispose()
-        _dialogBgDrawable = NinePatchDrawable(NinePatch(tex, r, r, r, r))
+        // Полностью та же окантовка, что и у кнопок/SelectBox
+        // (бежевая рамка + тёмная заливка + скруглённые углы)
+        _dialogBgDrawable = makeStyledNP(
+            fill = Color(0.10f, 0.10f, 0.12f, 0.97f),
+            border = Color(STYLE_BEIGE).also { it.a = 0.82f },
+            textures = mutableListOf()
+        )
     }
     return _dialogBgDrawable!!
 }
@@ -241,7 +236,9 @@ fun makeStyledSlider(min: Float, max: Float, step: Float, vertical: Boolean): Vi
 // ── TextField ────────────────────────────────────────────────────────────────
 
 fun makeStyledTextField(game: MyGame, textures: MutableList<Texture>): VisTextField {
-    val sz = 64; val r = 12; val bw = 2
+    val sz = 64
+    val r = 14
+    val bw = 2
 
     val np = Pixmap(sz, sz, Pixmap.Format.RGBA8888)
     np.blending = Pixmap.Blending.None
@@ -266,15 +263,55 @@ fun makeStyledTextField(game: MyGame, textures: MutableList<Texture>): VisTextFi
     val selTex = linearTex(sp, textures)
 
     val style = VisTextField.VisTextFieldStyle()
-    style.background        = NinePatchDrawable(NinePatch(bgTex,    r, r, r, r))
-    style.focusedBackground = NinePatchDrawable(NinePatch(focusTex, r, r, r, r))
-    style.font              = game.largeFont
-    style.fontColor         = Color(STYLE_BEIGE)
-    style.focusedFontColor  = Color.WHITE
-    style.cursor            = TextureRegionDrawable(TextureRegion(cursorTex))
-    style.selection         = TextureRegionDrawable(TextureRegion(selTex))
+    val bgDrawable = NinePatchDrawable(NinePatch(bgTex, r, r, r, r))
+    val focusDrawable = NinePatchDrawable(NinePatch(focusTex, r, r, r, r))
 
-    return VisTextField("", style)
+    val bgPatch = bgDrawable.patch
+    val focusPatch = focusDrawable.patch
+    focusPatch.setLeftWidth(bgPatch.leftWidth)
+    focusPatch.setRightWidth(bgPatch.rightWidth)
+    focusPatch.setTopHeight(bgPatch.topHeight)
+    focusPatch.setBottomHeight(bgPatch.bottomHeight)
+
+    style.background = bgDrawable
+    style.focusedBackground = focusDrawable
+    style.font = game.largeFont
+    style.fontColor = Color(STYLE_BEIGE)
+    style.focusedFontColor = Color.WHITE
+    style.cursor = TextureRegionDrawable(TextureRegion(cursorTex))
+    style.selection = TextureRegionDrawable(TextureRegion(selTex))
+
+    val field = object : VisTextField("", style) {
+        override fun letterUnderCursor(x: Float): Int {
+            var xx = x
+            try {
+                val textOffsetField = javaClass.superclass.getDeclaredField("textOffset").apply { isAccessible = true }
+                val fontOffsetField = javaClass.superclass.getDeclaredField("fontOffset").apply { isAccessible = true }
+                val visibleTextStartField = javaClass.superclass.getDeclaredField("visibleTextStart").apply { isAccessible = true }
+                val glyphPositionsField = javaClass.superclass.getDeclaredField("glyphPositions").apply { isAccessible = true }
+
+                val textOffset = textOffsetField.getFloat(this)
+                val fontOffset = fontOffsetField.getFloat(this)
+                val visibleTextStart = visibleTextStartField.getInt(this)
+                val glyphPositions = glyphPositionsField.get(this) as com.badlogic.gdx.utils.FloatArray
+
+                xx -= textOffset + fontOffset - style.font.getData().cursorX - glyphPositions.get(visibleTextStart)
+                xx -= style.background.getLeftWidth()
+
+                val n = glyphPositions.size
+                val positions = glyphPositions.items
+                for (i in 1 until n) {
+                    if (positions[i] > xx) {
+                        return if (positions[i] - xx <= xx - positions[i - 1]) i else i - 1
+                    }
+                }
+            } catch (_: Exception) {
+                return super.letterUnderCursor(x)
+            }
+            return super.letterUnderCursor(x)
+        }
+    }
+    return field
 }
 
 fun makeCleanSelectBoxStyle(): SelectBox.SelectBoxStyle {

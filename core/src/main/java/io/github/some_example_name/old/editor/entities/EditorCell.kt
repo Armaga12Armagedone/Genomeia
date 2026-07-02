@@ -11,7 +11,9 @@ data class EditorCell(
     var y: Float,
     val radius: Float,
     val angleToParent: Float,
+    val angleDirected: Float?,
     val isPhantom: Boolean,
     val divide: Action?,
     val mutate: Action?,
+    val actual: Action?
 )

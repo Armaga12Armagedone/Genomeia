@@ -22,6 +22,7 @@ import io.github.some_example_name.old.editor.system.control.TryActionManager
 import io.github.some_example_name.old.editor.system.logic.MoveCellManager
 import io.github.some_example_name.old.editor.system.logic.ToEditorDataMapper
 import io.github.some_example_name.old.editor.system.logic.UiScreenCommands
+import io.github.some_example_name.old.editor.system.render.DrawingHelperElements
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.EyeEntity
 import io.github.some_example_name.old.entities.LinkEntity
@@ -58,6 +59,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     override var lastGrabbedCellY = 0.0f
     override var isDruggingCamera = false
     override var isRightClick = false
+    var showPhysicalLink = true
     var previousCtrlClicked = -1
     var linkColor: Color = Color.CYAN
 
@@ -288,7 +290,9 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         cellEntity = cellEntity,
         cellReplay = cellReplay,
         editorSimulationSystem = editorSimulationSystem,
-        particleEntity = particleEntity
+        particleEntity = particleEntity,
+        neuralReplay = neuralReplay,
+        eyeReplay = eyeReplay
     )
 
     val cellSearchManager = CellSearchManager(
@@ -351,8 +355,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         tryActionManager = tryActionManager
     )
 
-    val editorRenderSystem = EditorRenderSystem(
-        shaderManager = DIGameGlobalContainer.shaderManager,
+    val drawingHelperElements = DrawingHelperElements(
         cellReplay = cellReplay,
         linkReplay = linkReplay,
         cellEntity = cellEntity,
@@ -360,7 +363,15 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         editorSimulationSystem = editorSimulationSystem,
         symmetryManager = symmetryManager,
         cellList = cellList,
-        cellSearchManager = cellSearchManager
+        cellSearchManager = cellSearchManager,
+    )
+
+    val editorRenderSystem = EditorRenderSystem(
+        shaderManager = DIGameGlobalContainer.shaderManager,
+        cellReplay = cellReplay,
+        particleEntity = particleEntity,
+        editorSimulationSystem = editorSimulationSystem,
+        drawingHelperElements = drawingHelperElements
     )
 
     override fun dispose() {

@@ -7,10 +7,6 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
 import io.github.some_example_name.old.core.color_picker.ColorPicker
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.linkColor
-import io.github.some_example_name.old.editor.entities.CellReplay
-import io.github.some_example_name.old.editor.entities.EyeReplay
-import io.github.some_example_name.old.editor.entities.NeuralReplay
 import io.github.some_example_name.old.editor.system.logic.DivideDialog
 import io.github.some_example_name.old.editor.system.logic.MutateDialog
 import io.github.some_example_name.old.editor.system.logic.ShowChangeRemoveDialog
@@ -21,9 +17,8 @@ import io.github.some_example_name.old.editor.system.logic.TryToChange
 import io.github.some_example_name.old.editor.system.logic.TryToDivide
 import io.github.some_example_name.old.editor.system.logic.TryToMutate
 import io.github.some_example_name.old.editor.system.logic.TryToRemove
-import io.github.some_example_name.old.editor.ui.dialog.ChangeRemoveActionDialog
-import io.github.some_example_name.old.editor.ui.dialog.DivideActionDialog
-import io.github.some_example_name.old.editor.ui.dialog.MutateActionDialog
+import io.github.some_example_name.old.editor.ui.dialog.ActionDialog
+import io.github.some_example_name.old.editor.ui.dialog.ActionDialogType
 import io.github.some_example_name.old.editor.ui.dialog.MutateOrDivideDialog
 import io.github.some_example_name.old.ui.screens.MenuScreen
 import io.github.some_example_name.old.ui.screens.SimulationScreen
@@ -34,10 +29,9 @@ fun Stage.changeRemoveActionDialog(
     onRemove: (TryToRemove) -> Unit,
     onChange: (TryToChange) -> Unit,
 ) {
-    val dialogMutateOrDivide = ChangeRemoveActionDialog(
+    val dialogDivide = ActionDialog(
         clickedCell = command.clickedCell,
-        divide = command.clickedCell.divide?.copy() ?: throw Exception("clickedCell.divide is null"),
-        onRemove = { onRemove(TryToRemove(clickedCellIndex = command.clickedCell.index)) },
+        actionDialogType = ActionDialogType.CHANGE_REMOVE,
         onChange = { divide ->
             onChange(
                 TryToChange(
@@ -45,9 +39,10 @@ fun Stage.changeRemoveActionDialog(
                     divide = divide.copy()
                 )
             )
-        }
+        },
+        onRemove = { onRemove(TryToRemove(clickedCellIndex = command.clickedCell.index)) },
     )
-    dialogMutateOrDivide.show(this)
+    dialogDivide.show(this)
 }
 
 fun Stage.mutateOrDivideDialog(
@@ -76,19 +71,11 @@ fun Stage.mutateOrDivideDialog(
 
 fun Stage.mutateActionDialog(
     command: ShowMutateDialog,
-    eyeReplay: EyeReplay,
-    neuralReplay: NeuralReplay,
-    cellReplay: CellReplay,
     onMutate: (TryToMutate) -> Unit
 ) {
-    val dialogMutate = MutateActionDialog(
+    val dialogDivide = ActionDialog(
         clickedCell = command.clickedCell,
-        parentCell = command.parentCell,
-        startCurrentStageTick = command.currentTick,
-        eyeReplay = eyeReplay,
-        neuralReplay = neuralReplay,
-        cellReplay = cellReplay,
-        clickedIndex = command.clickedCell.index,
+        actionDialogType = ActionDialogType.MUTATION,
         onMutate = { action ->
             onMutate.invoke(
                 TryToMutate(
@@ -98,16 +85,17 @@ fun Stage.mutateActionDialog(
             )
         }
     )
-    dialogMutate.show(this)
+    dialogDivide.show(this)
 }
 
 fun Stage.divideActionDialog(
     command: ShowDivideDialog,
     onDivide: (TryToDivide) -> Unit
 ) {
-    val dialogDivide = DivideActionDialog(
+    val dialogDivide = ActionDialog(
         clickedCell = command.clickedCell,
         newDividedCellPosition = command.newDividedCellPosition,
+        actionDialogType = ActionDialogType.DIVIDE,
         onDivide = { action ->
             onDivide.invoke(
                 TryToDivide(
@@ -116,25 +104,31 @@ fun Stage.divideActionDialog(
                     divide = action.copy()
                 )
             )
-        }
+        },
     )
     dialogDivide.show(this)
 }
 
-fun Stage.colorPickerDialog() {
+fun Stage.colorPickerDialog(
+    initColor: Color,
+    title: String = bundle.get("button.chooseColorDialog"),
+    onChanged: (Color) -> Unit = {},
+    onFinished: (Color) -> Unit = {}
+) {
     val colorPicker = ColorPicker(
-        title = bundle.get("button.chooseColorDialog"),
+        title = title,
         listener = object : ColorPickerAdapter() {
-            override fun changed(newColor: Color) {}
+            override fun changed(newColor: Color) {
+                onChanged.invoke(newColor.cpy())
+            }
 
             override fun finished(newColor: Color?) {
                 super.finished(newColor)
                 if (newColor == null) return
-                val newColor = newColor.cpy()
-                linkColor = newColor
+                onFinished.invoke(newColor.cpy())
             }
         },
-        colorInit = linkColor.cpy()
+        colorInit = initColor.cpy()
     )
     this.addActor(colorPicker)
     colorPicker.fadeIn()

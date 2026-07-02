@@ -44,7 +44,7 @@ class ExampleScreen : ScreenAdapter() {
                 visSelectBox(
                     items = arrayOf("Лёгкая", "Средняя", "Сложная", "Хардкор"),
                     selectedIndex = 1,
-                    onChange = { selected ->
+                    onChange = { selected, _ ->
                         Gdx.app.log("VisCompose", "Выбрана сложность: $selected")
                     }
                 )

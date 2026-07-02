@@ -36,7 +36,7 @@ fun activation(cellIndex: Int, nonSafeX: Float) = with(cellEntity) {
         3 -> 1f / (1f + exp(-(getA(cellIndex) * x + getB(cellIndex)))) + getC(cellIndex)
         4 -> if (x <= getA(cellIndex)) getB(cellIndex) else getC(cellIndex)
         5 -> if (x < getA(cellIndex)) getB(cellIndex) else getC(cellIndex)
-        6 -> simulationData.timeSimulation
+        6 -> simulationData.timeSimulation + cellIndex
         7 -> {
             if (x >= 1f && simulationData.timeSimulation > getDTime(cellIndex)) {
                 setDTime(cellIndex, simulationData.timeSimulation + getA(cellIndex))

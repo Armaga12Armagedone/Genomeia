@@ -90,7 +90,7 @@ class EditorSimulationSystem(
     }
 
     private fun updateTick() = with(cellEntity) {
-        genomeManager.genomes[0].genomeStageInstruction[organEntity.stage[0]].cellActions.forEach { id, action ->
+        genomeManager.genomes[0].genomeStageInstruction[organEntity.stage[0]].cellActions.forEach { id, _ ->
             cellSystem.genomicTransformations(worldCommandsManager.mapCellGenomeIdToIndex[id])
         }
 
@@ -99,10 +99,7 @@ class EditorSimulationSystem(
         worldCommandsManager.executingLastCommandsFromTheWorld()
 
         cellEntity.aliveList.forEach { cellIndex ->
-            energy[cellIndex] += 3.5f
-            if (energy[cellIndex] > maxEnergy[cellIndex]) {
-                energy[cellIndex] = maxEnergy[cellIndex]
-            }
+            energy[cellIndex] = 5.0f
         }
     }
 

@@ -1,12 +1,12 @@
 package io.github.some_example_name.old.editor.ui.dialog
 
-import com.badlogic.gdx.Gdx
-import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.entities.EditorCell
-import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.ui.core.dp
+import io.github.some_example_name.old.ui.core.globalVisTable
+import io.github.some_example_name.old.ui.core.visTextButton
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
 
 class MutateOrDivideDialog(
@@ -16,28 +16,29 @@ class MutateOrDivideDialog(
 ) : VisDialog("${bundle.get("button.cellId")} ${clickedCell.id}") {
 
     init {
-        val density = Gdx.graphics.density
         setupTitleSize(game)
+        isModal = true
+        isMovable = true
 
-        actionButton(bundle.get("button.divide"), game = game) {
-            onDivide.invoke()
-            fadeOut()
-        }.also {
-            // Добавляем внутренние отступы вокруг текста кнопки
-            // Adding padding around the button text
-            it.labelCell.pad(5f * density).padLeft(25f * density).padRight(25f * density)
-            contentTable.add(it).padBottom(8f * density).fillX().row()
+        val rootTable = globalVisTable {
+            visTextButton(bundle.get("button.divide"), onClick = {
+                onDivide.invoke()
+                fadeOut()
+            }) { pad(8.dp()) }
+
+            row()
+
+            visTextButton(bundle.get("button.mutate"), onClick = {
+                onMutate.invoke()
+                fadeOut()
+            }) { pad(8.dp()) }
         }
 
-        actionButton(bundle.get("button.mutate"), game = game) {
-            onMutate.invoke()
-            fadeOut()
-        }.also {
-            it.labelCell.pad(5f * density).padLeft(25f * density).padRight(25f * density)
-            contentTable.add(it).fillX().row()
-        }
+        contentTable.add(rootTable)
 
         closeOnEscape()
+        pack()
+        centerWindow()
     }
 
 }
