@@ -18,6 +18,7 @@ class LogSaver {
 
     var file: File? = null
     var dataStream: DataOutputStream? = null
+    var commandCount = 0 //DEBUG ONLY REMOVE IF RELEASE
 
     fun initLog() {
         if (DEBUG_MODE) {
@@ -97,6 +98,7 @@ class LogSaver {
 
     fun save(type: WorldCommandType,ints: IntArray, floats: FloatArray, booleans: BooleanArray) {
         if (DEBUG_MODE) {
+            commandCount += 1
             synchronized(this) {
                 dataStream?.writeInt(-404) // Стартовый кодон
                 val intCount = type.intParamsCount
@@ -105,7 +107,7 @@ class LogSaver {
 
                 dataStream?.writeInt(type.id) // тип команы
 
-                // println(type.id)
+                 println(type)
 
                 // Сначала писать размер массива а затем записывать
                 dataStream?.writeInt(intCount)

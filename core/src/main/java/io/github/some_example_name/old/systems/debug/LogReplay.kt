@@ -8,10 +8,18 @@ import io.github.some_example_name.old.core.DISimulationContainer.simulationData
 import java.io.DataInputStream
 import java.io.EOFException
 import java.io.File
+import java.lang.Integer.max
+import java.util.Dictionary
 
 class LogReplay {
     val file = File("debug.bin")
     val dataStream = DataInputStream(file.inputStream())
+    val tickDictionary = mutableMapOf<Int, MutableList<CommandFull>>()
+    val tickDictionarySecond = mutableMapOf<Int, MutableList<CommandFull>>()
+    val tickDictionaryLast = mutableMapOf<Int, MutableList<CommandFull>>()
+    var currentTick = 0
+    var maxTick = 0
+    var commandCount = 0 //DEBUG ONLU!
 
     init {
 
@@ -35,6 +43,7 @@ class LogReplay {
                 when (cmd) {
                     -555 -> {
                         val tickTime = dataStream.readFloat() //просто тик, идем дальше.
+                        currentTick += 1
                     }
                     -999 -> {
                         println("TICK STOP")
@@ -44,9 +53,10 @@ class LogReplay {
                     }
                     -404 -> {
                         parseCommand() // обычная окманда
+                        commandCount += 1
                     }
                     else -> {
-                        println("Неизвестный кодон или рассинхронизация: $cmd")
+                        println("UNknown codon: ${cmd}")
                         return // Останавливаемся, чтобы не читать мусор
                     }
                 }
@@ -54,32 +64,18 @@ class LogReplay {
         }
         catch (e: EOFException) {
             println("file end")
+            println(maxTick)
+            println("Command Count ${commandCount}")
+            DISimulationContainer.worldCommandsManager.replay = true
+
         }
         finally {
             dataStream.close()
         }
     }
 
-    fun parseTick() {
-        val command = dataStream.readInt()
-        if (command == -555) {
-            val tick = dataStream.readFloat()
-            while (dataStream.readInt() != -999) {
-                if (simulationData.timeSimulation == tick) {
-                    parseCommand()
-                }
-            }
-        }
-        else if (command == -999) {
-            println("TICK STOP")
-        }
-        else if (command == -767) {
-            parseUserCommand()
-        }
-    }
 
     fun parseUserCommand() {
-//        println("user command!")
         val cmd = dataStream.readInt()
         var command: PlayerCommand? = null
 
@@ -185,7 +181,7 @@ class LogReplay {
 //        println(commandType)
 
         if (commandType != null) {
-            replay(commandType, ints, floats, bools)
+            saveReplay(CommandFull(commandType, ints, floats, bools))
         }
 
         val endCodon = dataStream.readInt()
@@ -199,17 +195,25 @@ class LogReplay {
         }
     }
 
-    fun replay(command: WorldCommandType, ints: IntArray?=null, floats: FloatArray?=null, bools: BooleanArray?=null) {
-        println(command)
-        if (command == WorldCommandType.ADD_LINK_BY_ID) {
-            DISimulationContainer.worldCommandsManager.worldCommandSecondBuffer[0].push(command, ints, floats, bools)
+    fun saveReplay(command: CommandFull) {
+        if (command.command == WorldCommandType.ADD_LINK_BY_ID) {
+            //DISimulationContainer.worldCommandsManager.worldCommandSecondBuffer[0].push(command.command, command.ints, command.floats, command.bools)
+            tickDictionarySecond.getOrPut(currentTick) { mutableListOf() }.add(command)
         }
-        else if (command == WorldCommandType.ADD_ORGAN) {
-            DISimulationContainer.worldCommandsManager.worldCommandLastBuffer.push(command, ints, floats, bools)
+        else if (command.command == WorldCommandType.ADD_ORGAN) {
+            //DISimulationContainer.worldCommandsManager.worldCommandLastBuffer.push(command.command, command.ints, command.floats, command.bools)
+            tickDictionaryLast.getOrPut(currentTick) { mutableListOf() }.add(command)
         }
         else {
-            DISimulationContainer.worldCommandsManager.worldCommandBuffer[0].push(command, ints, floats, bools)
+//            DISimulationContainer.worldCommandsManager.worldCommandBuffer[0].push(command, ints, floats, bools)
+//            if (!tickDictionary.containsKey(currentTick)) {
+//                tickDictionary[currentTick] = mutableListOf<CommandFull>()
+//            }
+//            tickDictionary[currentTick]?.add(command)
+            tickDictionary.getOrPut(currentTick) { mutableListOf() }.add(command)
+
         }
+        maxTick = currentTick
 
 //        if (command == WorldCommandType.DIVIDE_ALIVE_CELL_ACTION_COUNTER) {
 //            println(ints?.get(0) ?: -1)
@@ -219,4 +223,58 @@ class LogReplay {
 //            DISimulationContainer.worldCommandsManager.worldCommandBuffer[0].push(WorldCommandType.ADD_CELL, itsis, floatis, boolits)
 //        }
     }
+
+    fun replyTick(tick: Int, buffer: Int): Boolean {
+        when(buffer) {
+            0-> {
+                if (tick <= tickDictionary.size) {
+                    tickDictionary[tick]?.forEach {
+                        DISimulationContainer.worldCommandsManager.worldCommandBuffer[0].push(
+                            it.command,
+                            it.ints,
+                            it.floats,
+                            it.bools,  true
+                        )
+                    }
+                }
+            }
+            1-> {
+                if (tick <= tickDictionarySecond.size) {
+                    tickDictionarySecond[tick]?.forEach {
+                        DISimulationContainer.worldCommandsManager.worldCommandSecondBuffer[0].push(
+                            it.command,
+                            it.ints,
+                            it.floats,
+                            it.bools, true
+                        )
+                    }
+                }
+            }
+            2-> {
+                if (tick <= tickDictionaryLast.size) {
+                    tickDictionaryLast[tick]?.forEach {
+                        DISimulationContainer.worldCommandsManager.worldCommandLastBuffer.push(
+                            it.command,
+                            it.ints,
+                            it.floats,
+                            it.bools, true
+                        )
+                    }
+                }
+            }
+        }
+        if (tick <= maxTick) {
+            return true
+        }
+
+        DISimulationContainer.worldCommandsManager.replay = false
+        return false
+    }
+
+    data class CommandFull(
+        val command: WorldCommandType,
+        val ints: IntArray?,
+        val floats: FloatArray?,
+        val bools: BooleanArray?
+    )
 }
