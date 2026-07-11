@@ -11,7 +11,7 @@ buildscript {
   dependencies {
     classpath "com.android.tools.build:gradle:8.5.2"
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
-
+    classpath "org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion"
   }
 }
 
@@ -31,6 +31,8 @@ allprojects {
 configure(subprojects - project(':android')) {
   apply plugin: 'java-library'
   apply plugin: 'kotlin'
+  apply plugin: 'org.jetbrains.kotlin.plugin.serialization'
+
   sourceCompatibility = 8
 
   // From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
@@ -54,11 +56,25 @@ configure(subprojects - project(':android')) {
   processResources.dependsOn 'generateAssetList'
 
   compileJava {
-    options.incremental = true
+    options.incremental = false
   }
-  compileKotlin.compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
-  compileTestKotlin.compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
 
+  // === Kotlin компиляция ===
+  compileKotlin {
+    compilerOptions {
+      jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+      incremental = false
+      freeCompilerArgs.addAll("-Xno-k2", "-Xskip-metadata-version-check")
+    }
+  }
+
+  compileTestKotlin {
+    compilerOptions {
+      jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+      incremental = false
+      freeCompilerArgs.addAll("-Xno-k2")
+    }
+  }
 }
 
 subprojects {

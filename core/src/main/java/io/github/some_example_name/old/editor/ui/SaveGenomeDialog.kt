@@ -4,123 +4,127 @@ import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.scenes.scene2d.Action
-import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.actions.Actions
-import com.badlogic.gdx.scenes.scene2d.ui.Table
-import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
-import com.badlogic.gdx.utils.I18NBundle
 import com.kotcrab.vis.ui.widget.VisDialog
-import com.kotcrab.vis.ui.widget.VisLabel
+import com.kotcrab.vis.ui.widget.VisTable
+import com.kotcrab.vis.ui.widget.VisTextButton
+import com.kotcrab.vis.ui.widget.VisTextField
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
-import io.github.some_example_name.old.core.DISimulationContainer
-import io.github.some_example_name.old.core.DISimulationContainer.simulationSystem
-import io.github.some_example_name.old.systems.genomics.genome.Genome
-import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
-import io.github.some_example_name.old.game.MyGame
-import io.github.some_example_name.old.game.applyCustomFont
-import io.github.some_example_name.old.ui.core.makeStyledButton
-import io.github.some_example_name.old.ui.core.makeStyledTextField
+import io.github.some_example_name.old.systems.genomics.genome.Genome
+import io.github.some_example_name.old.systems.genomics.genome.saveGenome
+import io.github.some_example_name.old.ui.core.dp
+import io.github.some_example_name.old.ui.core.globalVisTable
+import io.github.some_example_name.old.ui.core.visLabel
+import io.github.some_example_name.old.ui.core.visTable
+import io.github.some_example_name.old.ui.core.visTextButton
+import io.github.some_example_name.old.ui.core.visTextField
 
+//TODO перейти на compose стиль
 class SaveGenomeDialog(
-    val genomeJsonReader: GenomeJsonReader,
     val genome: Genome,
     val onSaveAndTest: (String) -> Unit,
     val onGoMenu: () -> Unit,
-    isGoToMenu: Boolean
+    val isGoToMenu: Boolean
 ) : VisDialog(bundle.get("button.saveGenome")) {
 
     private val textures = mutableListOf<Texture>()
 
+    fun VisTable.compose() {
+        var genomeNameField: VisTextField? = null
+        var saveToFileAndTestButton: VisTextButton? = null
+        var saveToFileButton: VisTextButton? = null
+        var exportButton: VisTextButton? = null
+
+        visTable ( {growX().expandX()}) {
+            visLabel(bundle.get("button.name")) {
+                pad(8.dp())
+            }
+
+            genomeNameField = visTextField(text = genome.name, onTextChange = { text ->
+                val isDisabled = text.isEmpty()
+                saveToFileButton?.isDisabled = isDisabled
+                saveToFileAndTestButton?.isDisabled = isDisabled
+                exportButton?.isDisabled = isDisabled
+            }) {
+                growX().expandX()
+            }
+        }
+        row()
+
+        visTable ( {growX().expandX()}) {
+            saveToFileAndTestButton = visTextButton(bundle.get("button.saveAndTest"), onClick = {
+                val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
+                saveGenome(
+                    genome.copy(name = name),
+                    name
+                )
+                onSaveAndTest.invoke("${genomeNameField.text}")
+                fadeOut()
+            })
+        }
+        row()
+
+        visTable {
+            saveToFileButton = visTextButton(bundle.get("button.saveToFile"), onClick = {
+                val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
+                saveGenome(
+                    genome.copy(name = name),
+                    name
+                )
+            })
+            if (isGoToMenu) {
+                visTextButton(bundle.get("button.menu"), onClick = {
+                    onGoMenu.invoke()
+                }) { center() }
+            }
+        }
+        row()
+
+        visTable {
+            if (Gdx.app.type == Application.ApplicationType.Android) {
+                exportButton = visTextButton(bundle.get("button.saveAndExport"), onClick = {
+                    val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
+                    saveGenome(
+                        genome.copy(name = name),
+                        name
+                    )
+                }) { center() }
+            }
+
+            visTextButton("Share with everyone") { center() }
+        }
+        row()
+
+
+
+        val isDisabled = genomeNameField?.text?.isEmpty() ?: false
+        saveToFileButton?.isDisabled = isDisabled
+        saveToFileAndTestButton?.isDisabled = isDisabled
+        exportButton?.isDisabled = isDisabled
+    }
+
     init {
         setupTitleSize(game)
 
-        val density = Gdx.graphics.density
-        val btnH    = Gdx.graphics.height * 0.065f
-        val pad     = 8f * density
+        isModal = true
+        isMovable = true
 
-        // ── Top row: Name label + input field ──────────────────────────────
-        val nameRow = Table()
-        val genomeText = VisLabel(bundle.get("button.name"))
-        game.applyCustomFont(genomeText)
-        val genomeNameField = makeStyledTextField(game, textures).also { it.text = genome.name }
+        val rootTable = globalVisTable { compose() }
 
-        nameRow.add(genomeText).padRight(pad)
-        nameRow.add(genomeNameField).growX().height(btnH * 0.9f)
-        contentTable.add(nameRow).growX().padBottom(pad).row()
+        contentTable.add(rootTable)
 
-        // ── Bottom row: action buttons side by side ─────────────────────────
-        val btnRow = Table()
-        btnRow.defaults().height(btnH).padRight(pad)
+        closeOnEscape()
 
-        val saveToFileAndTestButton = makeStyledButton(bundle.get("button.saveAndTest"), game, textures)
-        val saveToFileButton        = makeStyledButton(bundle.get("button.saveToFile"),  game, textures)
-
-        saveToFileAndTestButton.addListener(object : ChangeListener() {
-            override fun changed(event: ChangeEvent, actor: Actor?) {
-                genomeJsonReader.saveGenomeToFile(genome, "user_genomes/${genomeNameField.text}.json", name = genomeNameField.text)
-                onSaveAndTest.invoke("${genomeNameField.text}.json")
-                val genomeNames = DISimulationContainer.genomeManager.genomes.map { it.name }
-                simulationSystem.simulationData.currentGenomeIndex = genomeNames.indexOf(genomeNameField.text)
-                fadeOut()
-            }
-        })
-        saveToFileButton.addListener(object : ChangeListener() {
-            override fun changed(event: ChangeEvent, actor: Actor?) {
-                genomeJsonReader.saveGenomeToFile(genome, "user_genomes/${genomeNameField.text}.json", genomeNameField.text)
-            }
-        })
-
-        btnRow.add(saveToFileAndTestButton)
-        btnRow.add(saveToFileButton)
-
-        val exportButton = if (Gdx.app.type == Application.ApplicationType.Android) {
-            makeStyledButton(bundle.get("button.saveAndExport"), game, textures).also {
-                it.addListener(object : ChangeListener() {
-                    override fun changed(event: ChangeEvent, actor: Actor?) {
-                        genomeJsonReader.saveGenomeToFile(genome, "user_genomes/${genomeNameField.text}.json", genomeNameField.text)
-                        game.multiPlatformFileProvider.exportGenome("user_genomes/${genomeNameField.text}.json")
-                    }
-                })
-                btnRow.add(it).height(btnH).padRight(pad)
-            }
-        } else null
-
-        if (isGoToMenu) {
-            makeStyledButton(bundle.get("button.menu"), game, textures).also {
-                it.addListener(object : ChangeListener() {
-                    override fun changed(event: ChangeEvent, actor: Actor?) { onGoMenu.invoke() }
-                })
-                btnRow.add(it).height(btnH).padRight(0f)
-            }
-        }
-
-        contentTable.add(btnRow).center().padBottom(pad)
-
-        // ── Validation ──────────────────────────────────────────────────────
-        val isDisabled = genomeNameField.text.isEmpty()
-        saveToFileButton.isDisabled            = isDisabled
-        saveToFileAndTestButton.isDisabled     = isDisabled
-        exportButton?.isDisabled               = isDisabled
-
-        genomeNameField.addListener(object : ChangeListener() {
-            override fun changed(event: ChangeEvent, actor: Actor) {
-                val d = genomeNameField.text.isEmpty()
-                saveToFileButton.isDisabled        = d
-                saveToFileAndTestButton.isDisabled = d
-                exportButton?.isDisabled           = d
-            }
-        })
-
-        contentTable.pad(pad)
         pack()
         centerWindow()
     }
 
     override fun hide(action: Action?) {
         super.hide(action)
-        addAction(Actions.sequence(
+        addAction(
+            Actions.sequence(
             Actions.delay(0.3f),
             Actions.run { textures.forEach { it.dispose() }; textures.clear() }
         ))

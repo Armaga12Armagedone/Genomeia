@@ -22,7 +22,7 @@ class Zygote(cellTypeId: Int) : Cell(
             val parentOrganIndex = cellIndex
             val subGenome = 1//TODO subGenome
             val genome = genomeManager.genomes[genomeIndex]
-            val genomeSize: Int = genome.genomeStageInstruction.size
+            val genomeSize: Int = genome.stageInstruction.size
             val dividedTimes: Int = genome.dividedTimes[0]
             val mutatedTimes: Int = genome.mutatedTimes[0]
 

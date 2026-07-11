@@ -32,7 +32,7 @@ class LeftRightClickManager(
 ) {
 
     fun leftClick(clickedIndex: Int, clickedCell: EditorCell, isCtrl: Boolean) {
-        val genomeStageInstruction = editorSimulationSystem.genome.genomeStageInstruction
+        val genomeStageInstruction = editorSimulationSystem.genomeStageInstruction
         if (!isCtrl) {
             val newDividedCellPosition = cellSearchManager.getPositionForNewCell(
                 clickedCellIndex = clickedIndex,
@@ -85,11 +85,8 @@ class LeftRightClickManager(
                 } else true
                 commandEditorStackManager.executeCommand(
                     command = AddNeuralLinkCommand(
-                        currentTick = currentTick,
                         cellFrom = cellFrom,
                         cellTo = cellTo,
-                        stageInstruction = genomeStageInstruction,
-                        doesNeedAddNewStage = genomeStageInstruction.size <= currentTick,
                         isNeural = isNeural,
                         isLink1NeuralDirected = isLink1NeuralDirected,
                         isLongNeuralLink = isLongNeuralLink,
@@ -100,7 +97,9 @@ class LeftRightClickManager(
                         } else cellFrom.id,
                         cellBId = if (linkIndex != -1) {
                             cellEntity.cellGenomeId[linkEntity.links2[linkIndex]]
-                        } else cellTo.id
+                        } else cellTo.id,
+                        stageInstruction = genomeStageInstruction,
+                        currentTick = currentTick
                     )
                 )
             }

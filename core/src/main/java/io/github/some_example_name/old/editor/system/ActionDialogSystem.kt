@@ -15,7 +15,7 @@ import kotlin.math.atan2
 import kotlin.math.sqrt
 
 class ActionDialogSystem(
-    val actionDialogType: ActionDialogType,
+    actionDialogType: ActionDialogType,
     newDividedCellPosition: Pair<Float, Float>?,
     val clickedCell: EditorCell,
 ) {

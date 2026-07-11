@@ -17,7 +17,6 @@ import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
 import java.util.concurrent.ConcurrentLinkedQueue
-import kotlin.collections.forEach
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -31,7 +30,8 @@ class UserCommandManager(
     val simulationData: SimulationData,
     val gridManager: GridManager,
     val particleEntity: ParticleEntity,
-    val zygote: Zygote
+    val zygote: Zygote,
+    val isEditor: Boolean
 ): Disposable {
 
     private val commandQueue = ConcurrentLinkedQueue<PlayerCommand>()
@@ -131,7 +131,7 @@ class UserCommandManager(
                                     dividedTimes = genome.dividedTimes[0],
                                     mutatedTimes = genome.mutatedTimes[0]
                                 )
-                                val randomAngle = 0f//MathUtils.random(0f, MathUtils.PI2)
+                                val randomAngle = if (isEditor) 0f else MathUtils.random(0f, MathUtils.PI2)
                                 cellEntity.addCell(
                                     x = cmd.x,
                                     y = cmd.y,

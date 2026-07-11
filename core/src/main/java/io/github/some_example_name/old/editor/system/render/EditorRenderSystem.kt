@@ -105,9 +105,9 @@ class EditorRenderSystem(
             }
 
             val stage = currentTick
-            val stageInstructions = editorSimulationSystem.genome.genomeStageInstruction
+            val stageInstructions = editorSimulationSystem.genomeStageInstruction
             if (stage < stageInstructions.size) {
-                val genomeStage = editorSimulationSystem.genome.genomeStageInstruction[stage]
+                val genomeStage = stageInstructions[stage]
 
                 genomeStage.cellActions.forEach { cellActionId, action ->
                     val divide = action.divide

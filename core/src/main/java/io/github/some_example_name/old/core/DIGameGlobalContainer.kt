@@ -5,9 +5,8 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.utils.I18NBundle
 import com.badlogic.gdx.utils.Json
 import io.github.some_example_name.old.cells.base.CellListBuilder
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.systems.genomics.Morphogenesis
-import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
+import io.github.some_example_name.old.systems.genomics.genome_deprecated.GenomeJsonReader
 import io.github.some_example_name.old.systems.render.ShaderManager
 import io.github.some_example_name.old.systems.render.ShaderManagerLibgdxApi
 import io.github.some_example_name.old.game.MyGame
@@ -33,8 +32,8 @@ object DIGameGlobalContainer {
     private val cellListBuilder = CellListBuilder()
 
     val particleTexturePaths: List<String> = cellListBuilder.instances.map {
-        it.textureName
-    } + "not_cell.png"
+        "cell_textures/" + it.textureName
+    } + "cell_textures/not_cell.png"
 
     val defaultCellSettingsMap = cellListBuilder.instances.associate {
         it.name to it.defaultCellSettings

@@ -194,9 +194,7 @@ object DISimulationContainer:  DIContext, Disposable {
 
     override val genomeManager = GenomeManager(
         genomeJsonReader = genomeJsonReader,
-        simulationData = simulationData,
-        isGenomeEditor = false,
-        genomeName = null
+        simulationData = simulationData
     )
 
     override val organManager = OrganManager(
@@ -247,7 +245,8 @@ object DISimulationContainer:  DIContext, Disposable {
         simulationData = simulationData,
         gridManager = gridManager,
         particleEntity = particleEntity,
-        zygote = zygote
+        zygote = zygote,
+        isEditor = false
     )
 
     override val worldCommandsManager = WorldCommandsManager(

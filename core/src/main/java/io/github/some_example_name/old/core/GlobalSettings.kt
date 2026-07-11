@@ -6,7 +6,7 @@ import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.utils.Json
 import com.badlogic.gdx.utils.JsonWriter
 import io.github.some_example_name.old.core.DIGameGlobalContainer.defaultCellSettingsMap
-import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
+import io.github.some_example_name.old.systems.genomics.genome_deprecated.GenomeJsonReader
 import java.io.File
 
 data class GlobalSimulationSettings(

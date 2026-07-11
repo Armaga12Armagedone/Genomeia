@@ -28,8 +28,14 @@ val formulaType = arrayOf(
 )
 
 fun activation(cellIndex: Int, nonSafeX: Float) = with(cellEntity) {
-    val x = nonSafeX.coerceIn(-1e10f, 1e10f)
-    when (getActivationFuncType(cellIndex)) {
+    val x = when {
+        nonSafeX.isNaN() -> 0f
+        nonSafeX == Float.POSITIVE_INFINITY -> 1e10f
+        nonSafeX == Float.NEGATIVE_INFINITY -> -1e10f
+        else -> nonSafeX.coerceIn(-1e10f, 1e10f)
+    }
+
+    val y = when (getActivationFuncType(cellIndex)) {
         0 -> getA(cellIndex) * x + getB(cellIndex)
         1 -> getC(cellIndex) * sin(getA(cellIndex) * x + getB(cellIndex))
         2 -> getC(cellIndex) * cos(getA(cellIndex) * x + getB(cellIndex))
@@ -97,6 +103,15 @@ fun activation(cellIndex: Int, nonSafeX: Float) = with(cellEntity) {
 
         else -> x
     }
+
+    val safeY = when {
+        y.isNaN() -> 0f
+        y == Float.POSITIVE_INFINITY -> 1e10f
+        y == Float.NEGATIVE_INFINITY -> -1e10f
+        else -> y
+    }
+
+    return@with safeY.coerceIn(-1e10f, 1e10f)
 }
 
 fun randomFromFloat(seed: Float, min: Float, max: Float): Float {

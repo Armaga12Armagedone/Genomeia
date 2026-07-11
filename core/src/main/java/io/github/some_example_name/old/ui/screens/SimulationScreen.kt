@@ -5,32 +5,21 @@ import com.badlogic.gdx.graphics.*
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
-import com.badlogic.gdx.input.GestureDetector
-import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Matrix4
-import com.badlogic.gdx.math.Vector2
-import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
-import com.badlogic.gdx.utils.I18NBundle
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import io.github.some_example_name.old.commands.PlayerCommand
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
-import io.github.some_example_name.old.core.DIGameGlobalContainer.fileProvider
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
+import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.genomeManager
 import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
 import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
-import io.github.some_example_name.old.core.FileProvider
-import io.github.some_example_name.old.editor.system.logic.FlingScreen
-import io.github.some_example_name.old.editor.system.logic.PanScreen
-import io.github.some_example_name.old.editor.system.logic.TapScreen
-import io.github.some_example_name.old.editor.system.logic.TouchDown
 import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
-import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.systems.render.usePostProcess
 import io.github.some_example_name.old.ui.core.CameraControl
 import io.github.some_example_name.old.ui.core.h
@@ -103,6 +92,8 @@ class SimulationScreen(
     private val extraTextures = mutableListOf<Texture>()
 
     override fun show() {
+        genomeManager.loadGenomes(genomeName)
+
         spriteBatch = SpriteBatch()
         stage = Stage(ScreenViewport())
         fontMatrix = Matrix4()
@@ -607,7 +598,7 @@ class SimulationScreen(
         selectGenomeButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 GenomeListDialog(
-                    genomesList = genomeManager.genomes.map { it.name },
+                    genomesList = genomeJsonReader.getGenomeFileNamesFromFolder()/*genomeManager.genomes.map { it.name }*/,
                     selectedGenomeIndex = simulationSystem.simulationData.currentGenomeIndex,
                     title = bundle.get("button.selectGenome"),
                     new = bundle.get("button.new"),
@@ -618,13 +609,14 @@ class SimulationScreen(
                         game.screen = GenomeEditorScreen(genomeName = null)
                     },
                     onNext = { genomeName ->
-                        println("$genomeName ${genomeNames.indexOf(genomeName)}")
+                        println("onNext $genomeName ${genomeNames.indexOf(genomeName)}")
+                        println(genomeNames)
                         simulationSystem.simulationData.currentGenomeIndex = genomeNames.indexOf(genomeName)
                     },
                     onRestart = {
                         val reader = simulationSystem.genomeManager.genomeJsonReader
                         val assetsGenomes = reader.getGenomeFileNamesFromAssetsFolder("genomes")
-                        val userGenomes = reader.getGenomeFileNamesFromFolder("user_genomes")
+                        val userGenomes = reader.getGenomeFileNamesFromFolder()
                         genomeNames = assetsGenomes + userGenomes
                     },
                     game = game,

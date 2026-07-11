@@ -8,30 +8,28 @@ import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
 class MutateCellCommand(
     val action: Action,
     val clickedCell: EditorCell,
-    val doesNeedAddNewStage: Boolean,
     stageInstruction: MutableList<GenomeStage>,
     currentTick: Int
 ) : UndoRedoCommand(
     tick = currentTick,
-    genomeStageInstruction = stageInstruction
+    genomeStageInstruction = stageInstruction,
+    doesNeedAddNewStage = stageInstruction.size <= currentTick
 ) {
 
-    override fun execute() {
-        if (doesNeedAddNewStage) {
-            genomeStageInstruction.add(GenomeStage())
-        }
+    override fun execute(): StageResult {
+        val stage = genomeStageInstruction[tick]
+        val oldValue = stage.cellActions[clickedCell.id]
 
-        genomeStageInstruction[tick].cellActions.compute(clickedCell.id) { _, oldValue ->
-            if (oldValue == null) return@compute CellAction(
-                mutate = action
-            )
-            if (oldValue.mutate == null) return@compute oldValue.copy(mutate = action)
-
-            oldValue.copy(
+        val newValue = when {
+            oldValue == null -> CellAction(mutate = action)
+            oldValue.mutate == null -> oldValue.copy(mutate = action)
+            else -> oldValue.copy(
                 mutate = action.copy(
-                    physicalLink = oldValue.mutate?.physicalLink ?: action.physicalLink
+                    physicalLink = oldValue.mutate.physicalLink
                 )
             )
         }
+
+        return StageResult.Keep(stage.copy(cellActions = stage.cellActions + (clickedCell.id to newValue)))
     }
 }

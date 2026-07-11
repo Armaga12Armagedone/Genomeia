@@ -30,7 +30,7 @@ class ToEditorDataMapper(
         val parentIndex = if (index != 0) { cellEntity.parentIndex[index] } else -1
         val parentId = if (index != 0) { cellEntity.cellGenomeId[parentIndex] } else -1
         val action = if (currentTick != lastTick) {
-            editorSimulationSystem.genome.genomeStageInstruction[currentTick]
+            editorSimulationSystem.genomeStageInstruction[currentTick]
                 .cellActions[if (isPhantom) parentId else id]
         } else null
 

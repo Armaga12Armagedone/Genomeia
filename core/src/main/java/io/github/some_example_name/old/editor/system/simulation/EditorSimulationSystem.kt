@@ -4,7 +4,7 @@ import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.commands.PlayerCommand
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandsManager
-import io.github.some_example_name.old.core.utils.StageTimelineBinarySearch
+import io.github.some_example_name.old.core.prettyPrint
 import io.github.some_example_name.old.editor.entities.EditorReplay
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.Entity
@@ -13,6 +13,9 @@ import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.OrganManager
 import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
+import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
+import io.github.some_example_name.old.systems.genomics.genome.getEmptyGenome
+import io.github.some_example_name.old.systems.genomics.genome.loadGenome
 import io.github.some_example_name.old.systems.physics.GridManager
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 
@@ -30,27 +33,44 @@ class EditorSimulationSystem(
     val userCommandManager: UserCommandManager
 ) {
 
-    val baseOrganIndex = 0
-    var genome = genomeManager.genomes[0]
+    private val baseOrganIndex = 0
+    private var genome = getEmptyGenome()
+    val genomeStageInstruction: MutableList<GenomeStage> = genome.stageInstruction.toMutableList()
     var mapCellGenomeIdToIndex = Int2IntOpenHashMap().apply { defaultReturnValue(-1) }
 
     var maxCellId = 0
 
-    fun newGenome() {
+    fun reinitGenome(genomeName: String?) {
+        genomeManager.genomes.clear()
+        genome = if (genomeName != null) {
+            loadGenome(genomeName)
+        } else {
+            getEmptyGenome()
+        }
+        genomeStageInstruction.clear()
+        genomeStageInstruction.addAll(genome.genomeStageInstruction)
+        genomeManager.genomes.add(genome)
+    }
+
+    fun getGenome() = genome
+
+    private fun newGenome() {
         genome = Genome(
-            genomeStageInstruction = genome.genomeStageInstruction,
-            dividedTimes = IntArray(genome.genomeStageInstruction.size),
-            mutatedTimes = IntArray(genome.genomeStageInstruction.size),
+            stageInstruction = genomeStageInstruction,
+            version = 24,
             name = genome.name,
             subGenomes = hashMapOf()
-        )
+        ).apply {
+            dividedTimes = IntArray(genomeStageInstruction.size)
+            mutatedTimes = IntArray(genomeStageInstruction.size)
+        }
 
         genome.genomeStageInstruction.forEachIndexed { index, stage ->
             stage.cellActions.forEach { (_, action) ->
                 if (action.divide != null) {
                     genome.dividedTimes[index]++
-                    if (action.divide!!.id > maxCellId) {
-                        maxCellId = action.divide!!.id
+                    if (action.divide.id > maxCellId) {
+                        maxCellId = action.divide.id
                     }
                 }
                 if (action.mutate != null) genome.mutatedTimes[index]++
@@ -90,7 +110,7 @@ class EditorSimulationSystem(
     }
 
     private fun updateTick() = with(cellEntity) {
-        genomeManager.genomes[0].genomeStageInstruction[organEntity.stage[0]].cellActions.forEach { id, _ ->
+        genomeManager.genomes[0].stageInstruction[organEntity.stage[0]].cellActions.forEach { id, _ ->
             cellSystem.genomicTransformations(worldCommandsManager.mapCellGenomeIdToIndex[id])
         }
 

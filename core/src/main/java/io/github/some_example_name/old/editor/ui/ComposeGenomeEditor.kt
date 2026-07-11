@@ -6,6 +6,7 @@ import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.Align
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisSlider
+import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isRightClick
@@ -26,7 +27,7 @@ import io.github.some_example_name.old.editor.system.render.EditorRenderSystem
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
 import io.github.some_example_name.old.editor.ui.dialog.SymmetryDialog
 import io.github.some_example_name.old.ui.core.FlowAlignment
-import io.github.some_example_name.old.ui.core.STYLE_DARK
+import io.github.some_example_name.old.ui.core.STYLE_BLACK
 import io.github.some_example_name.old.ui.core.dp
 import io.github.some_example_name.old.ui.core.globalVisTable
 import io.github.some_example_name.old.ui.core.visFlowRow
@@ -46,6 +47,9 @@ class ComposeGenomeEditor {
     lateinit var tickLabel: VisLabel
     lateinit var timeSlider: VisSlider
 
+    lateinit var undoButton: VisTextButton
+    lateinit var redoButton: VisTextButton
+
     fun composeGenomeEditor(
         stage: Stage,
         editorSimulationSystem: EditorSimulationSystem,
@@ -64,11 +68,11 @@ class ComposeGenomeEditor {
                 verticalSpacing = 8.dp()
             ) {
                 visLeftArrowButton(onClick = {
-                    stage.saveDialog(isGoToMenu = true, genome = editorSimulationSystem.genome)
+                    stage.saveDialog(isGoToMenu = true, genome = editorSimulationSystem.getGenome())
                 })
 
                 visTextButton(bundle.get("button.saveGenome"), onClick = {
-                    stage.saveDialog(isGoToMenu = false, genome = editorSimulationSystem.genome)
+                    stage.saveDialog(isGoToMenu = false, genome = editorSimulationSystem.getGenome())
                 })
 
                 visToggleButton(
@@ -125,16 +129,16 @@ class ComposeGenomeEditor {
             ) {
                 defaults().pad(8.dp()).center()
 
-                visTextButton("Undo", onClick = {
+                undoButton = visTextButton("Undo", onClick = {
                     editorLogicSystem.putUiCommand(CtrlZ)
                 })
 
-                tickLabel = visLabel(text = "${bundle.get("button.tick")}0", textColor = STYLE_DARK, align = Align.center) {
+                tickLabel = visLabel(text = "${bundle.get("button.tick")}0", textColor = STYLE_BLACK, align = Align.center) {
                     expandX().fillX()
                     center()
                 }
 
-                visTextButton("Redo", onClick = {
+                redoButton = visTextButton("Redo", onClick = {
                     editorLogicSystem.putUiCommand(CtrlY)
                 })
             }

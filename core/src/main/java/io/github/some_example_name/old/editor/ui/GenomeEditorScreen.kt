@@ -11,7 +11,6 @@ import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellReplay
 import io.github.some_example_name.old.editor.system.logic.CtrlY
 import io.github.some_example_name.old.editor.system.logic.CtrlZ
 import io.github.some_example_name.old.editor.system.logic.FlingScreen
@@ -20,9 +19,7 @@ import io.github.some_example_name.old.editor.system.logic.PanScreen
 import io.github.some_example_name.old.editor.system.logic.TapScreen
 import io.github.some_example_name.old.editor.system.logic.TouchDown
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.eyeReplay
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.neuralReplay
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.previousCtrlClicked
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.uiScreenCommands
 import io.github.some_example_name.old.editor.system.logic.ShowChangeRemoveDialog
@@ -43,6 +40,7 @@ class GenomeEditorScreen(
 
     private val renderSystem = DIGenomeEditorContainer.editorRenderSystem
     private val editorLogicSystem = DIGenomeEditorContainer.editorLogicSystem
+    private val commandEditorStackManager = DIGenomeEditorContainer.commandEditorStackManager
 
     private val camera = OrthographicCamera().apply {
         setToOrtho(false, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat())
@@ -65,7 +63,7 @@ class GenomeEditorScreen(
     private val cameraControl = CameraControl(
         camera = camera,
         onTouchDown = { x, y, _ ->
-            editorLogicSystem.putUiCommand(TouchDown(x, y = y))
+            editorLogicSystem.putUiCommand(TouchDown(x, y))
         },
         onTap = { x, y, isLeft ->
             editorLogicSystem.putUiCommand(TapScreen(x, y, isLeft, composeGenomeEditor.isCtrl))
@@ -79,11 +77,10 @@ class GenomeEditorScreen(
     )
 
     override fun show() {
-        DIGenomeEditorContainer.genomeManager.load("$genomeName.json")
-        editorSimulationSystem.genome = DIGenomeEditorContainer.genomeManager.genomes[0]
+        editorSimulationSystem.reinitGenome(genomeName)
         currentTick = 0
-
         editorLogicSystem.restartSimulation()
+
         Gdx.input.inputProcessor = cameraControl.getInputMultiplexer(stage)
         renderSystem.create(shape, camera)
         editorLogicSystem.bindToScreen(camera)
@@ -114,6 +111,16 @@ class GenomeEditorScreen(
             composeGenomeEditor.timeSlider.setRange(0f, lastTick.toFloat())
             composeGenomeEditor.isProgrammaticChange = false
             state.lastTick = lastTick
+        }
+
+        val disabledUndo = commandEditorStackManager.undoStack.isEmpty()
+        if (composeGenomeEditor.undoButton.isDisabled != disabledUndo) {
+            composeGenomeEditor.undoButton.isDisabled = disabledUndo
+        }
+
+        val disabledRedo = commandEditorStackManager.redoStack.isEmpty()
+        if (composeGenomeEditor.redoButton.isDisabled != disabledRedo) {
+            composeGenomeEditor.redoButton.isDisabled = disabledRedo
         }
 
         camera.update()

@@ -40,8 +40,6 @@ class MoveCellManager(
     }
 
     fun cellMoved() {
-        val genomeStageInstruction = editorSimulationSystem.genome.genomeStageInstruction
-
         val grabbedEditorCell = toEditorDataMapper.mapToEditorData(grabbedCellIndex)
 
         val (x, y) = symmetryManager.snapPosition(
@@ -87,7 +85,7 @@ class MoveCellManager(
                 newX = newX,
                 newY = newY,
                 currentTick = currentTick,
-                stageInstruction = genomeStageInstruction
+                stageInstruction = editorSimulationSystem.genomeStageInstruction
             )
         )
     }

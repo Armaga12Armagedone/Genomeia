@@ -3,7 +3,6 @@ package io.github.some_example_name.old.commands
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.cells.ControllerData
 import io.github.some_example_name.old.cells.SpecialModData
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.core.DIContext
@@ -185,7 +184,7 @@ class WorldCommandsManager(
                             //TODO сделать без алокаций
                             closestCells?.filter { particleEntity.isCell[it] }
                                 ?.map { particleEntity.holderEntityIndex[it] }
-                                ?.filter { cellEntity.organIndex[it] == cellEntity.organIndex[cellIndex] }
+//                                ?.filter { cellEntity.organIndex[it] == cellEntity.organIndex[cellIndex] }
                                 ?.forEach {
                                         val dx = cellEntity.getX(it) - x
                                         val dy = cellEntity.getY(it) - y

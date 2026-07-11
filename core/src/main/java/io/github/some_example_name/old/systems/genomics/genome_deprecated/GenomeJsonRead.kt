@@ -1,6 +1,13 @@
-package io.github.some_example_name.old.systems.genomics.genome
+/*
+package io.github.some_example_name.old.systems.genomics.genome_deprecated
 
 import com.badlogic.gdx.graphics.Color
+import io.github.some_example_name.old.systems.genomics.genome.Action
+import io.github.some_example_name.old.systems.genomics.genome.CellAction
+import io.github.some_example_name.old.systems.genomics.genome.Genome
+import io.github.some_example_name.old.systems.genomics.genome.GenomeProtobuf
+import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
+import io.github.some_example_name.old.systems.genomics.genome.LinkData
 import kotlin.collections.component1
 import kotlin.collections.component2
 import kotlin.collections.iterator
@@ -38,8 +45,7 @@ class ActionJsonRead(
     val isSum: Boolean? = null,
     val colorRecognition: Int? = null,
     val lengthDirected: Float? = null,
-    val pheromoneType: Int? = null,
-    val specialData: SpecialDataJsonRead? = null
+    val pheromoneType: Int? = null
 )
 
 class LinkDataJsonRead(
@@ -50,13 +56,9 @@ class LinkDataJsonRead(
     val directedNeuronLink: Int? = null
 )
 
-class SpecialDataJsonRead(
-    val attachedKey: Char
-)
-
 
 //Json to Domain
-fun CreatureJsonRead.jsonToDomain(isEditor: Boolean = false): Genome {
+fun CreatureJsonRead.jsonToDomain(isEditor: Boolean = false): GenomeProtobuf.Genome {
     val genomeStageInstruction = this.toDomain(isEditor)
     val dividedTimes = IntArray(genomeStageInstruction.size)
     val mutatedTimes = IntArray(genomeStageInstruction.size)
@@ -68,16 +70,18 @@ fun CreatureJsonRead.jsonToDomain(isEditor: Boolean = false): Genome {
             if (action.mutate != null) mutatedTimes[index] ++
         }
     }
-    return Genome(
-        genomeStageInstruction = genomeStageInstruction.toMutableList(),
-        dividedTimes = dividedTimes,
-        mutatedTimes = mutatedTimes,
+    return GenomeProtobuf.Genome(
+        genomeStageInstruction = genomeStageInstruction,
+        version = 23,
         name = this.name,
         subGenomes = hashMapOf()
-    )
+    ).apply {
+        this.dividedTimes = dividedTimes
+        this.mutatedTimes = mutatedTimes
+    }
 }
 
-private fun CreatureJsonRead.toDomain(isEditor: Boolean): List<GenomeStage> {
+private fun CreatureJsonRead.toDomain(isEditor: Boolean): List<GenomeProtobuf.GenomeStage> {
     return genomeStageInstruction.map { stageJson ->
         val cellActions = stageJson.cellActions.mapKeys { (k, _) -> k.toInt() }
             .mapValues { (_, v) ->
@@ -99,17 +103,17 @@ private fun CreatureJsonRead.toDomain(isEditor: Boolean): List<GenomeStage> {
 
             for ((key, action) in cellActions) {
                 action.divide?.physicalLink?.forEach { linkKey, linkData ->
-                    action.divide?.id?.let { id ->
+                    action.divide.id.let { id ->
                         invertedDivide[linkKey]?.let { divideKey ->
                             val cellAction = cellActions[divideKey]
-                            cellAction?.divide?.physicalLink?.put(id, linkData)
+                            cellAction?.divide?.physicalLinkMirroredForCell?.put(id, linkData)
                         }
                     }
                 }
                 action.mutate?.physicalLink?.forEach { linkKey, linkData ->
                     invertedDivide[linkKey]?.let { divideKey ->
                         val cellAction = cellActions[divideKey]
-                        cellAction?.divide?.physicalLink?.put(key, linkData)
+                        cellAction?.divide?.physicalLinkMirroredForCell?.put(key, linkData)
                     }
                 }
             }
@@ -138,14 +142,7 @@ private fun ActionJsonRead.toDomain(): Action {
         isSum = isSum,
         colorRecognition = colorRecognition,
         lengthDirected = lengthDirected?.div(40f),
-        pheromoneType = pheromoneType,
-        specialData = specialData?.toDomain()
-    )
-}
-
-private fun SpecialDataJsonRead.toDomain(): SpecialData {
-    return SpecialData(
-        attachedKey
+        pheromoneType = pheromoneType
     )
 }
 
@@ -158,3 +155,4 @@ private fun LinkDataJsonRead.toDomain(): LinkData {
         directedNeuronLink = directedNeuronLink
     )
 }
+*/

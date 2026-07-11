@@ -1,10 +1,10 @@
 package io.github.some_example_name.old.editor.undo_redo_commands
 
+import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.systems.genomics.genome.CellAction
 import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
 import io.github.some_example_name.old.systems.genomics.genome.LinkData
-import io.github.some_example_name.old.editor.entities.EditorCell
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
@@ -14,15 +14,15 @@ class DivideCellCommand(
     val divide: Action,
     val newId: Int,
     val newPoint: Pair<Float, Float>,
-    val doesNeedAddNewStage: Boolean,
     stageInstruction: MutableList<GenomeStage>,
     currentTick: Int
 ) : UndoRedoCommand(
     tick = currentTick,
-    genomeStageInstruction = stageInstruction
+    genomeStageInstruction = stageInstruction,
+    doesNeedAddNewStage = stageInstruction.size <= currentTick
 ) {
 
-    override fun execute() {
+    override fun execute(): StageResult {
         val justAddedCellX = newPoint.first
         val justAddedCellY = newPoint.second
 
@@ -38,19 +38,17 @@ class DivideCellCommand(
             it.id to LinkData(length = length)
         })
 
-        if (doesNeedAddNewStage) {
-            genomeStageInstruction.add(GenomeStage())
-        }
         val divideAction = divide.copy(
             id = newId,
             angle = angle,
             physicalLink = physicalLink
         )
 
-        genomeStageInstruction[tick].cellActions.compute(clickedCell.id) { _, oldValue ->
-            oldValue?.copy(divide = divideAction) ?: CellAction(
-                divide = divideAction
-            )
-        }
+        val stage = genomeStageInstruction[tick]
+        val oldValue = stage.cellActions[clickedCell.id]
+
+        val newValue = oldValue?.copy(divide = divideAction) ?: CellAction(divide = divideAction)
+
+        return StageResult.Keep(stage.copy(cellActions = stage.cellActions + (clickedCell.id to newValue)))
     }
 }

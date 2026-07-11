@@ -27,7 +27,7 @@ class Producer(cellTypeId: Int): Cell(
             val genomeIndex = organEntity.genomeIndex[organIndex] // TODO сделать выбор sub-genome
             val genome = genomeManager.genomes[genomeIndex]
             var counter = 0
-            genome.genomeStageInstruction.forEach {
+            genome.stageInstruction.forEach {
                 counter += it.cellActions.size
             }
             specialEntity.setReproductionRestriction(cellIndex, counter * substrateSettings.data.producerRestoreTimeTickCoefficient.toInt())

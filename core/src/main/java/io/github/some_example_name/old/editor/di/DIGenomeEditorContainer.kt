@@ -81,9 +81,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
 
     override val genomeManager = GenomeManager(
         genomeJsonReader = DIGameGlobalContainer.genomeJsonReader,
-        simulationData = simulationData,
-        isGenomeEditor = true,
-        genomeName = null
+        simulationData = simulationData
     )
 
     override val organEntity = OrganEntity(
@@ -265,7 +263,8 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         simulationData = simulationData,
         gridManager = gridManager,
         particleEntity = particleEntity,
-        zygote = zygote
+        zygote = zygote,
+        isEditor = true
     )
 
     val editorSimulationSystem = EditorSimulationSystem(

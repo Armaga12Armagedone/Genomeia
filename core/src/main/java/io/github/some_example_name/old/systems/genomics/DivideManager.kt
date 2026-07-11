@@ -133,7 +133,7 @@ class DivideManager(
                 )
             }
 
-            if (action.physicalLink.isNotEmpty()) {
+            if (action.physicalLinkMirroredForCell.isNotEmpty()) {
                 val gridX = x.toInt()
                 val gridY = y.toInt()
                 val closestCells = gridManager.collectParticles(gridX, gridY)
@@ -143,7 +143,7 @@ class DivideManager(
                         .filter { organIndex[it] == organIndex[index]}
                         .associateBy { this.cellGenomeId[it] }
 
-                action.physicalLink.forEach { (cellGenomeIdToConnectWith, linkData) ->
+                action.physicalLinkMirroredForCell.forEach { (cellGenomeIdToConnectWith, linkData) ->
                     val otherCellIndex = idToIndexAssociation[cellGenomeIdToConnectWith]
                     if (linkData != null) {
 

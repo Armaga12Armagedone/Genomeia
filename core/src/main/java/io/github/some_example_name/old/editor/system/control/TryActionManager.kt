@@ -25,15 +25,14 @@ class TryActionManager(
     var defaultAction: Action? = null
 
     fun tryToMutate(clickedCellIndex: Int, action: Action) {
-        val genomeStageInstruction = editorSimulationSystem.genome.genomeStageInstruction
+        val genomeStageInstruction = editorSimulationSystem.genomeStageInstruction
 
         commandEditorStackManager.executeCommand(
             command = MutateCellCommand(
                 currentTick = currentTick,
                 action = action,
                 clickedCell = toEditorDataMapper.mapToEditorData(clickedCellIndex),
-                stageInstruction = genomeStageInstruction,
-                doesNeedAddNewStage = genomeStageInstruction.size <= currentTick,
+                stageInstruction = genomeStageInstruction
             )
         )
 
@@ -49,7 +48,7 @@ class TryActionManager(
         clickedIndex: Int,
         divide: Action
     ) {
-        val genomeStageInstruction = editorSimulationSystem.genome.genomeStageInstruction
+        val genomeStageInstruction = editorSimulationSystem.genomeStageInstruction
         commandEditorStackManager.executeCommand(
             command = ChangeDivideCommand(
                 currentTick = currentTick,
@@ -67,14 +66,13 @@ class TryActionManager(
     }
 
     fun tryToRemove(clickedCellIndex: Int) {
-        val genomeStageInstruction = editorSimulationSystem.genome.genomeStageInstruction
         val clickedCell = toEditorDataMapper.mapToEditorData(clickedCellIndex)
         commandEditorStackManager.executeCommand(
             command = RemoveCellCommand(
                 currentTick = currentTick,
                 clickedCell = clickedCell,
                 parentCell = toEditorDataMapper.mapToEditorData(clickedCell.parentIndex),
-                stageInstruction = genomeStageInstruction
+                stageInstruction = editorSimulationSystem.genomeStageInstruction
             )
         )
         defaultActionType = LastActionType.DELETE
@@ -88,7 +86,7 @@ class TryActionManager(
     ) {
         if (newDividedCellPosition == null) return
 
-        val genomeStageInstruction = editorSimulationSystem.genome.genomeStageInstruction
+        val genomeStageInstruction = editorSimulationSystem.genomeStageInstruction
 
         val radius = 0.5f //TODO поменять когда будет выбор радиуса
 
@@ -108,7 +106,6 @@ class TryActionManager(
                 divide = action,
                 newId = editorSimulationSystem.maxCellId + 1,
                 newPoint = newDividedCellPosition,
-                doesNeedAddNewStage = genomeStageInstruction.size <= currentTick,
                 stageInstruction = genomeStageInstruction,
                 currentTick = currentTick,
             )

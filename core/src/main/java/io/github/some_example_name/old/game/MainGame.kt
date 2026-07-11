@@ -53,11 +53,11 @@ class MyGame(
 
     lateinit var pikSounds: List<Sound>
     private val trackFiles = listOf(
-        "track1.ogg",
-        "track2.ogg",
-        "track3.ogg",
-        "track4.ogg",
-        "track5.ogg"
+        "ost/track1.ogg",
+        "ost/track2.ogg",
+        "ost/track3.ogg",
+        "ost/track4.ogg",
+        "ost/track5.ogg"
     )
 
     lateinit var currentMusic: Music
@@ -149,11 +149,11 @@ class MyGame(
         setScreen(MenuScreen())
 
         pikSounds = listOf<Sound>(
-            Gdx.audio.newSound(Gdx.files.internal("pik1.mp3")),
-            Gdx.audio.newSound(Gdx.files.internal("pik2.mp3")),
-            Gdx.audio.newSound(Gdx.files.internal("pik3.mp3")),
-            Gdx.audio.newSound(Gdx.files.internal("pik4.mp3")),
-            Gdx.audio.newSound(Gdx.files.internal("pik5.mp3"))
+            Gdx.audio.newSound(Gdx.files.internal("sounds/pik1.mp3")),
+            Gdx.audio.newSound(Gdx.files.internal("sounds/pik2.mp3")),
+            Gdx.audio.newSound(Gdx.files.internal("sounds/pik3.mp3")),
+            Gdx.audio.newSound(Gdx.files.internal("sounds/pik4.mp3")),
+            Gdx.audio.newSound(Gdx.files.internal("sounds/pik5.mp3"))
         )
 
         UI_SCALE = 1f//((if (Gdx.app.type == Application.ApplicationType.Android) Gdx.graphics.density / 2f else Gdx.graphics.density * 1.5f) * 10).toInt() / 10f

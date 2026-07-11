@@ -5,7 +5,6 @@ import com.badlogic.gdx.scenes.scene2d.Stage
 import com.kotcrab.vis.ui.widget.color.ColorPickerAdapter
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
-import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
 import io.github.some_example_name.old.core.color_picker.ColorPicker
 import io.github.some_example_name.old.editor.system.logic.DivideDialog
 import io.github.some_example_name.old.editor.system.logic.MutateDialog
@@ -20,9 +19,9 @@ import io.github.some_example_name.old.editor.system.logic.TryToRemove
 import io.github.some_example_name.old.editor.ui.dialog.ActionDialog
 import io.github.some_example_name.old.editor.ui.dialog.ActionDialogType
 import io.github.some_example_name.old.editor.ui.dialog.MutateOrDivideDialog
+import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.ui.screens.MenuScreen
 import io.github.some_example_name.old.ui.screens.SimulationScreen
-import io.github.some_example_name.old.systems.genomics.genome.Genome
 
 fun Stage.changeRemoveActionDialog(
     command: ShowChangeRemoveDialog,
@@ -140,7 +139,6 @@ fun Stage.saveDialog(
     genome: Genome
 ) {
     SaveGenomeDialog(
-        genomeJsonReader = genomeJsonReader,
         genome = genome,
         onSaveAndTest = { genomeNameForTest ->
             game.screen.dispose()

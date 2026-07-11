@@ -146,7 +146,7 @@ class DrawingHelperElements(
 
                 if (currentTick != lastTick) {
                     val action =
-                        editorSimulationSystem.genome.genomeStageInstruction[currentTick].cellActions[cellGenomeId]
+                        editorSimulationSystem.genomeStageInstruction[currentTick].cellActions[cellGenomeId]
                     if (action?.mutate != null) {
                         val colorOfCellFrom = Color().also {
                             val argb = color

@@ -14,41 +14,59 @@ class MoveCellCommand(
     val newX: Float,
     val newY: Float,
     currentTick: Int,
-    stageInstruction: MutableList<GenomeStage>
+    val stageInstruction: MutableList<GenomeStage>
 ) : UndoRedoCommand(
     tick = currentTick,
-    genomeStageInstruction = stageInstruction
+    genomeStageInstruction = stageInstruction,
+    doesNeedAddNewStage = false
 ) {
 
-    override fun execute() {
-        //Удаление всех прошлых связок с новыми клетками
-        oldNeighboursJustAdded.forEach {
-            if (it.isPhantom) {
-                it.divide?.physicalLink?.remove(grabbedEditorCell.id)
-            }
-        }
+    override fun execute(): StageResult {
+        val stage = genomeStageInstruction[tick]
 
-        val physicalLink =
-            newNeighbours.filter { it.id != grabbedEditorCell.id }.associate { it ->
-                val deltaX = newX - it.x
-                val deltaY = newY - it.y
+        // Обновляем divide action родителя перетаскиваеймой клетки
+        val grabbedCellParentAction = stage.cellActions[parentEditorCell.id] ?: throw Exception("No moved cell")
+        val grabbedParentDivide = grabbedCellParentAction.divide ?: throw Exception("No moved cell")
+
+        val newPhysicalLink: Map<Int, LinkData> = newNeighbours
+            .filter { it.id != grabbedEditorCell.id }
+            .associate { neighbour ->
+                val deltaX = newX - neighbour.x
+                val deltaY = newY - neighbour.y
                 val length = sqrt((deltaX * deltaX + deltaY * deltaY).toDouble()).toFloat()
-                it.id to LinkData(length = length)
+                neighbour.id to LinkData(length = length)
             }
 
-        grabbedEditorCell.divide?.also { it ->
-            it.physicalLink.clear()
-            it.physicalLink.putAll(physicalLink)
-        }
-
-        //Добавлением новых связок
         val deltaX = newX - parentEditorCell.x
         val deltaY = newY - parentEditorCell.y
+        val newAngle = atan2(deltaY, deltaX) - parentEditorCell.angleToParent
 
-        val angle = atan2(deltaY, deltaX) - parentEditorCell.angleToParent
+        val newGrabbedParentDivide = grabbedParentDivide.copy(
+            physicalLink = newPhysicalLink,
+            angle = newAngle
+        )
 
-        grabbedEditorCell.divide?.also { it ->
-            it.angle = angle
-        }
+        // Убираем линки на перемещаемую клетку у старых только что добавленных клеток
+        val updatedActionsFromOldNeighbours = oldNeighboursJustAdded
+            .filter { it.isPhantom }
+            .mapNotNull { oldNeighbour ->
+                val oldAction = stage.cellActions[oldNeighbour.parentId]
+                val oldDivide = oldAction?.divide
+                if (oldDivide?.physicalLink?.containsKey(grabbedEditorCell.id) == true) {
+                    val newLinks = oldDivide.physicalLink - grabbedEditorCell.id
+                    val newDivide = oldDivide.copy(physicalLink = newLinks)
+                    oldNeighbour.parentId to oldAction.copy(divide = newDivide)
+                } else {
+                    null
+                }
+            }
+            .toMap()
+
+        // Собираем итоговую карту cellActions
+        val finalCellActions = stage.cellActions
+            .plus(parentEditorCell.id to grabbedCellParentAction.copy(divide = newGrabbedParentDivide))
+            .plus(updatedActionsFromOldNeighbours)
+
+        return StageResult.Keep(stage.copy(cellActions = finalCellActions))
     }
 }

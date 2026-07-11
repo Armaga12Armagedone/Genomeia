@@ -21,7 +21,7 @@ import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
-import io.github.some_example_name.old.systems.genomics.genome.GenomeJsonReader
+import io.github.some_example_name.old.systems.genomics.genome_deprecated.GenomeJsonReader
 import io.github.some_example_name.old.ui.core.STYLE_DARK
 import io.github.some_example_name.old.ui.core.makeStyledButton
 import io.github.some_example_name.old.ui.dialogs.GenomeListDialog
@@ -88,7 +88,7 @@ class MenuScreen: Screen {
                 old.dispose()
             },
             Btn(bundle.get("button.editor")) {
-                val genomes = genomeJsonReader.getGenomeFileNamesFromFolder("user_genomes")
+                val genomes = genomeJsonReader.getGenomeFileNamesFromFolder()
                 if (genomes.isEmpty()) {
                     game.screen = GenomeEditorScreen(genomeName = null)
                 } else {
