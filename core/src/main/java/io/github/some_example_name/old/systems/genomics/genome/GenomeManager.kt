@@ -16,7 +16,7 @@ class GenomeManager(
 
     fun loadGenomes(genomeName: String? = null) {
         genomes.clear()
-
+        simulationData.currentGenomeIndex = 0
         if (genomeName == null) {
             val genomeNames = genomeJsonReader.getGenomeFileNamesFromFolder()
             genomeNames.forEach {

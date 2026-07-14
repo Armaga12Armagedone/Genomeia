@@ -23,7 +23,7 @@ class LinkEntity(
     var isStickyLink = BooleanArray(maxAmount) { false }
     var isLongNeuralLink = BooleanArray(maxAmount) { false }
     var color = IntArray(maxAmount)
-    val linkIndexMap = UnorderedIntPairMap(1_000_000)
+    val linkIndexMap = UnorderedIntPairMap(100_000)
 
     var linkPhase = BooleanArray(maxAmount)
     var assignedThread = ByteArray(maxAmount) { -1 }
@@ -115,6 +115,19 @@ class LinkEntity(
 
         linkIndexMap.put(cellIndex, otherCellIndex, addLinkIndex)
 
+        if (isNeuronLink) {
+            with(cellEntity) {
+                val cellA = cellList[cellType[cellIndex].toInt()]
+                val cellB = cellList[cellType[otherCellIndex].toInt()]
+                if (cellA.doesNeedNeuralConnections) {
+                    addNeuralConnection(cellIndex, addLinkIndex)
+                }
+                if (cellB.doesNeedNeuralConnections) {
+                    addNeuralConnection(otherCellIndex, addLinkIndex)
+                }
+            }
+        }
+
         return addLinkIndex
     }
 
@@ -147,6 +160,9 @@ class LinkEntity(
             isStickyLink[linkIndex] = false
             isLongNeuralLink[linkIndex] = false
             color[linkIndex] = 0
+
+            cellEntity.removeNeuralConnection(cellA, linkIndex)
+            cellEntity.removeNeuralConnection(cellB, linkIndex)
         }
     }
 

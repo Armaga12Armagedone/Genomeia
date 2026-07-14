@@ -1,7 +1,6 @@
 package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.cells.ControllerData
 import io.github.some_example_name.old.cells.Eye
 import io.github.some_example_name.old.cells.PheromoneEmitter
 import io.github.some_example_name.old.cells.Producer

@@ -144,6 +144,21 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         intParamsCount = 1,
         floatParamsCount = 0,
         booleanParamsCount = 0
+    ),
+    DELETE_NEURAL_CONNECTIONS(
+        intParamsCount = 1,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
+    ),
+    ADD_NEURAL_CONNECTION(
+        intParamsCount = 2,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
+    ),
+    MUTATE_ON_START(
+        intParamsCount = 3,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
     );
 
     companion object {

@@ -2,8 +2,6 @@ package io.github.some_example_name.old.systems.genomics
 
 import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.cells.NonWorkingCell1
-import io.github.some_example_name.old.cells.ControllerData
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager

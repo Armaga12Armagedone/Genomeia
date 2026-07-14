@@ -24,7 +24,7 @@ class ThreadManager(
         return Executors.newFixedThreadPool(threadCount) { runnable ->
             val thread = Thread(runnable)
             thread.isDaemon = true
-            thread.name = "Simulation-Worker-${threadCount}"
+            thread.name = "Sim-Worker-${threadCount}"
             thread
         }
     }

@@ -6,6 +6,8 @@ import io.github.some_example_name.old.core.DISimulationContainer.cellsSettings
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.systems.genomics.genome.CellAction
 import io.github.some_example_name.old.systems.simulation.SimulationData
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
+import it.unimi.dsi.fastutil.ints.IntArrayList
 
 class CellEntity(
     cellsStartMaxAmount: Int,
@@ -68,6 +70,23 @@ class CellEntity(
     var degreeOfShortening = FloatArray(maxAmount) { 1f }
     var pheromoneType = IntArray(maxAmount) { -1 }
     var linkAmount = IntArray(maxAmount) { 0 }
+    var command = ByteArray(maxAmount) { -1 }
+    var neuralConnections = Int2ObjectOpenHashMap<IntArrayList>()
+
+    fun addNeuralConnection(cellIndex: Int, targetNeuralIndex: Int) {
+        val list = neuralConnections[cellIndex] ?: IntArrayList(4).also {
+            neuralConnections[cellIndex] = it
+        }
+
+        if (!list.contains(targetNeuralIndex)) {
+            list.add(targetNeuralIndex)
+        }
+    }
+
+    fun removeNeuralConnection(cellIndex: Int, targetNeuralIndex: Int) {
+        val list = neuralConnections.get(cellIndex) ?: return
+        list.rem(targetNeuralIndex)
+    }
 
     //Neural entity
     var neuralIndexes = IntArray(maxAmount) { -1 }
@@ -88,6 +107,12 @@ class CellEntity(
     fun setRemember(index: Int, value: Float) { neuralEntity.remember[neuralIndexes[index]] = value }
     fun getIsSum(index: Int) = neuralEntity.isSum[neuralIndexes[index]]
     fun setIsSum(index: Int, value: Boolean) {neuralEntity.isSum.set(neuralIndexes[index], value)}
+    fun getTickRed(index: Int) = neuralEntity.tickRed[neuralIndexes[index]]
+    fun setTickRed(index: Int, value: Int) { neuralEntity.tickRed[neuralIndexes[index]] = value }
+    fun getTickPain(index: Int) = neuralEntity.tickPain[neuralIndexes[index]]
+    fun setTickPain(index: Int, value: Int) { neuralEntity.tickPain[neuralIndexes[index]] = value }
+    fun getWeight(index: Int) = neuralEntity.weight[neuralIndexes[index]]
+    fun setWeight(index: Int, value: Float) { neuralEntity.weight[neuralIndexes[index]] = value}
 
     fun deleteNeural(cellIndex: Int, neuralGeneration: Int? = null) {
         val neuralIndex = neuralIndexes[cellIndex]
@@ -179,7 +204,11 @@ class CellEntity(
         this.degreeOfShortening[cellIndex] = 1f
         this.pheromoneType[cellIndex] = pheromoneType
         linkAmount[cellIndex] = 0
+        command[cellIndex] = -1
         val cell = cellList[cellType]
+        if (cell.doesNeedNeuralConnections) {
+            neuralConnections.put(cellIndex, IntArrayList(4))
+        }
 
         if (cell.isNeural) {
             addNeural(cellIndex, cellType, a, b, c, isSum, activationFuncType)
@@ -233,6 +262,8 @@ class CellEntity(
         this.degreeOfShortening[cellIndex] = 1f
         pheromoneType[cellIndex] = -1
         linkAmount[cellIndex] = 0
+        command[cellIndex] = -1
+        neuralConnections.remove(cellIndex)
 
         deleteNeural(cellIndex = cellIndex)
 
@@ -274,6 +305,8 @@ class CellEntity(
         degreeOfShortening.clear(1f)
         pheromoneType.clear(-1)
         linkAmount.clear(0)
+        command.clear(-1)
+        neuralConnections.clear()
     }
 
     override fun onResize(oldMax: Int) {
@@ -307,5 +340,6 @@ class CellEntity(
         degreeOfShortening = degreeOfShortening.resize(1f)
         pheromoneType = pheromoneType.resize(-1)
         linkAmount = linkAmount.resize(0)
+        command = command.resize(-1)
     }
 }

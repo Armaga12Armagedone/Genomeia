@@ -5,8 +5,12 @@ buildscript {
     google()
   }
 }
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
+
+plugins {
+  id 'com.android.application'
+  id 'kotlin-android'
+  id 'org.jetbrains.kotlin.plugin.serialization'   // ← Добавлено
+}
 
 android {
   namespace "io.github.some_example_name"
@@ -39,10 +43,17 @@ android {
     multiDexEnabled true
   }
   compileOptions {
-    sourceCompatibility "8"
-    targetCompatibility "8"
+    sourceCompatibility JavaVersion.VERSION_1_8
+    targetCompatibility JavaVersion.VERSION_1_8
     coreLibraryDesugaringEnabled true
   }
+
+  kotlin {
+    compilerOptions {
+      jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
+    }
+  }
+
   buildTypes {
     release {
       minifyEnabled true
@@ -50,14 +61,12 @@ android {
       proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
     }
   }
-
-  kotlin.compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
-
 }
 
 repositories {
-  // needed for AAPT2, may be needed for other tools
+  mavenCentral()
   google()
+  maven { url 'https://jitpack.io' }
 }
 
 configurations { natives }
@@ -113,6 +122,14 @@ tasks.register('copyAndroidNatives') {
 
 tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") }.configureEach { packageTask ->
   packageTask.dependsOn 'copyAndroidNatives'
+}
+
+// Отключаем инкрементальную компиляцию и K2 (решаем проблему с FirIncompatibleClassExpressionChecker)
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+  kotlinOptions {
+    incremental = false
+    freeCompilerArgs += ["-Xno-k2", "-Xskip-metadata-version-check"]
+  }
 }
 
 tasks.register('run', Exec) {

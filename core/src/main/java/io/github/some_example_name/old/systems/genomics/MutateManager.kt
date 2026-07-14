@@ -73,6 +73,16 @@ class MutateManager(
                         booleans = booleanArrayOf(isSum)
                     )
                 }
+                if (lastCell.doesNeedNeuralConnections && !newCell.doesNeedNeuralConnections) {
+                    neuralConnections.remove(index)
+                    worldCommandsManager.worldCommandBuffer[threadId].push(
+                        type = WorldCommandType.DELETE_NEURAL_CONNECTIONS,
+                        ints = intArrayOf(index)
+                    )
+                }
+                if (!lastCell.doesNeedNeuralConnections && newCell.doesNeedNeuralConnections) {
+                    command[index] = 0
+                }
                 if (lastCell is Eye && newCell !is Eye) {
                     worldCommandsManager.worldCommandBuffer[threadId].push(
                         type = WorldCommandType.DELETE_EYE,
@@ -130,11 +140,15 @@ class MutateManager(
                 setCellStiffness(index, cellsSettings[it].cellStiffness)
                 isNeural[index] = newCell.isNeural
 
-                val genomeIndex = organEntity.genomeIndex[organIndex[index]]
                 if (newCell is Zygote && !isEditor) {
                     cellGenomeId[index] = 0
                 }
-                newCell.onStart(index, threadId, genomeIndex)
+
+                val genomeIndex = organEntity.genomeIndex[organIndex[index]]
+                worldCommandsManager.worldCommandBuffer[threadId].push(
+                    type = WorldCommandType.MUTATE_ON_START,
+                    ints = intArrayOf(index, threadId, genomeIndex)
+                )
             }
 
             if (isFromMuscleToAnother) {
@@ -231,19 +245,33 @@ class MutateManager(
                                     color[linkIndex] = (linkData.color ?: if (linkData.isNeuronal) Color.CYAN else Color.RED).toIntBits()
 
                                     if (!linkData.isNeuronal) {
-                                        val cellIndex = if (isLink1NeuralDirected[linkIndex]) links1[linkIndex] else links2[linkIndex]
+                                        val cellA = links1[linkIndex]
+                                        val cellB = links2[linkIndex]
+                                        val cellIndex = if (isLink1NeuralDirected[linkIndex]) cellA else cellB
                                         if (isNeural[cellIndex]) {
                                             neuronImpulseInput[cellIndex] = 0f
                                             neuronImpulseOutput[cellIndex] = 0f
                                         }
-                                    } else {
-                                        val cellLink1Index = links1[linkIndex]
-                                        val cellLink2Index = links2[linkIndex]
-                                        val cellLink1Id = cellGenomeId[cellLink1Index]
-                                        val cellLink2Id = cellGenomeId[cellLink2Index]
 
-                                        isLink1NeuralDirected[linkIndex] =
-                                            linkData.directedNeuronLink == cellLink1Id
+                                        //Удаление нейролинков из списока для клеток, которые в них нуждаются
+                                        if (cellList[cellType[cellA].toInt()].doesNeedNeuralConnections)
+                                            removeNeuralConnection(cellA, linkIndex)
+                                        if (cellList[cellType[cellB].toInt()].doesNeedNeuralConnections)
+                                            removeNeuralConnection(cellB, linkIndex)
+
+                                    } else {
+                                        val cellA = links1[linkIndex]
+                                        val cellB = links2[linkIndex]
+                                        val cellLink1Id = cellGenomeId[cellA]
+                                        val cellLink2Id = cellGenomeId[cellB]
+
+                                        isLink1NeuralDirected[linkIndex] = linkData.directedNeuronLink == cellLink1Id
+
+                                        //Добавление нейролинка в список для клеток, которые в них нуждаются
+                                        if (cellList[cellType[cellA].toInt()].doesNeedNeuralConnections)
+                                            addNeuralConnection(cellA, linkIndex)
+                                        if (cellList[cellType[cellB].toInt()].doesNeedNeuralConnections)
+                                            addNeuralConnection(cellB, linkIndex)
 
                                         if (linkData.directedNeuronLink != cellLink1Id && linkData.directedNeuronLink != cellLink2Id) {
                                             throw Exception("Incorrect logic in the neural-link ${linkData.directedNeuronLink} ${cellGenomeId[index]} $cellGenomeIdToConnectWith")

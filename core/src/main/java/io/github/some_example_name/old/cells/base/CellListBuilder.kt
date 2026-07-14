@@ -30,7 +30,7 @@ class CellListBuilder: WorldResizable {
         Chameleon(13),
         eye,
         Compass(15),
-        NonWorkingCell1(16),
+        Synapse(16),
         TouchTrigger(17),
         zygote,
         Producer(19),

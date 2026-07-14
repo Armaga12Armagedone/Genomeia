@@ -92,12 +92,12 @@ class LinkPhysicsSystem(
                         )
                         return@with
                     }
-                    cellSystem.transportNeuralSignal(linkIndex, linkCellA, linkCellB)
+                    cellSystem.transportNeuralSignal(linkIndex, linkCellA, linkCellB, threadId)
                     return@with
                 }
 
                 cellSystem.transportEnergy(linkCellA, linkCellB)
-                cellSystem.transportNeuralSignal(linkIndex, linkCellA, linkCellB)
+                cellSystem.transportNeuralSignal(linkIndex, linkCellA, linkCellB, threadId)
                 val parentCellA = parentIndex[linkCellA]
                 val parentCellB = parentIndex[linkCellB]
                 if (linkCellA == parentCellB) {

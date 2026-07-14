@@ -177,7 +177,7 @@ class RenderBufferManager(
             linksAmount = linkEntity.lastId - linkEntity.deadStack.size + 1
 
             val cellIndex = simulationData.selectedCellIndex
-            if (cellIndex != -1) {
+            if (cellIndex != -1 && cellEntity.isAlive[cellIndex]) {
                 selectedCellIndex = cellEntity.cellGenomeId[cellIndex]//cellIndex
                 neuronImpulseInput = cellEntity.neuronImpulseInput[cellIndex]
                 neuronImpulseOutput = cellEntity.neuronImpulseOutput[cellIndex]

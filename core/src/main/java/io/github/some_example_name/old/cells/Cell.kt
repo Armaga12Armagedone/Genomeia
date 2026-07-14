@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import it.unimi.dsi.fastutil.ints.IntArrayList
 import kotlin.reflect.KClass
 
 sealed class Cell(
@@ -14,6 +15,7 @@ sealed class Cell(
     val isNeural: Boolean = false,
     val maxEnergy: Float = 5f,
     val isNeuronTransportable: Boolean = true,
+    val doesNeedNeuralConnections: Boolean = false,
     val effectOnContact: Boolean = false,
     val isCollidable: Boolean = true,
     val descriptionBundle: String? = null,
@@ -64,6 +66,12 @@ sealed class Cell(
 
     open fun onLinkDeleted(cellIndex: Int, linkIndex: Int, threadId: Int) {
 
+    }
+
+    protected fun getNeuralLinks(cellIndex: Int): IntArrayList {
+        return if (doesNeedNeuralConnections) {
+            cellEntity.neuralConnections.get(cellIndex)
+        } else throw Exception("doesNeedConnections = false")
     }
 
 }

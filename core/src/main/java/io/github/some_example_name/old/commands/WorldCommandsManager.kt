@@ -321,6 +321,25 @@ class WorldCommandsManager(
                     WorldCommandType.ADD_PHEROMONE_EMITTER -> {
                         specialEntity.addPheromoneEmitter(index = ints[0])
                     }
+                    WorldCommandType.DELETE_NEURAL_CONNECTIONS -> {
+                        cellEntity.neuralConnections.remove(ints[0])
+                    }
+                    WorldCommandType.ADD_NEURAL_CONNECTION -> {
+                        val cellIndex = ints[0]
+                        cellEntity.addNeuralConnection(
+                            cellIndex = cellIndex,
+                            targetNeuralIndex = ints[1],
+                        )
+                        //Обнуление команды
+                        cellEntity.command[cellIndex] = -1
+                    }
+                    WorldCommandType.MUTATE_ON_START -> {
+                        val index = ints[0]
+                        val threadId = ints[1]
+                        val genomeIndex = ints[2]
+                        val newCell = cellList[cellEntity.cellType[index].toInt()]
+                        newCell.onStart(index, threadId, genomeIndex)
+                    }
                     else -> {}
                 }
             }
