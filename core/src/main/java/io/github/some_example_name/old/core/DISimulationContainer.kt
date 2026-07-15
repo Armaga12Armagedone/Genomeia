@@ -5,6 +5,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.NinePatch
+import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.scenes.scene2d.utils.NinePatchDrawable
 import com.badlogic.gdx.utils.Disposable
 import com.kotcrab.vis.ui.VisUI
@@ -72,9 +73,11 @@ object DISimulationContainer:  DIContext, Disposable {
     var roundStyleToggle: VisTextButton.VisTextButtonStyle
     var logSaver: LogSaver = LogSaver()
     var logReplay: LogReplay = LogReplay()
-
+    val seed: Long = MathUtils.random(0L, 1000L)
 
     init {
+        MathUtils.random.setSeed(seed)
+
         if (gridHeight % heightMultiplier != 0) throw Exception("gridHeight should be a multiple of (halfChunkHeight * 2 * 2)")
         println("thread count: $threadCount")
         println("thread count: $heightMultiplier")
@@ -252,7 +255,10 @@ object DISimulationContainer:  DIContext, Disposable {
         gridManager = gridManager,
         particleEntity = particleEntity,
         zygote = zygote
-    )
+    ).also {
+        it.random.setSeed(seed)
+        println("seed seted on manager: ${seed}")
+    }
 
     override val worldCommandsManager = WorldCommandsManager(
         gridManager = gridManager,

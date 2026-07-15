@@ -77,10 +77,16 @@ class WorldCommandsManager(
 
     fun executingCommandsFromTheWorld() {
         var ticked = false
+//        if (replay) {
+//            currentTick += 1
+//            replay = DISimulationContainer.logReplay.replyTick(currentTick, 0)
+//        }
+
         if (replay) {
-            currentTick += 1
-            replay = DISimulationContainer.logReplay.replyTick(currentTick, 0)
+            println("slomat")
+            return
         }
+
         worldCommandBuffer.forEachIndexed { threadId, worldCommandBuffer ->
             if (worldCommandBuffer.size > 0 && !ticked && DEBUG_MODE) {
                 DISimulationContainer.logSaver.saveTick()
@@ -111,7 +117,7 @@ class WorldCommandsManager(
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
 
-                        println(lastAddedCellIndexBuffer[threadId])
+//                        println(lastAddedCellIndexBuffer[threadId])
 
                         val otherCellIndex = ints[1]
 
@@ -350,7 +356,7 @@ class WorldCommandsManager(
             }
         }
 
-        replay = DISimulationContainer.logReplay.replyTick(currentTick, 1)
+        //replay = DISimulationContainer.logReplay.replyTick(currentTick, 1)
 
         worldCommandSecondBuffer.forEachIndexed { threadId, worldCommandBuffer ->
             worldCommandBuffer.consume { type, ints, floats, booleans ->
@@ -408,7 +414,7 @@ class WorldCommandsManager(
             DISimulationContainer.logSaver.saveTick()
         }
 
-        replay = DISimulationContainer.logReplay.replyTick(currentTick, 2)
+        //replay = DISimulationContainer.logReplay.replyTick(currentTick, 2)
 
         worldCommandLastBuffer.consume { type, ints, floats, booleans ->
             DISimulationContainer.logSaver.save(type, ints, floats, booleans)

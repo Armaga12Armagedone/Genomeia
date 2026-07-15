@@ -74,6 +74,8 @@ class SimulationSystem(
         if (simulationData.isRestart) {
             restartSim()
         }
+        println("yep")
+        DISimulationContainer.logReplay.updateReplay()
 
         simulationData.tickCounter++
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
