@@ -155,6 +155,11 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
+    ADD_NEURAL_CONNECTIONS_EMPTY_LIST(
+        intParamsCount = 1,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
+    ),
     MUTATE_ON_START(
         intParamsCount = 3,
         floatParamsCount = 0,
@@ -162,8 +167,8 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
     );
 
     companion object {
-        const val MAX_INT_PARAMS = 9    // Максимум int на команду (покрывает все)
-        const val MAX_FLOAT_PARAMS = 11  // Максимум float
+        const val MAX_INT_PARAMS = 9 // Максимум int на команду (покрывает все)
+        const val MAX_FLOAT_PARAMS = 11 // Максимум float
         const val MAX_BOOLEAN_PARAMS = 3 // Максимум boolean
     }
 }

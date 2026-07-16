@@ -333,6 +333,9 @@ class WorldCommandsManager(
                         //Обнуление команды
                         cellEntity.command[cellIndex] = -1
                     }
+                    WorldCommandType.ADD_NEURAL_CONNECTIONS_EMPTY_LIST -> {
+                        cellEntity.neuralConnections.put(ints[0], IntArrayList(4))
+                    }
                     WorldCommandType.MUTATE_ON_START -> {
                         val index = ints[0]
                         val threadId = ints[1]

@@ -81,6 +81,10 @@ class MutateManager(
                     )
                 }
                 if (!lastCell.doesNeedNeuralConnections && newCell.doesNeedNeuralConnections) {
+                    worldCommandsManager.worldCommandBuffer[threadId].push(
+                        type = WorldCommandType.ADD_NEURAL_CONNECTIONS_EMPTY_LIST,
+                        ints = intArrayOf(index)
+                    )
                     command[index] = 0
                 }
                 if (lastCell is Eye && newCell !is Eye) {

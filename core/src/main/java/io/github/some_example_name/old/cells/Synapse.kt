@@ -16,7 +16,7 @@ class Synapse(cellTypeId: Int): Cell(
 ) {
 
     companion object {
-        val fullDepressionTicks = 100
+        val fullDepressionTicks = 500
     }
 
 
@@ -71,7 +71,7 @@ class Synapse(cellTypeId: Int): Cell(
             return
         }
 
-        val decayRate = 0.05f
+        val decayRate = 0.025f
 
         if (isPainJustSpiked || isRedJustSpiked) {
             val dt = painSpikeTick - redSpikeTick
