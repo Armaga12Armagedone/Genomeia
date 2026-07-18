@@ -5,6 +5,8 @@ import io.github.some_example_name.old.core.utils.skyBlueColors
 import kotlin.Pair
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.ln
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 class Synapse(cellTypeId: Int): Cell(
@@ -15,13 +17,11 @@ class Synapse(cellTypeId: Int): Cell(
     doesNeedNeuralConnections = true
 ) {
 
-    companion object {
-        val fullDepressionTicks = 500
-    }
+    // fullDepressionTicks теперь рассчитывается динамически в doOnTick
 
 
     override fun onStart(cellIndex: Int, threadId: Int, genomeIndex: Int) {
-        cellEntity.setWeight(cellIndex, Random(cellIndex).nextFloat() * cellEntity.getA(cellIndex))
+        cellEntity.setWeight(cellIndex, Random(cellIndex).nextFloat() * 0.2f)
     }
 
     //Бинарная активация
@@ -64,14 +64,23 @@ class Synapse(cellTypeId: Int): Cell(
             return
         }
 
-        val (redSpikeTick, isRedJustSpiked) = spikeRed(cellIndex, neuronImpulseOutput[inputSignalCellRed])
-        val (painSpikeTick, isPainJustSpiked) = spikePain(cellIndex, neuronImpulseOutput[outputSignalCellPain] - neuronImpulseOutput[inputSignalCellRed] * weight)
+        val decayRate = getA(cellIndex)//0.025f
+
+        // Рассчитываем fullDepressionTicks чтобы learningRate * trace < 0.001
+        // trace = exp(-dt * decayRate), поэтому learningRate * exp(-fullDepressionTicks * decayRate) = 0.001
+        // fullDepressionTicks = -ln(0.001 / learningRate) / decayRate
+        val fullDepressionTicks = if (decayRate > 0.0001f && learningRate > 0.0001f) {
+            (-ln(0.001f / learningRate) / decayRate).roundToInt().coerceAtLeast(1)
+        } else {
+            500 // fallback к старому значению если параметры некорректны
+        }
+
+        val (redSpikeTick, isRedJustSpiked) = spikeRed(cellIndex, neuronImpulseOutput[inputSignalCellRed], fullDepressionTicks)
+        val (painSpikeTick, isPainJustSpiked) = spikePain(cellIndex, neuronImpulseOutput[outputSignalCellPain] - neuronImpulseOutput[inputSignalCellRed] * weight, fullDepressionTicks)
         if (redSpikeTick < 0f || painSpikeTick < 0f) {
             neuronImpulseOutput[cellIndex] = weight * neuronImpulseOutput[inputSignalCellRed]
             return
         }
-
-        val decayRate = 0.025f
 
         if (isPainJustSpiked || isRedJustSpiked) {
             val dt = painSpikeTick - redSpikeTick
@@ -98,7 +107,7 @@ class Synapse(cellTypeId: Int): Cell(
         neuronImpulseOutput[cellIndex] = weight * neuronImpulseOutput[inputSignalCellRed]
     }
 
-    fun spikeRed(cellIndex: Int, redSignal: Float): Pair<Int, Boolean> = with(cellEntity) {
+    fun spikeRed(cellIndex: Int, redSignal: Float, fullDepressionTicks: Int): Pair<Int, Boolean> = with(cellEntity) {
         val dx = redSignal - getDTime(cellIndex)
         setDTime(cellIndex, redSignal)
 
@@ -115,7 +124,7 @@ class Synapse(cellTypeId: Int): Cell(
         }
     }
 
-    fun spikePain(cellIndex: Int, painSignal: Float): Pair<Int, Boolean> = with(cellEntity) {
+    fun spikePain(cellIndex: Int, painSignal: Float, fullDepressionTicks: Int): Pair<Int, Boolean> = with(cellEntity) {
         val dx = painSignal - getRemember(cellIndex)
         setRemember(cellIndex, painSignal)
 

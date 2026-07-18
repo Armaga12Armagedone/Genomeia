@@ -26,8 +26,10 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import games.spooky.gdx.nativefilechooser.android.AndroidFileChooser
+import io.github.some_example_name.old.core.ApiClient
 import io.github.some_example_name.old.game.KeyBoardListener
 import io.github.some_example_name.old.game.MyGame
+import io.ktor.client.engine.okhttp.OkHttp
 import java.io.File
 import java.io.FileOutputStream
 import java.io.FileWriter
@@ -61,7 +63,7 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         Thread.setDefaultUncaughtExceptionHandler(CrashHandler(this))
 
         super.onCreate(savedInstanceState)
-
+        ApiClient.init(OkHttp.create())
         val config = AndroidApplicationConfiguration().apply {
             useImmersiveMode = true
             useGL30 = true          // ← Это включает OpenGL ES 3.2 на поддерживаемых устройствах

@@ -90,6 +90,7 @@ dependencies {
   natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86"
   natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86_64"
   implementation "games.spooky.gdx:gdx-nativefilechooser-android:$gdxNativefilechooserVersion"
+  implementation("io.ktor:ktor-client-okhttp:3.0.3")
 
 }
 

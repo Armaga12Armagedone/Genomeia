@@ -9,6 +9,7 @@ import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
+import io.github.some_example_name.old.core.ApiClient
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.ui.dialogs.setupTitleSize
@@ -20,6 +21,9 @@ import io.github.some_example_name.old.ui.core.visLabel
 import io.github.some_example_name.old.ui.core.visTable
 import io.github.some_example_name.old.ui.core.visTextButton
 import io.github.some_example_name.old.ui.core.visTextField
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 //TODO перейти на compose стиль
 class SaveGenomeDialog(
@@ -93,7 +97,32 @@ class SaveGenomeDialog(
                 }) { center() }
             }
 
-            visTextButton("Share with everyone") { center() }
+            visTextButton("Share with everyone", onClick = {
+                val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
+                saveGenome(
+                    genome.copy(name = name),
+                    name
+                )
+
+                // Загружаем на сервер
+                val genomeFile = Gdx.files.local("genomes/$name.genome")
+
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        ApiClient.uploadFile(genomeFile.file())   // .file() → java.io.File
+                        Gdx.app.postRunnable {
+                            // Здесь можно показать уведомление "Успешно отправлено"
+                            println("Genome \"$name\" успешно загружен на сервер")
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Gdx.app.postRunnable {
+                            // Здесь можно показать диалог с ошибкой
+                            println("Ошибка загрузки: ${e.message}")
+                        }
+                    }
+                }
+            }) { center() }
         }
         row()
 
