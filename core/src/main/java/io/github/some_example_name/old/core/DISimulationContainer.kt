@@ -58,7 +58,7 @@ object DISimulationContainer:  DIContext, Disposable {
 
     override var gridWidth = 128
     override var gridHeight = 128
-    const val HALF_CHUNK_HEIGHT = 4 // Also max particle speed
+    const val HALF_CHUNK_HEIGHT = 32//4 // Also max particle speed
     var chunkHeight = HALF_CHUNK_HEIGHT * 2
     var heightMultiplier = chunkHeight * 2
     var gridSize = gridWidth * gridHeight
@@ -83,8 +83,6 @@ object DISimulationContainer:  DIContext, Disposable {
         println("thread count: $heightMultiplier")
         val patch = NinePatch(Texture(Gdx.files.internal("button.png")), 20, 20, 20, 20)
 
-        //разрабочтик привет, я тут тебе пару подсказок оставлю
-        //общие стили
         val roundUp = NinePatchDrawable(patch).tint(Color(0.44f, 0.40f, 0.40f, 1f))
         val roundDown = NinePatchDrawable(patch).tint(Color(0.2f,0.2f,0.2f,1f))
         val roundOver = NinePatchDrawable(patch).tint(Color(0f, 0.9f, 1f, 1f))

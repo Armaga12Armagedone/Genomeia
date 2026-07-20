@@ -34,8 +34,13 @@ class LogSaver { //TODO: Проверить в будущем что ВСЯ си
             dataStream?.writeLong(DISimulationContainer.seed)
             println("Seed writed: ${DISimulationContainer.seed}")
 
+            DISimulationContainer.simulationData.tickCounter = 0 //<--- САМЫЕ ВАЖНЫЕ СТРОЧКИ КОДА, БЕЗ НИХ НИЧЕГО НЕ ЗАРАБОТАЕТ! я НЕДЕЛЮ СИДЕЛ И ПЫТАЛСЯ ПОЧИНИТЬ!
+            DISimulationContainer.simulationData.timeSimulation = 0f
+//            dataStream?.writeFloat(DISimulationContainer.simulationData.timeSimulation)
+//            println("time writed")
+
             Runtime.getRuntime().addShutdownHook(Thread {
-                close() // запишет -050 и текущий тик, затем закроет поток
+                close() // запишет -050 и текущий тик затем закроет поток
             })
         }
     }
@@ -50,6 +55,14 @@ class LogSaver { //TODO: Проверить в будущем что ВСЯ си
     fun closeTick() {
         dataStream?.writeInt(-999) //кодон конца тика
         println("tick closed")
+    }
+
+    fun saveDebug(x: Float, y: Float, tick: Int) {
+        println("debug save")
+        dataStream?.writeInt(-454)
+        dataStream?.writeInt(tick)
+        dataStream?.writeFloat(x)
+        dataStream?.writeFloat(y)
     }
 
     fun saveUserCommand(type: PlayerCommand) {

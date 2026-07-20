@@ -28,19 +28,20 @@ class LogReplay {
     var commandCount = 0 //DEBUG ONLU!
     private var replayTime = 0f
 
-    private var startReplayRealTime = -1f
+    var startReplayRealTime = -1f
 
-    private var startReplayTick = 0
+    var startReplayTick = -1
     private var nextCommandIndex = 0
     var replaying = false
     var stopTick = -1
+    val coordList = mutableMapOf<Int, Pair<Float, Float>>()
 
     fun startReplayTimer() {
-        DISimulationContainer.simulationData.tickCounter=0
+        DISimulationContainer.simulationData.tickCounter = 0//coordList.keys.first()
         startReplayTick = 0//DISimulationContainer.simulationData.tickCounter
         nextCommandIndex = 0
         replaying = true
-
+        DISimulationContainer.simulationData.isRestart = true
     }
 
     fun updateReplay() {
@@ -88,6 +89,10 @@ class LogReplay {
 
         println("Seed ${seed} is setted")
 
+//        val time = dataStream.readFloat()
+//
+//        DISimulationContainer.simulationData.timeSimulation = time
+
         parse()
         startReplayTimer()
         println("start to shine!")
@@ -126,6 +131,13 @@ class LogReplay {
                     -50 -> {
                         stopTick = dataStream.readInt()
                         println("STOP TICK: ${stopTick}")
+                    }
+                    -454 -> {
+                        val tick = dataStream.readInt()
+                        val x = dataStream.readFloat()
+                        val y = dataStream.readFloat()
+                        println("Tick ${tick}, X: ${x}, Y: ${y}")
+                        coordList[tick] = Pair<Float, Float>(x, y)
                     }
                     else -> {
                         println("UNknown codon: ${cmd}")

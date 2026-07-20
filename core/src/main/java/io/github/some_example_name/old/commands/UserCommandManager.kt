@@ -58,14 +58,25 @@ class UserCommandManager(
 //            println("X: ${cellEntity.getX(cellInd)}")
 //            println("Y: ${cellEntity.getY(cellInd)}")
 //        }
-        try {
-            println("work")
-            println("X: ${cellEntity.getX(0)}")
-            println("Y: ${cellEntity.getY(0)}")
-        }
-        catch (e: Throwable) {
-            println("nah")
-        }
+
+//        if (DEBUG_MODE) {
+//            DISimulationContainer.logSaver.saveDebug(particleEntity.x[0], particleEntity.y[0], DISimulationContainer.simulationData.tickCounter)
+//        }
+//        try {
+//            println("work")
+//            val x = particleEntity.x[0]
+//            val y = particleEntity.y[0]
+//            println(DISimulationContainer.logReplay.startReplayTick)
+//            if (DISimulationContainer.logReplay.startReplayTick != -1) {
+//                var currentTick = DISimulationContainer.simulationData.tickCounter
+//                val (logX, logY) = DISimulationContainer.logReplay.coordList[currentTick] ?: Pair(0f,0f)
+//                println("Tick: ${currentTick}, x compare: ${x==logX}, x: ${x}, logX: ${logX}")
+//                print("y compare: ${y==logY}, y: ${y}, logY: ${logY}")
+//            }
+//        }
+//        catch (e: Throwable) {
+//            println("nah")
+//        }
         if (replay) {
             return
         }
@@ -74,6 +85,10 @@ class UserCommandManager(
 
         while (true) {
             val cmd = commandQueue.poll() ?: break
+
+            if (DEBUG_MODE) {
+                DISimulationContainer.logSaver.saveUserCommand(cmd)
+            }
 
 //            println("from usre manager: ${cmd}")
 
@@ -236,10 +251,6 @@ class UserCommandManager(
 
 //                    println("Tap (${cmd.x}, ${cmd.y} ${cmd.isLeftButton} ${grabbedParticleIndex})")
                 }
-            }
-
-            if (DEBUG_MODE) {
-                DISimulationContainer.logSaver.saveUserCommand(cmd)
             }
         }
 
