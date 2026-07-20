@@ -1,4 +1,4 @@
-#version 320 es
+#version 300 es
 precision highp float;          // highp лучше для блюра и CA
 
 in vec2 v_texCoord;
