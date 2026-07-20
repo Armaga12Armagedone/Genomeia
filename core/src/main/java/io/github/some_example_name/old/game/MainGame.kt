@@ -29,8 +29,6 @@ import io.github.some_example_name.old.ui.screens.GlobalSettings.MSAA
 import io.github.some_example_name.old.ui.screens.GlobalSettings.MUSIC_VOLUME
 import io.github.some_example_name.old.ui.screens.GlobalSettings.UI_SCALE
 import io.github.some_example_name.old.core.FileProvider
-import io.github.some_example_name.old.systems.pheromone.PheromoneShaderManager
-import io.github.some_example_name.old.systems.render.ShaderManager
 import com.badlogic.gdx.video.VideoPlayer
 import io.github.some_example_name.old.ui.screens.MenuScreen
 import kotlin.math.max

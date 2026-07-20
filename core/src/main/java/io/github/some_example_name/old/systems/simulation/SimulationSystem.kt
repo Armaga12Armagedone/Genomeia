@@ -35,7 +35,6 @@ class SimulationSystem(
     val linkEntity: LinkEntity,
     val particleEntity: ParticleEntity,
     val pheromoneEntity: PheromoneEntity,
-    val substancesEntity: SubstancesEntity,
     val substrateSettings: SubstrateSettings,
     val threadManager: ThreadManager,
     val genomeManager: GenomeManager,
@@ -44,8 +43,6 @@ class SimulationSystem(
     val simulationData: SimulationData,
     val cellSystem: CellSystem,
     val userCommandManager: UserCommandManager,
-    val shaderManager: ShaderManager,
-    val renderSystem: RenderSystem,
     val entityList: List<Entity>,
     val renderBufferManager: RenderBufferManager,
     val pheromonesManager: PheromonesManager

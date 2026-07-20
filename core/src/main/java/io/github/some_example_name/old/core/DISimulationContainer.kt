@@ -331,7 +331,6 @@ object DISimulationContainer:  DIContext, Disposable {
             linkEntity = linkEntity,
             particleEntity = particleEntity,
             pheromoneEntity = pheromoneEntity,
-            substancesEntity = substancesEntity,
             substrateSettings = substrateSettings,
             threadManager = threadManager,
             genomeManager = genomeManager,
@@ -340,8 +339,6 @@ object DISimulationContainer:  DIContext, Disposable {
             simulationData = simulationData,
             cellSystem = cellSystem,
             userCommandManager = userCommandManager,
-            shaderManager = shaderManager,
-            renderSystem = renderSystem,
             entityList = entityList,
             renderBufferManager = renderBufferManager,
             pheromonesManager = pheromonesManager
