@@ -39,15 +39,11 @@ interface KeyBoardListener {
     fun showNativeInput(default: String, callback: (Float) -> Unit)
 }
 var openKeyBoardListenerGlobal: KeyBoardListener? = null
-var androidRendererFactory: ((texturePaths: List<String>) -> ShaderManager)? = null
-var androidPheromoneRendererFactory: (() -> PheromoneShaderManager)? = null
 
 //Entry point
 class MyGame(
     val multiPlatformFileProvider: FileProvider,
     val openKeyBoardListener: KeyBoardListener? = null,
-    rendererFactory: ((texturePaths: List<String>) -> ShaderManager)? = null,
-    rendererPheromoneShaderManagerLibgdx: (() -> PheromoneShaderManager)? = null,
     val videoFactory: (() -> VideoPlayer)? = null
 ) : Game() {
 
@@ -69,11 +65,6 @@ class MyGame(
     lateinit var buttonFont: BitmapFont
     lateinit var mediumFont: BitmapFont
     lateinit var smallFont: BitmapFont
-
-    init {
-        androidRendererFactory = rendererFactory
-        androidPheromoneRendererFactory = rendererPheromoneShaderManagerLibgdx
-    }
 
     override fun create() {
         VisUI.load()  // Загружаем дефолтный VisUI

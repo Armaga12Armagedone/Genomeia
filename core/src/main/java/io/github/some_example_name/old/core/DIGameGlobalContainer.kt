@@ -10,7 +10,6 @@ import io.github.some_example_name.old.systems.genomics.genome_deprecated.Genome
 import io.github.some_example_name.old.systems.render.ShaderManager
 import io.github.some_example_name.old.systems.render.ShaderManagerLibgdxApi
 import io.github.some_example_name.old.game.MyGame
-import io.github.some_example_name.old.game.androidRendererFactory
 import java.util.Locale
 
 object DIGameGlobalContainer {
@@ -39,16 +38,7 @@ object DIGameGlobalContainer {
         it.name to it.defaultCellSettings
     }
 
-    var androidRenderer: ShaderManager? = androidRendererFactory?.invoke(particleTexturePaths)
-
-    val shaderManager: ShaderManager = when (Gdx.app.type) {
-        Application.ApplicationType.Desktop -> ShaderManagerLibgdxApi(particleTexturePaths)
-        Application.ApplicationType.Android -> androidRenderer!!
-        Application.ApplicationType.HeadlessDesktop -> TODO()
-        Application.ApplicationType.Applet -> TODO()
-        Application.ApplicationType.WebGL -> TODO()
-        Application.ApplicationType.iOS -> TODO()
-    }
+    val shaderManager: ShaderManager = ShaderManagerLibgdxApi(particleTexturePaths)
 
     val morphogenesis = Morphogenesis()
 

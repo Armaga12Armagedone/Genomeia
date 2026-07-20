@@ -75,11 +75,7 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
 
         val fileProvider = AndroidFileProvider(this, AndroidFileChooser(this))
         val gameView = initializeForView(
-            MyGame(
-                fileProvider,
-                rendererFactory = { ShaderManagerAndroidApi(it) },
-                rendererPheromoneShaderManagerLibgdx = { PheromoneShaderManagerAndroid() }
-            ),
+            MyGame(fileProvider),
             config
         )
 

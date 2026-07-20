@@ -46,7 +46,6 @@ import io.github.some_example_name.old.systems.simulation.SimulationSystem
 import io.github.some_example_name.old.systems.simulation.ThreadManager
 import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_HEIGHT
 import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_WIDTH
-import io.github.some_example_name.old.game.androidPheromoneRendererFactory
 import kotlin.getValue
 
 object DISimulationContainer:  DIContext, Disposable {
@@ -202,19 +201,7 @@ object DISimulationContainer:  DIContext, Disposable {
         genomeManager = genomeManager,
         cellEntity = cellEntity
     )
-
-
-    var androidPheromoneRenderer: PheromoneShaderManager? = androidPheromoneRendererFactory?.invoke()
-    val pheromoneShaderManager: PheromoneShaderManager = when (Gdx.app.type) {
-        Application.ApplicationType.Desktop -> PheromoneShaderManagerLibgdx()
-        Application.ApplicationType.Android -> androidPheromoneRenderer!!
-        Application.ApplicationType.HeadlessDesktop -> TODO()
-        Application.ApplicationType.Applet -> TODO()
-        Application.ApplicationType.WebGL -> TODO()
-        Application.ApplicationType.iOS -> TODO()
-    }
-
-
+    val pheromoneShaderManager: PheromoneShaderManager = PheromoneShaderManagerLibgdx()
 
     val renderBufferManager = RenderBufferManager(
         simulationData = simulationData,
@@ -230,7 +217,7 @@ object DISimulationContainer:  DIContext, Disposable {
         cellEntity = cellEntity,
         linkEntity = linkEntity,
         shaderManager = shaderManager,
-        pheromoneShaderManager = pheromoneShaderManager,
+//        pheromoneShaderManager = pheromoneShaderManager,
         particleEntity = particleEntity,
         renderBufferManager = renderBufferManager,
         diContext = this,

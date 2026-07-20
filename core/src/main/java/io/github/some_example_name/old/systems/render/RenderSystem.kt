@@ -25,7 +25,7 @@ class RenderSystem(
     val linkEntity: LinkEntity,
     val particleEntity: ParticleEntity,
     val shaderManager: ShaderManager,
-    val pheromoneShaderManager: PheromoneShaderManager,
+//    val pheromoneShaderManager: PheromoneShaderManager,
     val renderBufferManager: RenderBufferManager,
     val diContext: DIContext,
     val pheromoneEntity: PheromoneEntity
@@ -50,7 +50,7 @@ class RenderSystem(
         camera: OrthographicCamera
     ) {
         shaderManager.create()
-        pheromoneShaderManager.create()
+//        pheromoneShaderManager.create()
         this.fontMatrix = fontMatrix
         this.spriteBatch = spriteBatch
         this.font = font
@@ -152,7 +152,7 @@ class RenderSystem(
             }
         }
         (bufferPheromone as java.nio.Buffer).flip()
-        pheromoneShaderManager.renderPheromones(camera.combined, bufferPheromone)
+//        pheromoneShaderManager.renderPheromones(camera.combined, bufferPheromone)
     }
 
     private fun drawCellShader(cellBuf: RenderCellBufferData) {

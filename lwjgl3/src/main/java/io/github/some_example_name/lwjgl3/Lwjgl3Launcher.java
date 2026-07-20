@@ -31,7 +31,7 @@ public class Lwjgl3Launcher {
     }
 
     private static Lwjgl3Application createApplication() {
-        return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null, null, null, SilentVideoPlayer::new), getDefaultConfiguration());
+        return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null, SilentVideoPlayer::new), getDefaultConfiguration());
     }
 
     private static Lwjgl3ApplicationConfiguration getDefaultConfiguration() {
