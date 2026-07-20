@@ -20,7 +20,7 @@ import io.github.some_example_name.old.core.DISimulationContainer.genomeManager
 import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
 import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
 import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
-import io.github.some_example_name.old.systems.render.usePostProcess
+import io.github.some_example_name.old.systems.render.doesUsePostProcess
 import io.github.some_example_name.old.ui.core.CameraControl
 import io.github.some_example_name.old.ui.core.h
 import io.github.some_example_name.old.ui.core.makeStyledButton
@@ -147,7 +147,7 @@ class SimulationScreen(
         }
 
 
-        if (usePostProcess) {
+        if (doesUsePostProcess) {
             Gdx.gl.glClearColor(0.0f, 0.0f, 0.0f, 1f)
         } else {
             Gdx.gl.glClearColor(1.0f * 0.7f, 0.969f * 0.7f, 0.855f * 0.7f, 1.0f)
@@ -250,7 +250,7 @@ class SimulationScreen(
             makeStyledButton(bundle.get("button.restart"), game, extraTextures)
         val drawRaysToggle =
             makeStyledButton(bundle.get("button.drawRays"), game, extraTextures, toggle = true)
-        drawRaysToggle.isChecked = usePostProcess
+        drawRaysToggle.isChecked = doesUsePostProcess
 
         val controllerKeysToggle =
             makeStyledButton("Controller Keys", game, extraTextures, toggle = true)
@@ -560,7 +560,7 @@ class SimulationScreen(
 
         drawRaysToggle.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                usePostProcess = drawRaysToggle.isChecked
+                doesUsePostProcess = drawRaysToggle.isChecked
             }
         })
 

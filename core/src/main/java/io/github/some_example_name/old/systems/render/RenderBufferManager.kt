@@ -79,7 +79,7 @@ class RenderBufferManager(
                     back.packed1[bufIndex] = cosByte or (sinByte shl 8) or (bRadius shl 24)
                     back.packed2[bufIndex] = bEnergy or (bCell shl 8)
 
-                    if (!usePostProcess) {
+                    if (!doesUsePostProcess) {
                         val length = when (cellEntity.cellType[cellIndex].toInt()) {
                             14 -> specialEntity.getVisibilityRange(cellIndex)
                             3 -> 1f
@@ -101,7 +101,7 @@ class RenderBufferManager(
                     back.packed1[bufIndex] = bRadius shl 24
                     back.packed2[bufIndex] = bCell shl 8
 
-                    if (!usePostProcess) {
+                    if (!doesUsePostProcess) {
                         back.directedAngleCos[bufIndex] = 0f
                         back.directedAngleSin[bufIndex] = 0f
                     }
@@ -133,7 +133,7 @@ class RenderBufferManager(
         pheromoneFrontIndex.set(backPheromoneIndex)
 
         // ==================== LINK ====================
-        if (!usePostProcess) {
+        if (!doesUsePostProcess) {
             val needed = linkEntity.aliveList.size
             val backIndex = 1 - linkFrontIndex.get()
             val back = linkBuffers[backIndex]

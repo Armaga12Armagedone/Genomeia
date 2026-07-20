@@ -18,7 +18,7 @@ import io.github.some_example_name.old.systems.render.components.VignetteRendere
 import java.nio.ByteBuffer
 
 
-var usePostProcess = true
+var doesUsePostProcess = true
 
 /**
  * Orchestrates the render pipeline using composable render components.
@@ -137,6 +137,7 @@ class ShaderManager(val texturePaths: List<String>) {
             this.blurAmount = blurAmount
             this.zoom = zoom
             this.vignetteEnabled = vignetteEnabled
+            this.usePostProcess = doesUsePostProcess
 
             // Set FBO references for component communication
             sceneFbo = fbo

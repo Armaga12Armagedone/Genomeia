@@ -14,7 +14,6 @@ import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
-import io.github.some_example_name.old.systems.pheromone.PheromoneShaderManager
 import io.github.some_example_name.old.ui.screens.isRenderUi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -89,10 +88,10 @@ class RenderSystem(
         drawCellShader(cellBuf)
 
         ensurePheromoneBufferCapacityForWrite(pheromoneEntity.aliveList.size)
-        if (usePostProcess) {
+        if (doesUsePostProcess) {
             drawPheromoneShader(pheromoneBuf)
         }
-        if (!usePostProcess) {
+        if (!doesUsePostProcess) {
             drawDebug(cellBuf, linkBuf, pheromoneBuf)
         }
 
