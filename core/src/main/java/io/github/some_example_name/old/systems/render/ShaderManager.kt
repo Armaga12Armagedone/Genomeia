@@ -12,6 +12,7 @@ import com.badlogic.gdx.math.Matrix4
 import io.github.some_example_name.old.systems.render.components.BlurPostProcessRenderer
 import io.github.some_example_name.old.systems.render.components.DistortRenderer
 import io.github.some_example_name.old.systems.render.components.ParticleRenderer
+import io.github.some_example_name.old.systems.render.components.PostProcessRenderer
 import io.github.some_example_name.old.systems.render.components.RenderComponent
 import io.github.some_example_name.old.systems.render.components.RenderContext
 import io.github.some_example_name.old.systems.render.components.VignetteRenderer
@@ -25,9 +26,10 @@ var doesUsePostProcess = true
  *
  * The rendering pipeline is executed in order:
  * 1. ParticleRenderer - renders particles to scene FBO
- * 2. VignetteRenderer - applies sobel/vignette effect
+ * 2. PostProcessRenderer - applies sobel edge detection + pastel stylization
  * 3. DistortRenderer - applies chromatic aberration
- * 4. BlurPostProcessRenderer - applies final gaussian blur
+ * 4. BlurPostProcessRenderer - applies gaussian blur
+ * 5. VignetteRenderer - applies vignette (final pass, renders to screen)
  *
  * New components can be added by implementing RenderComponent and
  * inserting into the components list at the desired position.
@@ -54,9 +56,10 @@ class ShaderManager(val texturePaths: List<String>) {
         // To change rendering order, simply reorder this list
         // To add new components (e.g., PheromoneRenderer), insert at desired position
         components.add(ParticleRenderer(texturePaths))
-        components.add(VignetteRenderer())
+        components.add(PostProcessRenderer())
         components.add(DistortRenderer())
         components.add(BlurPostProcessRenderer())
+        components.add(VignetteRenderer())
 
         // Create all components
         components.forEach { it.create() }

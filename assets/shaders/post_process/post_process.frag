@@ -3,15 +3,8 @@ precision highp float;
 
 in vec2 v_texCoord;
 uniform sampler2D u_texture;
-//uniform sampler2D u_linesTexture;
 uniform vec2 u_resolution;
-//uniform vec2 u_cameraPos;
-//uniform mat4 u_invProj;
-//uniform float u_parallaxStrength;
 uniform float u_zoom;
-
-// ← НОВЫЙ UNIFORM ДЛЯ УПРАВЛЕНИЯ ВИНЬЕТКОЙ
-uniform float u_vignetteEnabled;   // 0.0 = выключена, 1.0 = включена (можно ставить значения между 0 и 1 для плавной регулировки)
 
 out vec4 fragColor;
 
@@ -36,31 +29,12 @@ void main() {
 
     vec4 background = vec4(1.0, 0.969, 0.855, 1.0);
 
-    // ==================== PARALLAX LINES (ТЕПЕРЬ В МИРОВЫХ КООРДИНАТАХ) ====================
-    // (your commented code left unchanged, just updated texture call for consistency)
-    //    vec2 ndc = v_texCoord * 2.0 - 1.0;
-    //
-    //    vec4 clipPos = vec4(ndc, 0.0, 1.0);
-    //    vec4 worldHom = u_invProj * clipPos;
-    //    vec2 worldPos = worldHom.xy;
-    //
-    //    vec2 samplePos = worldPos - u_cameraPos * (1.0 - u_parallaxStrength);
-    //
-    //    float tileWorldSize = 240.0;
-    //    vec2 linesUV = samplePos / tileWorldSize;
-    //
-    //    vec4 linesSample = texture(u_linesTexture, linesUV);
-    //
-    //    float linesFactor = 1.0 - linesSample.r;
-    vec4 finalBackground = background/* * linesFactor*/;
-    // =================================================================================
-
-    vec4 textureMixBackground = mix(finalBackground, textureColor, 0.1875);
+    vec4 textureMixBackground = mix(background, textureColor, 0.1875);
 
     float gray = (textureColor.r + textureColor.g + textureColor.b) / 3.0;
     gray = step(0.06, gray);
 
-    vec4 result = mix(finalBackground, textureMixBackground, gray);
+    vec4 result = mix(background, textureMixBackground, gray);
 
     float white = 1.0 - edge;
 
@@ -72,21 +46,5 @@ void main() {
     vec4 color = mix(color1, color2, (white - p1) / (p2 - p1));
 
     vec4 colorA = color * result;
-    vec4 pastelColor = colorA/* * edge*/;
-
-    // --- ВИНЬЕТКА ---
-    vec2 uv = v_texCoord;
-    vec2 pos = uv * 2.0 - 1.0;
-    float aspect = u_resolution.x / u_resolution.y;
-    pos.x *= aspect;
-    float dist = length(pos);
-    float maxDist = length(vec2(aspect, 1.0));
-    float normDist = dist / maxDist;
-    float radius = 0.9;
-    float softness = 0.8;
-    float vignette = smoothstep(radius, radius - softness, normDist);
-
-    float vignetteFactor = mix(1.0, vignette, u_vignetteEnabled);
-
-    fragColor = pastelColor * vignetteFactor;
+    fragColor = colorA;
 }

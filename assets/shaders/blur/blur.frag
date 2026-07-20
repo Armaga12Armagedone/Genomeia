@@ -13,7 +13,7 @@ out vec4 fragColor;
 void main() {
     vec2 texelSize = 1.0 / u_resolution;
     float blurRadius = u_blurAmount;
-    float caAmount = 4.5;                    // ← можно заменить на u_chromaticAberration
+    float caAmount = 4.5;
 
     // Radial offset для хроматической аберрации
     vec2 caDir = (v_texCoord - vec2(0.5)) * (caAmount * 2.0) * texelSize;

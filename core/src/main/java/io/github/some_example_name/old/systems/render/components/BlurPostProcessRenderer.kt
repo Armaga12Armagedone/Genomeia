@@ -32,7 +32,11 @@ class BlurPostProcessRenderer : RenderComponent {
         val inputTexture = context.currentTexture ?: return
         val blurFbo = context.blurFbo ?: return
 
-        // Final pass renders directly to screen (no FBO begin)
+        // Render blur into blurFbo (vignette will read from it as final pass)
+        blurFbo.begin()
+
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
+        Gdx.gl.glDisable(GL20.GL_BLEND)
 
         blurShader.bind()
         blurShader.setUniformi("u_texture", 0)
@@ -45,6 +49,11 @@ class BlurPostProcessRenderer : RenderComponent {
         context.fullscreenMesh.bind(blurShader)
         Gdx.gl.glDrawArrays(GL20.GL_TRIANGLE_STRIP, 0, 4)
         context.fullscreenMesh.unbind(blurShader)
+
+        blurFbo.end()
+
+        // Pass output texture to next component (VignetteRenderer)
+        context.currentTexture = blurFbo.colorBufferTexture
     }
 
     override fun dispose() {
