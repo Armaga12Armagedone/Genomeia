@@ -12,6 +12,7 @@ import com.badlogic.gdx.math.Matrix4
 import io.github.some_example_name.old.systems.render.components.BlurPostProcessRenderer
 import io.github.some_example_name.old.systems.render.components.DistortRenderer
 import io.github.some_example_name.old.systems.render.components.ParticleRenderer
+import io.github.some_example_name.old.systems.render.components.PheromoneRenderer
 import io.github.some_example_name.old.systems.render.components.PostProcessRenderer
 import io.github.some_example_name.old.systems.render.components.RenderComponent
 import io.github.some_example_name.old.systems.render.components.RenderContext
@@ -29,7 +30,8 @@ var doesUsePostProcess = true
  * 2. PostProcessRenderer - applies sobel edge detection + pastel stylization
  * 3. DistortRenderer - applies chromatic aberration
  * 4. BlurPostProcessRenderer - applies gaussian blur
- * 5. VignetteRenderer - applies vignette (final pass, renders to screen)
+ * 5. PheromoneRenderer - renders pheromones
+ * 6. VignetteRenderer - applies vignette (final pass, renders to screen)
  *
  * New components can be added by implementing RenderComponent and
  * inserting into the components list at the desired position.
@@ -54,11 +56,11 @@ class ShaderManager(val texturePaths: List<String>) {
 
         // Initialize render components in order
         // To change rendering order, simply reorder this list
-        // To add new components (e.g., PheromoneRenderer), insert at desired position
         components.add(ParticleRenderer(texturePaths))
         components.add(PostProcessRenderer())
         components.add(DistortRenderer())
         components.add(BlurPostProcessRenderer())
+        components.add(PheromoneRenderer())
         components.add(VignetteRenderer())
 
         // Create all components
@@ -125,7 +127,8 @@ class ShaderManager(val texturePaths: List<String>) {
         worldY: Float,
         blurAmount: Float,
         zoom: Float,
-        vignetteEnabled: Float
+        vignetteEnabled: Float,
+        pheromoneData: ByteBuffer? = null
     ) {
         val dataSize = currentRead.remaining()
         val numInstances = dataSize / RenderSystem.PARTICLE_STRUCT_SIZE
@@ -141,6 +144,8 @@ class ShaderManager(val texturePaths: List<String>) {
             this.zoom = zoom
             this.vignetteEnabled = vignetteEnabled
             this.usePostProcess = doesUsePostProcess
+            this.pheromoneData = pheromoneData
+            this.numPheromoneInstances = pheromoneData?.let { it.remaining() / RenderSystem.PHEROMONE_STRUCT_SIZE } ?: 0
 
             // Set FBO references for component communication
             sceneFbo = fbo

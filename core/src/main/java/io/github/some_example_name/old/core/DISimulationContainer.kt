@@ -1,6 +1,5 @@
 package io.github.some_example_name.old.core
 
-import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
@@ -35,8 +34,6 @@ import io.github.some_example_name.old.systems.genomics.DivideManager
 import io.github.some_example_name.old.systems.genomics.MutateManager
 import io.github.some_example_name.old.systems.genomics.OrganManager
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
-import io.github.some_example_name.old.systems.pheromone.PheromoneShaderManager
-import io.github.some_example_name.old.systems.pheromone.PheromoneShaderManagerLibgdx
 import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.physics.LinkPhysicsSystem
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem
@@ -201,7 +198,6 @@ object DISimulationContainer:  DIContext, Disposable {
         genomeManager = genomeManager,
         cellEntity = cellEntity
     )
-    val pheromoneShaderManager: PheromoneShaderManager = PheromoneShaderManagerLibgdx()
 
     val renderBufferManager = RenderBufferManager(
         simulationData = simulationData,
@@ -217,7 +213,6 @@ object DISimulationContainer:  DIContext, Disposable {
         cellEntity = cellEntity,
         linkEntity = linkEntity,
         shaderManager = shaderManager,
-//        pheromoneShaderManager = pheromoneShaderManager,
         particleEntity = particleEntity,
         renderBufferManager = renderBufferManager,
         diContext = this,

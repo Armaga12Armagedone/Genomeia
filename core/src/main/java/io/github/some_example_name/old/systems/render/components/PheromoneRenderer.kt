@@ -1,4 +1,4 @@
-package io.github.some_example_name.old.systems.pheromone
+package io.github.some_example_name.old.systems.render.components
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.GL20
@@ -7,15 +7,17 @@ import com.badlogic.gdx.graphics.Mesh
 import com.badlogic.gdx.graphics.VertexAttribute
 import com.badlogic.gdx.graphics.VertexAttributes
 import com.badlogic.gdx.graphics.glutils.ShaderProgram
-import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.BufferUtils
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager.Companion.K
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager.Companion.P
 import io.github.some_example_name.old.systems.render.RenderSystem.Companion.INITIAL_PHEROMONE_CAPACITY
 import io.github.some_example_name.old.systems.render.RenderSystem.Companion.PHEROMONE_STRUCT_SIZE
-import java.nio.ByteBuffer
 
-class PheromoneShaderManagerLibgdx: PheromoneShaderManager {
+/**
+ * Renders pheromones using instanced drawing with SSBO data.
+ * Renders after post-processing but before vignette.
+ */
+class PheromoneRenderer : RenderComponent {
 
     private lateinit var shader: ShaderProgram
     private lateinit var mesh: Mesh
@@ -24,29 +26,24 @@ class PheromoneShaderManagerLibgdx: PheromoneShaderManager {
     private var ssboCapacity = 0
 
     override fun create() {
-        println("create PheromoneShaderManagerLibgdx")
-        dispose()
         val vert = Gdx.files.internal("shaders/pheromone/pheromone_pc.vert").readString()
         val frag = Gdx.files.internal("shaders/pheromone/pheromone.frag").readString()
         shader = ShaderProgram(vert, frag)
         if (!shader.isCompiled) throw RuntimeException("Pheromone shader failed: ${shader.log}")
 
-        // ← ИСПРАВЛЕНО: явно 2 компонента + правильное имя
         val attributes = VertexAttributes(
             VertexAttribute(VertexAttributes.Usage.Position, 2, "a_position")
         )
 
-        // Квадрат (-1,-1) .. (1,1)
         val vertices = floatArrayOf(
             -1f, -1f,
             1f, -1f,
-            -1f,  1f,
-            1f,  1f
+            -1f, 1f,
+            1f, 1f
         )
 
         mesh = Mesh(false, 4, 0, attributes).apply { setVertices(vertices) }
 
-        // SSBO (оставляем как было)
         val buf = BufferUtils.newIntBuffer(1)
         Gdx.gl31.glGenBuffers(1, buf)
         ssbo[0] = buf.get(0)
@@ -66,25 +63,34 @@ class PheromoneShaderManagerLibgdx: PheromoneShaderManager {
         ssboCapacity = cap
     }
 
-    override fun renderPheromones(
-        cameraProjection: Matrix4,
-        currentRead: ByteBuffer
-    ) {
-        val dataSize = currentRead.remaining()
-        val numInstances = dataSize / PHEROMONE_STRUCT_SIZE
+    override fun resize(width: Int, height: Int) {
+        // No size-dependent resources
+    }
+
+    override fun render(context: RenderContext) {
+        if (!context.usePostProcess) return
+
+        val pheromoneData = context.pheromoneData ?: return
+        val numInstances = context.numPheromoneInstances
         if (numInstances == 0) return
 
-        resizeSSBO(dataSize)
+        val blurFbo = context.blurFbo ?: return
+
+        resizeSSBO(pheromoneData.remaining())
 
         Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssbo[0])
-        Gdx.gl31.glBufferSubData(GL31.GL_SHADER_STORAGE_BUFFER, 0, dataSize, currentRead)
+        Gdx.gl31.glBufferSubData(GL31.GL_SHADER_STORAGE_BUFFER, 0, pheromoneData.remaining(), pheromoneData)
         Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, 0)
+
+        // Render pheromones into blurFbo (vignette will read from it)
+        blurFbo.begin()
 
         Gdx.gl.glEnable(GL20.GL_BLEND)
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
 
         shader.bind()
-        shader.setUniformMatrix("u_projTrans", cameraProjection)
+        shader.setUniformMatrix("u_projTrans", context.cameraProjection)
         shader.setUniformf("u_K", K)
         shader.setUniformf("u_P", P)
 
@@ -95,6 +101,11 @@ class PheromoneShaderManagerLibgdx: PheromoneShaderManager {
         mesh.unbind(shader)
 
         Gdx.gl.glDisable(GL20.GL_BLEND)
+
+        blurFbo.end()
+
+        // Update texture for next component (VignetteRenderer)
+        context.currentTexture = blurFbo.colorBufferTexture
     }
 
     override fun dispose() {
@@ -107,9 +118,9 @@ class PheromoneShaderManagerLibgdx: PheromoneShaderManager {
                 flip()
             }
             Gdx.gl31.glDeleteBuffers(1, buf)
-            ssbo[0] = 0                     // ← важно сбросить
+            ssbo[0] = 0
         }
 
-        ssboCapacity = 0                    // ← обязательно!
+        ssboCapacity = 0
     }
 }

@@ -22,6 +22,10 @@ class RenderContext {
     var numInstances: Int = 0
     var isNewFrame: Boolean = false
 
+    // Pheromone data
+    var pheromoneData: ByteBuffer? = null
+    var numPheromoneInstances: Int = 0
+
     // Render parameters
     var blurAmount: Float = 0f
     var zoom: Float = 1f

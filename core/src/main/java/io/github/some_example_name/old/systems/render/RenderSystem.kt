@@ -179,7 +179,8 @@ class RenderSystem(
             worldY = worldY,
             blurAmount = blurLevel,
             zoom = camera.zoom,
-            vignetteEnabled = 1f
+            vignetteEnabled = 1f,
+            pheromoneData = bufferPheromone
         )
     }
 
