@@ -19,7 +19,6 @@ class LogSaver { //TODO: Проверить в будущем что ВСЯ си
 
     var file: File? = null
     var dataStream: DataOutputStream? = null
-    var commandCount = 0 //DEBUG ONLY REMOVE IF RELEASE
 
     private val isClosed = AtomicBoolean(false)
 
@@ -34,13 +33,8 @@ class LogSaver { //TODO: Проверить в будущем что ВСЯ си
             dataStream?.writeLong(DISimulationContainer.seed)
             println("Seed writed: ${DISimulationContainer.seed}")
 
-            DISimulationContainer.simulationData.tickCounter = 0 //<--- САМЫЕ ВАЖНЫЕ СТРОЧКИ КОДА, БЕЗ НИХ НИЧЕГО НЕ ЗАРАБОТАЕТ! я НЕДЕЛЮ СИДЕЛ И ПЫТАЛСЯ ПОЧИНИТЬ!
-            DISimulationContainer.simulationData.timeSimulation = 0f
-//            dataStream?.writeFloat(DISimulationContainer.simulationData.timeSimulation)
-//            println("time writed")
-
             Runtime.getRuntime().addShutdownHook(Thread {
-                close() // запишет -050 и текущий тик затем закроет поток
+                close() // не работает чисто оставлю для галочки
             })
         }
     }
@@ -49,16 +43,11 @@ class LogSaver { //TODO: Проверить в будущем что ВСЯ си
         dataStream?.flush()
         dataStream?.writeInt(-555) // начальный кодон тика
 //        dataStream?.writeInt(simulationData.tickCounter)
-        println("tick saved")
-    }
-
-    fun closeTick() {
-        dataStream?.writeInt(-999) //кодон конца тика
-        println("tick closed")
+        //println("tick saved")
     }
 
     fun saveDebug(x: Float, y: Float, tick: Int) {
-        println("debug save")
+        //println("debug save")
         dataStream?.writeInt(-454)
         dataStream?.writeInt(tick)
         dataStream?.writeFloat(x)
@@ -74,14 +63,14 @@ class LogSaver { //TODO: Проверить в будущем что ВСЯ си
 
             when (type) {
                 PlayerCommand.StopDrag -> {
-                    println("stop dragging")
+                    //println("stop dragging")
                     dataStream?.writeInt(0) // command type
 
                     dataStream?.writeInt(-676) //end codon
                 }
 
                 is PlayerCommand.Drag -> {
-                    println("dragging")
+                    //println("dragging")
                     dataStream?.writeInt(1)
                     dataStream?.writeFloat(type.x)
                     dataStream?.writeFloat(type.y)
@@ -92,7 +81,7 @@ class LogSaver { //TODO: Проверить в будущем что ВСЯ си
                 }
 
                 is PlayerCommand.Tap -> {
-                    println("tapped")
+                    //println("tapped")
                     dataStream?.writeInt(2)
 
                     dataStream?.writeFloat(type.x)
@@ -105,7 +94,7 @@ class LogSaver { //TODO: Проверить в будущем что ВСЯ си
                 }
 
                 is PlayerCommand.TouchDown -> {
-                    println("touch downed")
+                    //println("touch downed")
                     dataStream?.writeInt(3)
 
                     dataStream?.writeFloat(type.x)
@@ -115,68 +104,23 @@ class LogSaver { //TODO: Проверить в будущем что ВСЯ си
                     dataStream?.writeInt(-676)
                 }
             }
-            commandCount += 1
-
-//            dataStream?.writeInt(-858) //end codon of user commands
-        }
-        println("Command Count: ${commandCount}")
-    }
-
-
-    fun save(type: WorldCommandType,ints: IntArray, floats: FloatArray, booleans: BooleanArray) {
-        if (DEBUG_MODE && false) { //false-установлен что бы не сохраняло, попробую переделать систему.
-            commandCount += 1
-            synchronized(this) {
-                dataStream?.writeInt(-404) // Стартовый кодон
-                val intCount = type.intParamsCount
-                val floatCount = type.floatParamsCount
-                val boolCount = type.booleanParamsCount
-
-                dataStream?.writeInt(type.id) // тип команы
-
-                 println(type)
-
-                // Сначала писать размер массива а затем записывать
-                dataStream?.writeInt(intCount)
-                for (value in ints.slice(0 until intCount)) {
-                    dataStream?.writeInt(value) //массив int
-                }
-                dataStream?.writeInt(-200) //разделительный кодон, HTTP STATUS CODE 200 SUCCESFULL :)
-
-                dataStream?.writeInt(floatCount)
-                for (value in floats.slice(0 until floatCount)) {
-                    dataStream?.writeFloat(value) // массив float
-                }
-                dataStream?.writeInt(-200)
-
-                dataStream?.writeInt(boolCount)
-                for (value in booleans.slice(0 until boolCount)) {
-                    dataStream?.writeBoolean(value) // массив bool
-                }
-                dataStream?.writeInt(-200)
-
-                dataStream?.writeInt(-666) // стоп кодон
-
-            //            dataStream?.flush()
-            }
         }
     }
 
     fun close() {
-        // Гарантируем однократную запись маркера и закрытие потока
         if (isClosed.compareAndSet(false, true)) {
             try {
-                // Записываем значение -050 и текущий тик перед закрытием
-                dataStream?.writeInt(-50)                // значение -050
-                dataStream?.writeInt(simulationData.tickCounter) // текущий тик
+                dataStream?.writeInt(-50)
+                dataStream?.writeInt(simulationData.tickCounter)
                 dataStream?.flush()
-            } catch (_: Exception) {
-                // Игнорируем, если поток уже повреждён
-            } finally {
+            }
+            catch (_: Exception) {
+            }
+            finally {
                 try {
                     dataStream?.close()
-                } catch (_: Exception) {
-                    // Уже закрыт или ошибка
+                }
+                catch (_: Exception) {
                 }
             }
         }

@@ -58,7 +58,7 @@ object DISimulationContainer:  DIContext, Disposable {
 
     override var gridWidth = 128
     override var gridHeight = 128
-    const val HALF_CHUNK_HEIGHT = 32//4 // Also max particle speed
+    const val HALF_CHUNK_HEIGHT = 4//32//4 // Also max particle speed
     var chunkHeight = HALF_CHUNK_HEIGHT * 2
     var heightMultiplier = chunkHeight * 2
     var gridSize = gridWidth * gridHeight

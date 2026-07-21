@@ -44,7 +44,6 @@ class UserCommandManager(
     @Volatile var tapY = 0f
     @Volatile var isDragging = false
 
-    var replay = false
     val random: RandomXS128 = RandomXS128()
 
     fun push(cmd: PlayerCommand) {
@@ -52,35 +51,6 @@ class UserCommandManager(
     }
 
     fun processingCommandsFromUser() {
-//        val cellInd = DISimulationContainer.simulationData.selectedCellIndex
-//        if (cellInd != -1) {
-//            println("cell id: ${cellInd}")
-//            println("X: ${cellEntity.getX(cellInd)}")
-//            println("Y: ${cellEntity.getY(cellInd)}")
-//        }
-
-//        if (DEBUG_MODE) {
-//            DISimulationContainer.logSaver.saveDebug(particleEntity.x[0], particleEntity.y[0], DISimulationContainer.simulationData.tickCounter)
-//        }
-//        try {
-//            println("work")
-//            val x = particleEntity.x[0]
-//            val y = particleEntity.y[0]
-//            println(DISimulationContainer.logReplay.startReplayTick)
-//            if (DISimulationContainer.logReplay.startReplayTick != -1) {
-//                var currentTick = DISimulationContainer.simulationData.tickCounter
-//                val (logX, logY) = DISimulationContainer.logReplay.coordList[currentTick] ?: Pair(0f,0f)
-//                println("Tick: ${currentTick}, x compare: ${x==logX}, x: ${x}, logX: ${logX}")
-//                print("y compare: ${y==logY}, y: ${y}, logY: ${logY}")
-//            }
-//        }
-//        catch (e: Throwable) {
-//            println("nah")
-//        }
-        if (replay) {
-            return
-        }
-
         var isAlreadyDragged = false
 
         while (true) {
@@ -89,8 +59,6 @@ class UserCommandManager(
             if (DEBUG_MODE) {
                 DISimulationContainer.logSaver.saveUserCommand(cmd)
             }
-
-//            println("from usre manager: ${cmd}")
 
             var floats = FloatArray(4)
 

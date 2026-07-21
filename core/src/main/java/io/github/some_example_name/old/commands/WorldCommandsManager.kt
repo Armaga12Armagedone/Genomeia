@@ -73,28 +73,19 @@ class WorldCommandsManager(
     var oddLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
     var currentTick = -1
     var replay = false
-    var commandCount = 0 //DEBUG ONLY!
 
     fun executingCommandsFromTheWorld() {
-        var ticked = false
 //        if (replay) {
 //            currentTick += 1
 //            replay = DISimulationContainer.logReplay.replyTick(currentTick, 0)
 //        }
 
         if (replay) {
-            println("slomat")
             return
         }
 
         worldCommandBuffer.forEachIndexed { threadId, worldCommandBuffer ->
-            if (worldCommandBuffer.size > 0 && !ticked && DEBUG_MODE) {
-                DISimulationContainer.logSaver.saveTick()
-                ticked = true
-            }
             worldCommandBuffer.consume { type, ints, floats, booleans ->
-                commandCount += 1
-                DISimulationContainer.logSaver.save(type, ints, floats, booleans)
                 when (type) {
                     WorldCommandType.DIVIDE_ALIVE_CELL_ACTION_COUNTER -> {
                         organEntity.divideCounterThisStage[ints[0]]++
@@ -360,8 +351,6 @@ class WorldCommandsManager(
 
         worldCommandSecondBuffer.forEachIndexed { threadId, worldCommandBuffer ->
             worldCommandBuffer.consume { type, ints, floats, booleans ->
-                commandCount += 1
-                DISimulationContainer.logSaver.save(type, ints, floats, booleans)
                 when (type) {
                     WorldCommandType.ADD_LINK_BY_ID -> {
                         val cellId = ints[0]
@@ -393,9 +382,6 @@ class WorldCommandsManager(
             }
         }
 
-        if (ticked) {
-//            DISimulationContainer.logSaver.closeTick()
-        }
 
 //        println("Manager: ${commandCount}")
 
@@ -409,16 +395,10 @@ class WorldCommandsManager(
 //            DISimulationContainer.logSaver.saveTick()
 //            ticked = true
 //        }
-        if (worldCommandLastBuffer.size > 0 && DEBUG_MODE)
-        {
-            DISimulationContainer.logSaver.saveTick()
-        }
 
         //replay = DISimulationContainer.logReplay.replyTick(currentTick, 2)
 
         worldCommandLastBuffer.consume { type, ints, floats, booleans ->
-            DISimulationContainer.logSaver.save(type, ints, floats, booleans)
-            commandCount += 1
             when (type) {
                 WorldCommandType.ADD_ORGAN -> {
                     if (!isEditor) {

@@ -56,11 +56,13 @@ class SimulationSystem(
     private var simulationThread: Thread? = null
     private var map: Array<BooleanArray>? = null
 
+    private var logPlay = true //специальная переменная для запуска логов, изначально false
+
     fun startThread() {
         if (!threadManager.isRunning) {
             threadManager.isRunning = true
 
-            if(!DEBUG_MODE) {
+            if(!DEBUG_MODE && logPlay) {
                 DISimulationContainer.logReplay.play()
             }
 
@@ -80,37 +82,36 @@ class SimulationSystem(
             restartSim()
         }
 
-        if (DEBUG_MODE) {
-            try {
-                val x = cellEntity.getX(0) //для particle заменить на particleEntity
-                val y = cellEntity.getY(0)
-                DISimulationContainer.logSaver.saveDebug(x, y, DISimulationContainer.simulationData.tickCounter)
-            }
-            catch (e: Exception) {
+//        if (DEBUG_MODE) { уже не нужно
+//            try {
+//                val x = cellEntity.getX(0) //для particle заменить на particleEntity
+//                val y = cellEntity.getY(0)
+//                DISimulationContainer.logSaver.saveDebug(x, y, DISimulationContainer.simulationData.tickCounter)
+//            }
+//            catch (e: Exception) {
+//
+//            }
+//        }
 
-            }
-        }
-
-        try {
-            println("work")
-            val x = cellEntity.getX(0)
-            val y = cellEntity.getY(0)
-            println(DISimulationContainer.logReplay.startReplayTick)
-            if (DISimulationContainer.logReplay.startReplayTick != -1) {
-                var currentTick = DISimulationContainer.simulationData.tickCounter
-                val (logX, logY) = DISimulationContainer.logReplay.coordList[currentTick] ?: Pair(0f,0f)
-                println("Tick: ${currentTick}, x compare: ${x==logX}, x: ${x}, logX: ${logX}")
-                print("y compare: ${y==logY}, y: ${y}, logY: ${logY}")
-            }
-        }
-        catch (e: Throwable) {
-            println("nah")
-        }
+//        try { не нужно
+//            val x = cellEntity.getX(0)
+//            val y = cellEntity.getY(0)
+//
+//            if (DISimulationContainer.logReplay.startReplayTick != -1) {
+//                var currentTick = DISimulationContainer.simulationData.tickCounter
+//                val (logX, logY) = DISimulationContainer.logReplay.coordList[currentTick] ?: Pair(0f,0f)
+//                println("Tick: ${currentTick}, x compare: ${x==logX}, x: ${x}, logX: ${logX}")
+//                print("y compare: ${y==logY}, y: ${y}, logY: ${logY}")
+//            }
+//        }
+//        catch (e: Throwable) {
+//            println("nah")
+//        }
 
         simulationData.tickCounter++
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
 
-        if (!DEBUG_MODE) {
+        if (!DEBUG_MODE && logPlay) {
             DISimulationContainer.logReplay.updateReplay()
         }
 
