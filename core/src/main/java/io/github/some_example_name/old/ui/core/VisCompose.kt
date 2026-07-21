@@ -123,9 +123,11 @@ fun VisTable.visLabel(
     text: String,
     textColor: Color = STYLE_BEIGE,
     align: Int = Align.left,
-    font: BitmapFont = game.titleFont,
+    // titleFont is display-only (menu logo); body UI must use a readable size
+    font: BitmapFont = game.largeFont,
     cellInit: (Cell<VisLabel>.() -> Unit) = {}
 ): VisLabel {
+
     val label = VisLabel(text)
     label.style = Label.LabelStyle(font, textColor)
     label.setAlignment(align)                    // ← вот это главное

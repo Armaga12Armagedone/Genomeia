@@ -15,11 +15,11 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.graphics.g2d.GlyphLayout
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.viewport.ScreenViewport
-import com.badlogic.gdx.video.VideoPlayer
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
+import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
 import io.github.some_example_name.old.editor.ui.GenomeEditorScreen
 import io.github.some_example_name.old.systems.genomics.genome_deprecated.GenomeJsonReader
 import io.github.some_example_name.old.ui.core.STYLE_DARK
@@ -33,30 +33,8 @@ class MenuScreen: Screen {
     private val shape = ShapeRenderer()
     private val cam   = OrthographicCamera()
 
-    private val video: VideoPlayer? = runCatching {
-        val home = System.getProperty("user.home")
-        val os   = System.getProperty("os.name").lowercase()
-        val cacheDir = when {
-            os.contains("win") -> (System.getenv("APPDATA") ?: "$home/AppData/Roaming") + "/Genomeia"
-            os.contains("mac") -> "$home/Library/Application Support/Genomeia"
-            else               -> "$home/.local/share/genomeia"
-        }
-        val cacheFile = Gdx.files.absolute("$cacheDir/bg.webm")
-        if (!cacheFile.exists()) {
-            val src = Gdx.files.internal("ui/bg.webm")
-            if (!src.exists()) return@runCatching null
-            cacheFile.parent().mkdirs()
-            src.copyTo(cacheFile)
-        }
-        game.videoFactory?.invoke()?.also { p ->
-            p.play(cacheFile)
-            p.setOnCompletionListener { p.play(cacheFile) }
-        }
-    }.getOrNull()
-
     private val extraTextures = mutableListOf<Texture>()
 
-    val genomeJsonReader: GenomeJsonReader = GenomeJsonReader()
     var onResize: (() -> Unit)? = null
 
     init {
@@ -147,8 +125,6 @@ class MenuScreen: Screen {
     }
 
     override fun render(delta: Float) {
-        video?.update()
-
         Gdx.gl.glClearColor(0.04f, 0.04f, 0.06f, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
@@ -157,7 +133,6 @@ class MenuScreen: Screen {
 
         batch.projectionMatrix = cam.combined
         batch.begin()
-        video?.texture?.let { drawCover(it, w, h) }
         batch.end()
 
         Gdx.gl.glEnable(GL20.GL_BLEND)
@@ -184,10 +159,9 @@ class MenuScreen: Screen {
     override fun pause()  {}
     override fun resume() {}
     override fun show()   {}
-    override fun hide()   { video?.pause() }
+    override fun hide()   {}
 
     override fun dispose() {
-        video?.dispose()
         stage.dispose()
         batch.dispose()
         shape.dispose()

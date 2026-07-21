@@ -126,17 +126,6 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
             val keypadHeight = screenHeight - r.bottom
             inputLayout.translationY = if (keypadHeight > screenHeight * 0.15) -keypadHeight.toFloat() else 0f
         }
-
-        // === ПРОВЕРКА ВЕРСИИ GLES (после инициализации) ===
-        rootLayout.post {
-            val version = Gdx.graphics.glVersion
-            val isGLES32 = version.isVersionEqualToOrHigher(3, 2)
-            val msg = "✅ OpenGL ES ${version.majorVersion}.${version.minorVersion}\n" +
-                "SSBO + Compute Shaders: ${if (isGLES32) "РАБОТАЮТ" else "НЕДОСТУПНЫ (только GLES 3.0+)"}"
-
-            Gdx.app.log("Genomeia GLES", msg)
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-        }
     }
 
     // ====================== KeyBoardListener ======================

@@ -29,7 +29,6 @@ import io.github.some_example_name.old.ui.screens.GlobalSettings.MSAA
 import io.github.some_example_name.old.ui.screens.GlobalSettings.MUSIC_VOLUME
 import io.github.some_example_name.old.ui.screens.GlobalSettings.UI_SCALE
 import io.github.some_example_name.old.core.FileProvider
-import com.badlogic.gdx.video.VideoPlayer
 import io.github.some_example_name.old.ui.screens.MenuScreen
 import kotlin.math.max
 
@@ -41,8 +40,7 @@ var openKeyBoardListenerGlobal: KeyBoardListener? = null
 //Entry point
 class MyGame(
     val multiPlatformFileProvider: FileProvider,
-    val openKeyBoardListener: KeyBoardListener? = null,
-    val videoFactory: (() -> VideoPlayer)? = null
+    val openKeyBoardListener: KeyBoardListener? = null
 ) : Game() {
 
     lateinit var pikSounds: List<Sound>
@@ -71,7 +69,11 @@ class MyGame(
         DISimulationContainer
         DIGenomeEditorContainer
 
-        // Генерация шрифта с большим размером (адаптировано под DPI)
+        // Генерация шрифта с большим размером (адаптировано под DPI).
+        // На Android полный Gdx.graphics.density (часто 2.5–4) делает текст огромным:
+        // ScreenViewport работает в пикселях, а меню единственное дополнительно
+        // ужимает buttonFont под ширину кнопки. Для остальных экранов нужен
+        // более мягкий множитель, иначе large/extraLarge/title выглядят ×2–3 слишком крупно.
         val generator = FreeTypeFontGenerator(Gdx.files.internal("fonts/Rubik-Regular.ttf"))
         val parameter = FreeTypeFontGenerator.FreeTypeFontParameter()
         parameter.genMipMaps = true
@@ -80,9 +82,16 @@ class MyGame(
         parameter.characters = FreeTypeFontGenerator.DEFAULT_CHARS + "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"  // Добавляем кириллицу для русского текста
 
         val MIN_GEN_SIZE = 15
+        val rawDensity = Gdx.graphics.density
+        val fontDensity = if (Gdx.app.type == Application.ApplicationType.Android) {
+            // ~half density keeps physical size readable without eating the phone screen
+            (rawDensity * 0.5f).coerceIn(1.0f, 2.0f)
+        } else {
+            rawDensity.coerceAtLeast(1.0f)
+        }
 
         // Medium font
-        val desiredMediumSize = (16 * Gdx.graphics.density).toInt()
+        val desiredMediumSize = (16 * fontDensity).toInt()
         parameter.size = max(MIN_GEN_SIZE, desiredMediumSize)
         mediumFont = generator.generateFont(parameter)
         if (desiredMediumSize < MIN_GEN_SIZE) {
@@ -90,7 +99,7 @@ class MyGame(
         }
 
         // Small font
-        val desiredSmallSize = (8 * Gdx.graphics.density).toInt()
+        val desiredSmallSize = (8 * fontDensity).toInt()
         parameter.size = max(MIN_GEN_SIZE, desiredSmallSize)
         smallFont = generator.generateFont(parameter)
         if (desiredSmallSize < MIN_GEN_SIZE) {
@@ -98,7 +107,7 @@ class MyGame(
         }
 
         // Large font
-        val desiredLargeSize = (24 * Gdx.graphics.density).toInt()
+        val desiredLargeSize = (24 * fontDensity).toInt()
         parameter.size = max(MIN_GEN_SIZE, desiredLargeSize)
         largeFont = generator.generateFont(parameter)
         if (desiredLargeSize < MIN_GEN_SIZE) {
@@ -106,7 +115,7 @@ class MyGame(
         }
 
         // Button font — generated at 2x size so scaling down in buttons stays sharp
-        val desiredButtonSize = (48 * Gdx.graphics.density).toInt()
+        val desiredButtonSize = (48 * fontDensity).toInt()
         parameter.size = max(MIN_GEN_SIZE, desiredButtonSize)
         parameter.borderWidth = 1.2f
         parameter.borderColor = Color.WHITE
@@ -115,7 +124,7 @@ class MyGame(
         parameter.size = max(MIN_GEN_SIZE, desiredLargeSize)
 
         // Extra large font
-        val desiredExtraLargeSize = (40 * Gdx.graphics.density).toInt()
+        val desiredExtraLargeSize = (40 * fontDensity).toInt()
         parameter.size = max(MIN_GEN_SIZE, desiredExtraLargeSize)
         extraLargeFont = generator.generateFont(parameter)
         if (desiredExtraLargeSize < MIN_GEN_SIZE) {
@@ -123,7 +132,7 @@ class MyGame(
         }
 
         // Title font — large display size for the main menu logo
-        val desiredTitleSize = (64 * Gdx.graphics.density).toInt()
+        val desiredTitleSize = (64 * fontDensity).toInt()
         parameter.size = max(MIN_GEN_SIZE, desiredTitleSize)
         titleFont = generator.generateFont(parameter)
         if (desiredTitleSize < MIN_GEN_SIZE) {

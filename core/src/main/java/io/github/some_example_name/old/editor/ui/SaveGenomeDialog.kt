@@ -94,6 +94,7 @@ class SaveGenomeDialog(
                         genome.copy(name = name),
                         name
                     )
+                    game.multiPlatformFileProvider.exportGenome("genomes/$name.genome")
                 }) { center() }
             }
 

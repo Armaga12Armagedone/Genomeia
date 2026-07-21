@@ -232,14 +232,14 @@ class WorldCommandsManager(
                         if (cellEntity.isAlive[cellIndex] && cellEntity.getGeneration(cellIndex) == cellGeneration) {
                             val x = cellEntity.getX(cellIndex)
                             val y = cellEntity.getY(cellIndex)
-//                            val newSubIndex = substancesEntity.addSubstance(
-//                                x = cellEntity.getX(cellIndex),
-//                                y = cellEntity.getY(cellIndex),
-//                                color = Color.RED.toIntBits(),
-//                                radius = (0.03f * cellEntity.energy[cellIndex]).coerceIn(0.1f, 0.5f),
-//                                subType = 0,
-//                            )
-//                            pheromoneEntity.addPheromone(x, y, emitterIndex = substancesEntity.particleIndex[newSubIndex], type = 0)
+                            val newSubIndex = substancesEntity.addSubstance(
+                                x = cellEntity.getX(cellIndex),
+                                y = cellEntity.getY(cellIndex),
+                                color = Color.RED.toIntBits(),
+                                radius = (0.03f * cellEntity.energy[cellIndex]).coerceIn(0.1f, 0.5f),
+                                subType = 0,
+                            )
+                            pheromoneEntity.addPheromone(x, y, emitterIndex = substancesEntity.particleIndex[newSubIndex], type = 0)
                             pheromoneEntity.addPheromone(x, y, emitterIndex = -1, type = 18, time = 0.3f)
                             organManager.cellDeleted(cellIndex)
                             cellEntity.deleteCell(cellIndex)
