@@ -86,8 +86,12 @@ class EditorRenderSystem(
         buffer.putInt(color)
         buffer.putInt(packed1)
         buffer.putInt(packed2)
+        // Pad to 32 bytes = 2× RGBA32UI texels (GLES 3.0 data-texture path)
+        buffer.putInt(0)
+        buffer.putInt(0)
         buffer.putInt(0)
     }
+
 
     fun render(touchedCellX: Float, touchedCellY: Float) {
         if (isUpdateBuffer) {

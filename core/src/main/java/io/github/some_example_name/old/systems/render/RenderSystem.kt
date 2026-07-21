@@ -163,7 +163,11 @@ class RenderSystem(
                 bufferCell.putInt(color[i])
                 bufferCell.putInt(packed1[i])
                 bufferCell.putInt(packed2[i])
+                // Pad to 32 bytes = 2× RGBA32UI texels (GLES 3.0 data-texture path)
                 bufferCell.putInt(0)
+                bufferCell.putInt(0)
+                bufferCell.putInt(0)
+
             }
         }
         (bufferCell as java.nio.Buffer).flip()
@@ -314,7 +318,9 @@ class RenderSystem(
     companion object {
         const val INITIAL_PARTICLE_CAPACITY = 30_000
         const val INITIAL_PHEROMONE_CAPACITY = 1_000
-        const val PARTICLE_STRUCT_SIZE = 24
+        /** 32 bytes = 2× RGBA32UI texels (x,y,color,packed1 | packed2,pad,pad,pad). */
+        const val PARTICLE_STRUCT_SIZE = 32
+
         const val PHEROMONE_STRUCT_SIZE = 16
     }
 }

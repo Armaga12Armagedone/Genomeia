@@ -3,31 +3,45 @@ package io.github.some_example_name.old.systems.render.components
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.GL30
-import com.badlogic.gdx.graphics.GL31
 import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.glutils.ShaderProgram
 import com.badlogic.gdx.utils.BufferUtils
 import io.github.some_example_name.old.systems.render.RenderSystem.Companion.INITIAL_PARTICLE_CAPACITY
-import io.github.some_example_name.old.systems.render.RenderSystem.Companion.PARTICLE_STRUCT_SIZE
+import java.nio.ByteBuffer
+
 
 /**
- * Renders particles using instanced drawing with SSBO data.
- * Manages texture array and SSBO buffers for particle data.
+ * Renders particles using GLES 3.0 instanced drawing.
+ *
+ * Instance data is uploaded as an RGBA32UI texture — 2 texels per particle (32 bytes):
+ *   texel0: x_bits, y_bits, color, packed1
+ *   texel1: packed2, pad, pad, pad
+ *
+ * CPU packing (RenderSystem) must match PARTICLE_STRUCT_SIZE = 32.
+ * Compatible with OpenGL ES 3.0 / mobile (no SSBO).
  */
 class ParticleRenderer(private val texturePaths: List<String>) : RenderComponent {
-
-    private val ssbos = IntArray(1)
-    private var currentReadIndex = 0
-    private val ssboCapacities = IntArray(1)
 
     private lateinit var shader: ShaderProgram
     private var textureArray: Int = 0
     private var numLayers: Int = 0
 
+    /** GPU instance-data texture (RGBA32UI, NEAREST). */
+    private var dataTexture = 0
+
+    /** Texture width in texels (must be even — 2 texels per particle). */
+    private var texWidth = TEX_WIDTH
+
+    /** Allocated texture height in texels. */
+    private var texHeight = 0
+
+    /** Max particles the texture can hold. */
+    private var texCapacityParticles = 0
+
     override fun create() {
         createShader()
         createTextureArray()
-        createSSBO()
+        createDataTexture()
     }
 
     private fun createShader() {
@@ -42,6 +56,9 @@ class ParticleRenderer(private val texturePaths: List<String>) : RenderComponent
     private fun createTextureArray() {
         numLayers = texturePaths.size
         if (numLayers == 0) throw IllegalStateException("Нет текстур для TextureArray!")
+
+        val gl30 = Gdx.gl30
+            ?: throw IllegalStateException("GL30 required for ParticleRenderer texture array")
 
         val pixmaps = texturePaths.map { path ->
             val file = Gdx.files.internal(path)
@@ -61,72 +78,159 @@ class ParticleRenderer(private val texturePaths: List<String>) : RenderComponent
         }
 
         val buffer = BufferUtils.newIntBuffer(1)
-        Gdx.gl31.glGenTextures(1, buffer)
+        gl30.glGenTextures(1, buffer)
         textureArray = buffer.get(0)
 
-        Gdx.gl31.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, textureArray)
+        gl30.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, textureArray)
 
-        Gdx.gl31.glTexImage3D(
+        gl30.glTexImage3D(
             GL30.GL_TEXTURE_2D_ARRAY, 0, GL30.GL_RGBA8,
             width, height, numLayers, 0,
             GL30.GL_RGBA, GL30.GL_UNSIGNED_BYTE, null
         )
 
         for ((layer, pixmap) in pixmaps.withIndex()) {
-            Gdx.gl31.glTexSubImage3D(
+            gl30.glTexSubImage3D(
                 GL30.GL_TEXTURE_2D_ARRAY, 0,
                 0, 0, layer,
                 pixmap.width, pixmap.height, 1,
                 GL30.GL_RGBA, GL30.GL_UNSIGNED_BYTE,
-                pixmap.getPixels()
+                pixmap.pixels
             )
             pixmap.dispose()
         }
 
         Gdx.gl.glGenerateMipmap(GL30.GL_TEXTURE_2D_ARRAY)
 
-        Gdx.gl31.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_MIN_FILTER, GL30.GL_LINEAR_MIPMAP_LINEAR)
-        Gdx.gl31.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_MAG_FILTER, GL30.GL_LINEAR)
-        Gdx.gl31.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_WRAP_S, GL30.GL_REPEAT)
-        Gdx.gl31.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_WRAP_T, GL30.GL_REPEAT)
+        gl30.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_MIN_FILTER, GL30.GL_LINEAR_MIPMAP_LINEAR)
+        gl30.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_MAG_FILTER, GL30.GL_LINEAR)
+        gl30.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_WRAP_S, GL30.GL_REPEAT)
+        gl30.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL30.GL_TEXTURE_WRAP_T, GL30.GL_REPEAT)
 
-        Gdx.gl31.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, 0)
+        gl30.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, 0)
 
         println("✅ TextureArray создан: $numLayers слоёв, ${width}×${height} px")
     }
 
-    private fun createSSBO() {
-        val ssboBuffer = BufferUtils.newIntBuffer(1)
-        Gdx.gl31.glGenBuffers(1, ssboBuffer)
-        ssbos[0] = ssboBuffer.get(0)
-
-        ssboCapacities[0] = INITIAL_PARTICLE_CAPACITY * PARTICLE_STRUCT_SIZE
-        Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssbos[0])
-        Gdx.gl31.glBufferData(
-            GL31.GL_SHADER_STORAGE_BUFFER,
-            INITIAL_PARTICLE_CAPACITY * PARTICLE_STRUCT_SIZE,
-            null,
-            GL20.GL_DYNAMIC_DRAW
-        )
-        Gdx.gl31.glBindBufferBase(GL31.GL_SHADER_STORAGE_BUFFER, 0, ssbos[0])
-        Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, 0)
+    private fun createDataTexture() {
+        val buf = BufferUtils.newIntBuffer(1)
+        Gdx.gl.glGenTextures(1, buf)
+        dataTexture = buf.get(0)
+        ensureTextureCapacity(INITIAL_PARTICLE_CAPACITY)
     }
 
-    private fun resizeSSBO(dataSize: Int, targetIndex: Int, ssboId: Int) {
-        if (dataSize > ssboCapacities[targetIndex]) {
-            var newCapacity = ssboCapacities[targetIndex].toDouble()
-            do {
-                newCapacity *= 1.5
-            } while (newCapacity < dataSize)
+    /**
+     * Grow RGBA32UI texture to hold at least [neededParticles] instances.
+     * Each particle = 2 texels. Width fixed (even), height grows ×1.5.
+     */
+    private fun ensureTextureCapacity(neededParticles: Int) {
+        if (neededParticles <= texCapacityParticles) return
 
-            val finalCapacity = newCapacity.toInt().coerceAtLeast(dataSize)
-
-            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssboId)
-            Gdx.gl31.glBufferData(GL31.GL_SHADER_STORAGE_BUFFER, finalCapacity, null, GL20.GL_DYNAMIC_DRAW)
-            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, 0)
-
-            ssboCapacities[targetIndex] = finalCapacity
+        var newCap = if (texCapacityParticles == 0) INITIAL_PARTICLE_CAPACITY else texCapacityParticles
+        while (newCap < neededParticles) {
+            newCap = (newCap * 1.5).toInt().coerceAtLeast(neededParticles)
         }
+
+        // particlesPerRow = texWidth / 2 (two texels each)
+        val particlesPerRow = texWidth / TEXELS_PER_PARTICLE
+        val newHeight = (newCap + particlesPerRow - 1) / particlesPerRow
+        newCap = newHeight * particlesPerRow
+
+        val gl = Gdx.gl
+        val gl30 = Gdx.gl30
+        gl.glBindTexture(GL20.GL_TEXTURE_2D, dataTexture)
+
+        gl.glTexImage2D(
+            GL20.GL_TEXTURE_2D,
+            0,
+            GL30.GL_RGBA32UI,
+            texWidth,
+            newHeight,
+            0,
+            GL30.GL_RGBA_INTEGER,
+            GL20.GL_UNSIGNED_INT,
+            null
+        )
+
+        gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_NEAREST)
+        gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_NEAREST)
+        gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE)
+        gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE)
+
+        if (gl30 != null) {
+            gl30.glTexParameteri(GL20.GL_TEXTURE_2D, GL30.GL_TEXTURE_BASE_LEVEL, 0)
+            gl30.glTexParameteri(GL20.GL_TEXTURE_2D, GL30.GL_TEXTURE_MAX_LEVEL, 0)
+        }
+
+        gl.glBindTexture(GL20.GL_TEXTURE_2D, 0)
+
+        texHeight = newHeight
+        texCapacityParticles = newCap
+    }
+
+    /**
+     * Upload tightly-packed particle ByteBuffer into the data texture.
+     *
+     * CPU layout per particle (32 bytes = 2 RGBA32UI texels), native endian:
+     *   [0..3]   float x
+     *   [4..7]   float y
+     *   [8..11]  int color
+     *   [12..15] int packed1
+     *   [16..19] int packed2
+     *   [20..31] pad (3× int 0)
+     *
+     * Zero intermediate allocations: full rows + optional partial row.
+     */
+    private fun uploadParticleTexture(data: ByteBuffer, numParticles: Int) {
+        ensureTextureCapacity(numParticles)
+
+        val gl = Gdx.gl
+        gl.glBindTexture(GL20.GL_TEXTURE_2D, dataTexture)
+
+        val w = texWidth
+        // Each particle occupies TEXELS_PER_PARTICLE consecutive texels
+        val totalTexels = numParticles * TEXELS_PER_PARTICLE
+        val fullRows = totalTexels / w
+        val remainderTexels = totalTexels % w
+        val bytesPerTexel = 16 // RGBA32UI
+
+        val oldPos = data.position()
+        val oldLimit = data.limit()
+
+        if (fullRows > 0) {
+            val fullBytes = fullRows * w * bytesPerTexel
+            data.position(0)
+            data.limit(fullBytes)
+            gl.glTexSubImage2D(
+                GL20.GL_TEXTURE_2D,
+                0,
+                0, 0,
+                w, fullRows,
+                GL30.GL_RGBA_INTEGER,
+                GL20.GL_UNSIGNED_INT,
+                data
+            )
+        }
+
+        if (remainderTexels > 0) {
+            val offsetBytes = fullRows * w * bytesPerTexel
+            data.position(offsetBytes)
+            data.limit(offsetBytes + remainderTexels * bytesPerTexel)
+            gl.glTexSubImage2D(
+                GL20.GL_TEXTURE_2D,
+                0,
+                0, fullRows,
+                remainderTexels, 1,
+                GL30.GL_RGBA_INTEGER,
+                GL20.GL_UNSIGNED_INT,
+                data
+            )
+        }
+
+        data.position(oldPos)
+        data.limit(oldLimit)
+
+        gl.glBindTexture(GL20.GL_TEXTURE_2D, 0)
     }
 
     override fun resize(width: Int, height: Int) {
@@ -134,17 +238,12 @@ class ParticleRenderer(private val texturePaths: List<String>) : RenderComponent
     }
 
     override fun render(context: RenderContext) {
+        val gl30 = Gdx.gl30 ?: return
         val dataSize = context.particleData.remaining()
+        val numInstances = context.numInstances
 
-        if (context.isNewFrame && dataSize > 0) {
-            val writeIndex = 0
-            resizeSSBO(dataSize, writeIndex, ssbos[writeIndex])
-
-            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, ssbos[writeIndex])
-            Gdx.gl31.glBufferSubData(GL31.GL_SHADER_STORAGE_BUFFER, 0, dataSize, context.particleData)
-            Gdx.gl31.glBindBuffer(GL31.GL_SHADER_STORAGE_BUFFER, 0)
-
-            currentReadIndex = writeIndex
+        if (context.isNewFrame && dataSize > 0 && numInstances > 0) {
+            uploadParticleTexture(context.particleData, numInstances)
         }
 
         if (context.usePostProcess) {
@@ -162,13 +261,23 @@ class ParticleRenderer(private val texturePaths: List<String>) : RenderComponent
         shader.setUniformf("u_textureScale", 1.0f)
         shader.setUniformf("u_colorScale", if (context.usePostProcess) 0.0f else 1.0f)
         shader.setUniformi("u_textureArray", 0)
+        shader.setUniformi("u_data", 1)
+        shader.setUniformi("u_texWidth", texWidth)
 
         Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0)
-        Gdx.gl31.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, textureArray)
+        gl30.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, textureArray)
+
+        Gdx.gl.glActiveTexture(GL20.GL_TEXTURE1)
+        Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, dataTexture)
 
         context.fullscreenMesh.bind(shader)
-        Gdx.gl31.glDrawArraysInstanced(GL20.GL_TRIANGLE_STRIP, 0, 4, context.numInstances)
+        gl30.glDrawArraysInstanced(GL20.GL_TRIANGLE_STRIP, 0, 4, numInstances)
         context.fullscreenMesh.unbind(shader)
+
+        Gdx.gl.glActiveTexture(GL20.GL_TEXTURE1)
+        Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, 0)
+        Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0)
+        gl30.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, 0)
 
         if (context.usePostProcess) {
             context.sceneFbo?.end()
@@ -177,22 +286,39 @@ class ParticleRenderer(private val texturePaths: List<String>) : RenderComponent
     }
 
     override fun dispose() {
-        shader.dispose()
+        if (::shader.isInitialized) shader.dispose()
 
+        val gl = Gdx.gl
         if (textureArray != 0) {
             val deleteBuf = BufferUtils.newIntBuffer(1).apply {
                 put(textureArray)
                 flip()
             }
-            Gdx.gl31.glDeleteTextures(1, deleteBuf)
+            gl.glDeleteTextures(1, deleteBuf)
             textureArray = 0
         }
 
-        val deleteBuffer = BufferUtils.newIntBuffer(2).apply {
-            put(ssbos[0])
-            put(0) // Padding for array size
-            flip()
+        if (dataTexture != 0) {
+            val deleteBuf = BufferUtils.newIntBuffer(1).apply {
+                put(dataTexture)
+                flip()
+            }
+            gl.glDeleteTextures(1, deleteBuf)
+            dataTexture = 0
         }
-        Gdx.gl31.glDeleteBuffers(1, deleteBuffer)
+
+        texHeight = 0
+        texCapacityParticles = 0
+    }
+
+    companion object {
+        /** Texels per particle in the data texture (2 × RGBA32UI = 32 bytes). */
+        private const val TEXELS_PER_PARTICLE = 2
+
+        /**
+         * Texture width in texels — must be divisible by TEXELS_PER_PARTICLE
+         * so a particle never straddles a row boundary.
+         */
+        private const val TEX_WIDTH = 1024
     }
 }
