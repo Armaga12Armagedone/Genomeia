@@ -1,5 +1,7 @@
-#version 320 es
+#version 300 es
 precision highp float;
+precision highp int;
+precision highp usampler2D;
 
 layout (location = 0) in vec2 a_position;
 
@@ -7,16 +9,11 @@ uniform mat4 u_projTrans;
 uniform float u_K;
 uniform float u_P;
 
-// Структура точно соответствует тому, что ты кладёшь в буфер
-struct Pheromone {
-    vec2 pos;     // x, y
-    float A;      // A (интенсивность)
-    uint  color;  // цвет как uint (точно как putInt)
-};
-
-layout(std430, binding = 1) buffer PheromoneData {
-    Pheromone pheromones[];
-} pheromoneBuffer;
+// RGBA32UI data texture: one texel per pheromone instance.
+// CPU writes: putFloat(x), putFloat(y), putFloat(A), putInt(color)
+// → four uint bit-patterns per texel.
+uniform usampler2D u_data;
+uniform int u_texWidth;
 
 out vec2 v_localUV;
 out float v_A;
@@ -24,16 +21,27 @@ out float v_radius;
 flat out vec3 ex_Color;
 
 void main() {
-    Pheromone ph = pheromoneBuffer.pheromones[gl_InstanceID];
+    int id = gl_InstanceID;
+    int texX = id - (id / u_texWidth) * u_texWidth; // id % u_texWidth without remainder op variance
+    int texY = id / u_texWidth;
 
-    vec2 worldPos = ph.pos;
-    v_A = ph.A;
+    // Exact integer fetch — NEAREST, no filtering
+    uvec4 ph = texelFetch(u_data, ivec2(texX, texY), 0);
+
+    // Recover floats from raw bits (same bits CPU putFloat wrote)
+    vec2 worldPos = vec2(uintBitsToFloat(ph.x), uintBitsToFloat(ph.y));
+    v_A = uintBitsToFloat(ph.z);
+
+    // Manual RGBA8 unpack — unpackUnorm4x8 is GLSL ES 3.10+ only, not in 300 es
+    uint c = ph.w;
+    ex_Color = vec3(
+        float(c & 0xFFu),
+        float((c >> 8u) & 0xFFu),
+        float((c >> 16u) & 0xFFu)
+    ) * (1.0 / 255.0);
 
     float squaredRadius = max((v_A / u_P - 1.0) / u_K, 0.0);
     float radius = sqrt(squaredRadius);
-
-    // ← Теперь без всяких floatBitsToUint!
-    ex_Color = unpackUnorm4x8(ph.color).rgb;
 
     vec2 offset = a_position * radius;
 
