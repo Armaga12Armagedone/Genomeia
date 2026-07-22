@@ -56,6 +56,42 @@ class AndroidFileProvider(private val context: Context, private val fileChooser:
         })
     }
 
+    fun importOldGenome(callback: (FileHandle?) -> Unit) {
+        //TODO
+        val conf = NativeFileChooserConfiguration().apply {
+            title = "Genome JSON"
+            mimeFilter = "application/json" // Фильтр по MIME-типу JSON
+
+            // Реализация nameFilter через анонимный объект для совместимости
+            nameFilter = FilenameFilter { dir, name ->
+                name.endsWith(".json")  // Без ?., т.к. в интерфейсе name non-null, но на практике безопасно
+            }
+        }
+
+        fileChooser.chooseFile(conf, object : NativeFileChooserCallback {
+            override fun onFileChosen(file: FileHandle) {
+                // Получаем оригинальное имя файла (например, "my_genome.json")
+                val originalName = file.name()
+
+                // Сохраняем в local с тем же именем (перезапись, если существует)
+                val localFile = Gdx.files.local("user_genomes/$originalName")
+                file.copyTo(localFile)
+
+                Gdx.app.log("Import", "Name: ${localFile.path()}")
+                callback(localFile)
+            }
+
+            override fun onCancellation() {
+                callback(null)
+            }
+
+            override fun onError(exception: Exception?) {
+                Gdx.app.log("FileChooser", "Error: ${exception?.message}")
+                callback(null)
+            }
+        })
+    }
+
     override fun getExternalFilesDir(type: String?): File? {
         return (Gdx.app as AndroidLauncher).getExternalFilesDir(null)
     }
