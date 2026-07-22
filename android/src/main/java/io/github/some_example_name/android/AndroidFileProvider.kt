@@ -23,22 +23,22 @@ class AndroidFileProvider(private val context: Context, private val fileChooser:
 
     override fun importGenome(callback: (FileHandle?) -> Unit) {
         val conf = NativeFileChooserConfiguration().apply {
-            title = "Genome JSON"
-            mimeFilter = "application/json" // Фильтр по MIME-типу JSON
+            title = "Genome File"
+            mimeFilter = "application/octet-stream" // Бинарный формат
 
             // Реализация nameFilter через анонимный объект для совместимости
             nameFilter = FilenameFilter { dir, name ->
-                name.endsWith(".json")  // Без ?., т.к. в интерфейсе name non-null, но на практике безопасно
+                name.endsWith(".genome")
             }
         }
 
         fileChooser.chooseFile(conf, object : NativeFileChooserCallback {
             override fun onFileChosen(file: FileHandle) {
-                // Получаем оригинальное имя файла (например, "my_genome.json")
+                // Получаем оригинальное имя файла (например, "my_genome.genome")
                 val originalName = file.name()
 
                 // Сохраняем в local с тем же именем (перезапись, если существует)
-                val localFile = Gdx.files.local("user_genomes/$originalName")
+                val localFile = Gdx.files.local("genomes/$originalName")
                 file.copyTo(localFile)
 
                 Gdx.app.log("Import", "Name: ${localFile.path()}")
