@@ -26,6 +26,7 @@ import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
 import io.github.some_example_name.old.core.DIGameGlobalContainer
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.utils.brownColors
 import io.github.some_example_name.old.game.applyCustomFont
 import io.github.some_example_name.old.game.applyCustomFontMedium
@@ -103,6 +104,8 @@ class WorldEditorScreen: Screen {
     private lateinit var dialog: VisDialog
     private lateinit var clearButton: VisTextButton
 
+    private var edited = false
+
     override fun show() {
         stage = Stage(ScreenViewport())
 
@@ -158,6 +161,7 @@ class WorldEditorScreen: Screen {
             addListener(object : ChangeListener() {
                 override fun changed(event: ChangeEvent, actor: Actor) {
                     val oldScreen = DIGameGlobalContainer.game.screen
+                    DISimulationContainer.mapSave.saveMap(edited, worldSeed.toInt(), map, canvasPixmap)
                     DIGameGlobalContainer.game.screen =
                         SimulationScreen(map, null) // Передаем map
                     oldScreen.dispose()
@@ -428,6 +432,8 @@ class WorldEditorScreen: Screen {
                     drawOnCanvas()
                     needTextureUpdate = true
                 }
+
+                edited = true
             }
         }
 

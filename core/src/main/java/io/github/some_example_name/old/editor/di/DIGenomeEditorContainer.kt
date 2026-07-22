@@ -41,6 +41,7 @@ import io.github.some_example_name.old.systems.genomics.DivideManager
 import io.github.some_example_name.old.systems.genomics.MutateManager
 import io.github.some_example_name.old.systems.genomics.OrganManager
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
+import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.simulation.SimulationData
@@ -92,6 +93,8 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         particlesStartMaxAmount = 100,
         gridManager = gridManager
     )
+
+    override val mapSave = MapSave()
 
     private val neuralEntity = NeuralEntity(
         neuralStartMaxAmount = 30,

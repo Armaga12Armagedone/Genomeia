@@ -108,9 +108,10 @@ class MenuScreen : Screen {
 
         val btns = listOf(
             Btn(bundle.get("button.empty")) {
-                val old = game.screen
-                game.screen = WorldEditorScreen()
-                old.dispose()
+                MapSelect(game, "Map Select").show(stage)
+                //val old = game.screen
+                //game.screen = WorldEditorScreen()
+                //old.dispose()
             },
             Btn(bundle.get("button.editor")) {
                 val genomes = genomeJsonReader.getGenomeFileNamesFromFolder()

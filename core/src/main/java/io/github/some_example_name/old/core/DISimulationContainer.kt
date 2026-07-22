@@ -44,6 +44,7 @@ import io.github.some_example_name.old.systems.simulation.ThreadManager
 import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_HEIGHT
 import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_WIDTH
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
+import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.physics.CollisionManager
 import io.github.some_example_name.old.systems.physics.MovementManager
 import kotlin.getValue
@@ -63,6 +64,8 @@ object DISimulationContainer:  DIContext, Disposable {
     var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks
     var linkMaxLength2 = 3f * 3f
     var cellsSettings = substrateSettings.cellsSettings
+
+    val baseMapDir = "./maps/"
 
     init {
         if (gridHeight % heightMultiplier != 0) throw Exception("gridHeight should be a multiple of (halfChunkHeight * 2 * 2)")
@@ -226,6 +229,9 @@ object DISimulationContainer:  DIContext, Disposable {
         particleEntity = particleEntity,
         cellEntity = cellEntity
     )
+
+    override val mapSave = MapSave()
+
     val worldTerrainManager = WorldTerrainManager(
         particleEntity = particleEntity,
         substancesEntity = substancesEntity

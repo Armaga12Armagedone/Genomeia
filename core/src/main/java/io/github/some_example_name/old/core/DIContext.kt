@@ -12,6 +12,7 @@ import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.old.systems.genomics.OrganManager
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
+import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.physics.GridManager
 
 interface DIContext {
@@ -34,4 +35,6 @@ interface DIContext {
     val gridManager: GridManager
     val organManager: OrganManager
     val entityList: List<Entity>
+
+    val mapSave: MapSave
 }

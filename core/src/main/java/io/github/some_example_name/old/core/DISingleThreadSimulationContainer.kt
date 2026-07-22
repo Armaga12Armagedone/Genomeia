@@ -29,6 +29,7 @@ import io.github.some_example_name.old.systems.genomics.DivideManager
 import io.github.some_example_name.old.systems.genomics.MutateManager
 import io.github.some_example_name.old.systems.genomics.OrganManager
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
+import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.old.systems.physics.CollisionManager
 import io.github.some_example_name.old.systems.physics.GridManager
@@ -124,6 +125,8 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
         particleEntity = particleEntity,
         substrateSettings = substrateSettings
     )
+
+    override val mapSave = MapSave()
 
     override val entityList = listOf(
         tailEntity,
