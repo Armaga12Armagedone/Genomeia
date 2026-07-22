@@ -3,9 +3,7 @@ package io.github.some_example_name.lwjgl3;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 
-import io.github.some_example_name.old.core.ApiClient;
 import io.github.some_example_name.old.game.MyGame;
-import io.ktor.client.engine.cio.CIO;
 import kotlin.Unit;
 
 import java.awt.Dimension;
@@ -43,8 +41,6 @@ public class Lwjgl3Launcher {
         int screenHeight = screenSize.height;
 
         System.out.println("[Lwjgl3Launcher] Detected screen resolution: " + screenWidth + " × " + screenHeight);
-
-        ApiClient.INSTANCE.init(CIO.INSTANCE.create(config -> Unit.INSTANCE));
 
         // По умолчанию — 1300×1300
         int windowSize = 1300;
