@@ -8,13 +8,11 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
-import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.utils.drawTriangleMiddle
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
-import io.github.some_example_name.old.ui.screens.isRenderUi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.sqrt
@@ -24,11 +22,11 @@ class RenderSystem(
     val linkEntity: LinkEntity,
     val particleEntity: ParticleEntity,
     val shaderManager: ShaderManager,
-//    val pheromoneShaderManager: PheromoneShaderManager,
     val renderBufferManager: RenderBufferManager,
-    val diContext: DIContext,
     val pheromoneEntity: PheromoneEntity
 ) {
+
+    var isRenderUi = true
 
     private lateinit var fontMatrix: Matrix4
     private lateinit var spriteBatch: SpriteBatch

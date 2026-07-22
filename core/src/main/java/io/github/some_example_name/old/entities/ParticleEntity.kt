@@ -1,7 +1,7 @@
 package io.github.some_example_name.old.entities
 
+import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
-import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
 import kotlin.math.PI
 
 class ParticleEntity(

@@ -1,6 +1,5 @@
 package io.github.some_example_name.old.systems.simulation
 
-import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
@@ -11,7 +10,6 @@ import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
-import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.OrganManager
@@ -20,11 +18,8 @@ import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.physics.LinkPhysicsSystem
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem
 import io.github.some_example_name.old.systems.render.RenderBufferManager
-import io.github.some_example_name.old.systems.render.RenderSystem
-import io.github.some_example_name.old.systems.render.ShaderManager
-import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_HEIGHT
-import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_WIDTH
-import kotlin.random.Random
+import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
+import io.github.some_example_name.old.systems.physics.MovementManager
 
 class SimulationSystem(
     val gridManager: GridManager,
@@ -45,11 +40,12 @@ class SimulationSystem(
     val userCommandManager: UserCommandManager,
     val entityList: List<Entity>,
     val renderBufferManager: RenderBufferManager,
-    val pheromonesManager: PheromonesManager
+    val pheromonesManager: PheromonesManager,
+    val movementManager: MovementManager,
+    val worldTerrainManager: WorldTerrainManager
 ) {
 
     private var simulationThread: Thread? = null
-    private var map: Array<BooleanArray>? = null
 
     fun startThread() {
         if (!threadManager.isRunning) {
@@ -74,9 +70,9 @@ class SimulationSystem(
         simulationData.tickCounter++
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
 
-        linkPhysicsSystem.iterateLinks()
+        linkPhysicsSystem.iterateLinksInParallel()
         processParticleCollision()
-        cellSystem.iterateCell()
+        cellSystem.iterateCellInParallel()
         pheromonesManager.iterate()
         arrangementOfPositionsInTheGrid()
 
@@ -101,7 +97,7 @@ class SimulationSystem(
         for (chunk in 0..<threadCount) {
             threadManager.futures.add(threadManager.executor.submit {
                 for (i in 0..<worldCommandsManager.oddCellCounter[chunk]) {
-                    particlePhysicsSystem.moveParticle(worldCommandsManager.oddCellChunkPositionStack[chunk][i], chunk)
+                    movementManager.moveParticle(worldCommandsManager.oddCellChunkPositionStack[chunk][i], chunk)
                 }
             })
         }
@@ -111,7 +107,7 @@ class SimulationSystem(
         for (chunk in 0..<threadCount) {
             threadManager.futures.add(threadManager.executor.submit {
                 for (i in 0..<worldCommandsManager.evenCellCounter[chunk]) {
-                    particlePhysicsSystem.moveParticle(worldCommandsManager.evenCellChunkPositionStack[chunk][i], chunk)
+                    movementManager.moveParticle(worldCommandsManager.evenCellChunkPositionStack[chunk][i], chunk)
                 }
             })
         }
@@ -147,113 +143,12 @@ class SimulationSystem(
     private fun restartSim() {
         dispose()
         simulationData.isRestart = false
-        initWorld(map)
+        worldTerrainManager.initWorld()
     }
 
-    fun getColor(random: Random): Int {
-        val r = random.nextFloat() * 0.25f + 0.1f   // 0.1 - 0.35
-        val g = random.nextFloat() * 0.5f + 0.5f    // 0.5 - 1.0
-        val b = random.nextFloat() * 0.2f + 0.05f   // 0.05 - 0.25
-
-        return Color(r, g, b, 1f).toIntBits()
+    fun initMap() {
+        worldTerrainManager.initWorld()
     }
-//    fun getColor(random: Random) = leafColors[random.nextInt(6)].toIntBits()
-
-    fun initWorld(map: Array<BooleanArray>?) {
-        this.map = map
-        val random = Random(3)
-        if (map != null) {
-            for (y in 0 until map.size) {
-                for (x in 0 until map[y].size) {
-
-                    val scalex = x.toFloat() / 1.5f
-                    val scaley = y.toFloat() / 1.5f
-                    if (x == 0 || x == map.size - 1 || y == 0 || y == map[y].size - 1) continue
-                    if (map[y][x]) {
-                        if (scalex < GRID_WIDTH && scaley < GRID_HEIGHT) {
-                            particleEntity.addParticle(
-                                x = scalex,
-                                y = scaley,
-                                radius = 0.5f,
-                                color = getColor(random),
-                                isCell = false,
-                                isSub = false,
-                                holderEntityIndex = -1,
-                                dragCoefficient = 0.4f
-                            )
-                        }
-
-                    } else {
-//                    if (random.nextInt(60) == 1) {
-////                        subManager.addCell(
-////                            x * WorldEditorScreen.SCALE_FACTOR + WorldEditorScreen.OFFSET + random.nextDouble(-10.0, 10.0).toFloat(),
-////                            y * WorldEditorScreen.SCALE_FACTOR + WorldEditorScreen.OFFSET + random.nextDouble(-10.0, 10.0).toFloat(),
-////                            0f, 0f
-////                        )
-//
-//                        substancesEntity.addSubstance(
-//                            x = scalex,
-//                            y = scaley,
-//                            color = Color.RED.toIntBits(),
-//                            radius = 0.25f,
-//                            subType = 0.toByte(),
-//                        )
-//                    }
-                    }
-                }
-            }
-        }
-        for (i in 1..<(GRID_WIDTH / 2 * 3)) {
-            particleEntity.addParticle(
-                x = i.toFloat() / 1.5f,
-                y = 0.5f,
-                radius = 0.5f,
-                color = getColor(random),
-                isCell = false,
-                isSub = false,
-                holderEntityIndex = -1,
-                dragCoefficient = 1.0f
-            )
-        }
-        for (i in 1..<(GRID_HEIGHT / 2 * 3)) {
-            particleEntity.addParticle(
-                x = 0.5f,
-                y = i.toFloat() / 1.5f,
-                radius = 0.5f,
-                color = getColor(random),
-                isCell = false,
-                isSub = false,
-                holderEntityIndex = -1,
-                dragCoefficient = 1.0f
-            )
-        }
-
-        for (i in 1..<(GRID_HEIGHT / 2 * 3)) {
-            particleEntity.addParticle(
-                x = GRID_WIDTH - 0.5f,
-                y = i.toFloat() / 1.5f,
-                radius = 0.5f,
-                color = getColor(random),
-                isCell = false,
-                isSub = false,
-                holderEntityIndex = -1,
-                dragCoefficient = 1.0f
-            )
-        }
-        for (i in 1..<(GRID_WIDTH / 2 * 3)) {
-            particleEntity.addParticle(
-                x = i.toFloat() / 1.5f,
-                y = GRID_HEIGHT - 0.5f,
-                radius = 0.5f,
-                color = getColor(random),
-                isCell = false,
-                isSub = false,
-                holderEntityIndex = -1,
-                dragCoefficient = 1.0f
-            )
-        }
-    }
-
 
     companion object {
         const val DELTA_SIM_TICK_TIME = 0.016666666f

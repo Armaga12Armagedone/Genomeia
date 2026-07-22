@@ -3,10 +3,9 @@ package io.github.some_example_name.old.cells
 import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.DIGameGlobalContainer.morphogenesis
-import io.github.some_example_name.old.core.DISimulationContainer.cellsSettings
 import io.github.some_example_name.old.core.utils.collectParticles
 import io.github.some_example_name.old.core.utils.pinkColors
-import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
+import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 
 class Stem(cellTypeId: Int): Cell(
     defaultColor = pinkColors[0],

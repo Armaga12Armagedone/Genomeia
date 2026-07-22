@@ -25,11 +25,11 @@ import com.kotcrab.vis.ui.widget.VisValidatableTextField
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.core.DISimulationContainer
-import io.github.some_example_name.old.ui.screens.GlobalSettings.MSAA
-import io.github.some_example_name.old.ui.screens.GlobalSettings.MUSIC_VOLUME
-import io.github.some_example_name.old.ui.screens.GlobalSettings.UI_SCALE
+import io.github.some_example_name.old.features.settings.GlobalSettings.MSAA
+import io.github.some_example_name.old.features.settings.GlobalSettings.MUSIC_VOLUME
+import io.github.some_example_name.old.features.settings.GlobalSettings.UI_SCALE
 import io.github.some_example_name.old.core.FileProvider
-import io.github.some_example_name.old.ui.screens.MenuScreen
+import io.github.some_example_name.old.features.menu.MenuScreen
 import kotlin.math.max
 
 interface KeyBoardListener {

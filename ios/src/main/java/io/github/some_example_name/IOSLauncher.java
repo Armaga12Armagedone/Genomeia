@@ -6,7 +6,7 @@ import org.robovm.apple.uikit.UIApplication;
 import com.badlogic.gdx.backends.iosrobovm.IOSApplication;
 import com.badlogic.gdx.backends.iosrobovm.IOSApplicationConfiguration;
 
-import io.github.some_example_name.old.ui.screens.SimulationScreen;
+import io.github.some_example_name.old.features.simulation.SimulationScreen;
 
 /** Launches the iOS (RoboVM) application. */
 public class IOSLauncher extends IOSApplication.Delegate {

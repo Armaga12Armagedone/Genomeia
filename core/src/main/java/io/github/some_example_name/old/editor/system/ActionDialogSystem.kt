@@ -8,8 +8,8 @@ import io.github.some_example_name.old.cells.base.formulaType
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellList
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellsTypeNames
 import io.github.some_example_name.old.editor.entities.EditorCell
-import io.github.some_example_name.old.editor.ui.dialog.ActionDialogType
-import io.github.some_example_name.old.editor.ui.dialog.getColorFromBits
+import io.github.some_example_name.old.features.editor.dialog.ActionDialogType
+import io.github.some_example_name.old.features.editor.dialog.getColorFromBits
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import kotlin.math.atan2
 import kotlin.math.sqrt

@@ -14,8 +14,8 @@ import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
+import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
-import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.cos
 import kotlin.math.sin
@@ -123,7 +123,7 @@ class UserCommandManager(
                     if (simulationData.selectedCellIndex == -1) {
                         if (cmd.isLeftButton) {
                             if (cmd.x > 0 && cmd.x < gridManager.gridWidth && cmd.y > 0 && cmd.y < gridManager.gridHeight) {
-                                val genomeIndex = simulationData.currentGenomeIndex
+                                val genomeIndex = cmd.genomeIndex ?: simulationData.currentGenomeIndex
                                 val genome = genomeManager.genomes[genomeIndex]
                                 val organIndex = organEntity.addOrgan(
                                     genomeIndex = genomeIndex,

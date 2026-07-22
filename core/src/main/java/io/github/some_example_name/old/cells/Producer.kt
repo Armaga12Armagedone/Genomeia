@@ -3,7 +3,7 @@ package io.github.some_example_name.old.cells
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.DISimulationContainer.zygote
 import io.github.some_example_name.old.core.utils.redColors
-import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
+import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 
 class Producer(cellTypeId: Int): Cell(
     defaultColor = redColors[4],

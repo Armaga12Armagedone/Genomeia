@@ -24,19 +24,18 @@ class LinkPhysicsSystem(
     val diContext: DIContext
 ) {
 
-    fun iterateLinks() {
+    fun iterateLinksInParallel() {
         processPhase(worldCommandsManager.oddLinkLists)
         processPhase(worldCommandsManager.evenLinkLists)
     }
 
     private fun processPhase(lists: Array<IntArrayList>) {
         threadManager.futures.clear()
-
         for (t in 0 until diContext.threadCount) {
             threadManager.futures.add(
                 threadManager.executor.submit {
                     val list = lists[t]
-                    for (i in 0 until list.size) {
+                    for (i in list.indices) {
                         val linkIndex = list.getInt(i)
                         processLink(linkIndex,t)
                     }
@@ -47,11 +46,7 @@ class LinkPhysicsSystem(
         threadManager.futures.clear()
     }
 
-
-    private fun processLink(
-        linkIndex: Int,
-        threadId: Int
-    ) = with(particleEntity) {
+    fun processLink(linkIndex: Int, threadId: Int = 0) = with(particleEntity) {
         with(cellEntity) {
             with(linkEntity) {
                 val linkCellA = links1[linkIndex]

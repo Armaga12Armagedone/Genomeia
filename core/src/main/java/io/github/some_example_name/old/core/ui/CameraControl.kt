@@ -1,0 +1,170 @@
+package io.github.some_example_name.old.core.ui
+
+import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.Input
+import com.badlogic.gdx.InputAdapter
+import com.badlogic.gdx.InputMultiplexer
+import com.badlogic.gdx.graphics.OrthographicCamera
+import com.badlogic.gdx.input.GestureDetector
+import com.badlogic.gdx.input.GestureDetector.GestureListener
+import com.badlogic.gdx.math.MathUtils
+import com.badlogic.gdx.math.Vector2
+import com.badlogic.gdx.math.Vector3
+import com.badlogic.gdx.scenes.scene2d.Stage
+
+class CameraControl(
+    val camera: OrthographicCamera,
+    val orientation: Float = 0f,
+    positionX: Float = 64f,
+    positionY: Float = 64f,
+    val zoom: Float = 0.01f,
+    val onTouchDown: (x: Float, y: Float, isLeft: Boolean) -> Unit,
+    val onTap: (x: Float, y: Float, isLeft: Boolean) -> Unit,
+    val onFling: () -> Unit,
+    val onPan: (x: Float, y: Float, dx: Float, dy: Float) -> Unit
+): GestureListener {
+
+    private var initialZoom = 0f
+    private var currentPinchCenter: Vector2? = null
+
+    init {
+        camera.position.set(positionX, positionY, 0f)
+        camera.zoom = this.zoom
+        camera.rotate(orientation)
+        camera.update()
+    }
+
+    private fun screenToWorld(screenX: Float, screenY: Float): Pair<Float, Float> {
+        val screenPos = Vector3(screenX, screenY, 0f)
+        val worldPos = camera.unproject(screenPos)
+        return Pair(worldPos.x, worldPos.y)
+    }
+
+    fun getInput() = screenToWorld(Gdx.input.x.toFloat(), Gdx.input.y.toFloat())
+
+    fun getInputMultiplexer(stage: Stage): InputMultiplexer {
+        val multiplexer = InputMultiplexer()
+        multiplexer.addProcessor(stage)
+        multiplexer.addProcessor(
+            GestureDetector(
+                10f,
+                0.4f,
+                1.1f,
+                Float.MAX_VALUE,
+                this
+            ))
+        multiplexer.addProcessor(object : InputAdapter() {
+            override fun scrolled(amountX: Float, amountY: Float): Boolean {
+                val screenPos = Vector3(Gdx.input.x.toFloat(), Gdx.input.y.toFloat(), 0f)
+                val worldBefore = camera.unproject(screenPos.cpy())
+
+                val zoomFactor = if (amountY > 0) 1.05f else 0.95f
+                camera.zoom = MathUtils.clamp(camera.zoom * zoomFactor, 0.001f, 1000f)
+                camera.update()
+
+                val worldAfter = camera.unproject(screenPos) // можно без cpy, т.к. мы его больше не используем
+                camera.position.add(worldBefore.x - worldAfter.x, worldBefore.y - worldAfter.y, 0f)
+                camera.update()
+                return true
+            }
+        })
+        return multiplexer
+    }
+
+    override fun touchDown(
+        x: Float,
+        y: Float,
+        pointer: Int,
+        button: Int
+    ): Boolean {
+        val (touchedCellX, touchedCellY) = screenToWorld(x, y)
+        onTouchDown.invoke(touchedCellX, touchedCellY, button == Input.Buttons.LEFT)
+        return false
+    }
+
+    override fun tap(
+        x: Float,
+        y: Float,
+        count: Int,
+        button: Int
+    ): Boolean {
+        val (touchedCellX, touchedCellY) = screenToWorld(x, y)
+        onTap.invoke(touchedCellX, touchedCellY, button == Input.Buttons.LEFT)
+        return true
+    }
+
+    override fun longPress(x: Float, y: Float): Boolean  = false
+
+    override fun fling(
+        velocityX: Float,
+        velocityY: Float,
+        button: Int
+    ): Boolean {
+        onFling.invoke()
+        return false
+    }
+
+    override fun pan(
+        x: Float,
+        y: Float,
+        deltaX: Float,
+        deltaY: Float
+    ): Boolean {
+        val (touchedCellX, touchedCellY) = screenToWorld(x, y)
+        val dx = -deltaX * camera.zoom
+        val dy = deltaY * camera.zoom
+        val angle = -orientation * MathUtils.degreesToRadians
+        val cos = MathUtils.cos(angle)
+        val sin = MathUtils.sin(angle)
+
+        val worldDx = dx * cos - dy * sin
+        val worldDy = dx * sin + dy * cos
+
+        onPan.invoke(touchedCellX, touchedCellY, worldDx, worldDy)
+        return true
+    }
+
+    override fun panStop(
+        x: Float,
+        y: Float,
+        pointer: Int,
+        button: Int
+    ): Boolean = false
+
+    override fun zoom(initialDistance: Float, distance: Float): Boolean {
+        if (currentPinchCenter == null) return false
+        val centerX = currentPinchCenter!!.x
+        val centerY = currentPinchCenter!!.y
+        val screenPos = Vector3(centerX, centerY, 0f)
+        val worldBefore = camera.unproject(screenPos.cpy())
+        val ratio = initialDistance / distance
+        camera.zoom = initialZoom * ratio
+        camera.zoom = MathUtils.clamp(camera.zoom, 0.001f, 1000f)
+        camera.update()
+        val worldAfter = camera.unproject(screenPos.cpy())
+        camera.position.add(worldBefore.x - worldAfter.x, worldBefore.y - worldAfter.y, 0f)
+        return true
+    }
+
+    override fun pinch(
+        initialPointer1: Vector2?,
+        initialPointer2: Vector2?,
+        pointer1: Vector2?,
+        pointer2: Vector2?
+    ): Boolean {
+        if (initialPointer1 != null && initialPointer2 != null && currentPinchCenter == null) {
+            initialZoom = camera.zoom
+        }
+        if (pointer1 == null || pointer2 == null) {
+            currentPinchCenter = null
+            return false
+        }
+        currentPinchCenter = pointer1.cpy().add(pointer2).scl(0.5f)
+        return false
+    }
+
+    override fun pinchStop() {
+        currentPinchCenter = null
+        initialZoom = 0f
+    }
+}

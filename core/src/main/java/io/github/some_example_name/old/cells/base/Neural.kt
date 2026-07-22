@@ -1,6 +1,6 @@
 package io.github.some_example_name.old.cells.base
 
-import io.github.some_example_name.old.core.DISimulationContainer.cellEntity
+import io.github.some_example_name.old.entities.CellEntity
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
@@ -32,7 +32,7 @@ val formulaType = arrayOf(
     "y = links amount"
 )
 
-fun activation(cellIndex: Int, nonSafeX: Float) = with(cellEntity) {
+fun CellEntity.activation(cellIndex: Int, nonSafeX: Float): Float {
     val x = when {
         nonSafeX.isNaN() -> 0f
         nonSafeX == Float.POSITIVE_INFINITY -> 1e10f
@@ -137,7 +137,7 @@ fun activation(cellIndex: Int, nonSafeX: Float) = with(cellEntity) {
         else -> y
     }
 
-    return@with safeY.coerceIn(-1e10f, 1e10f)
+    return safeY.coerceIn(-1e10f, 1e10f)
 }
 
 fun randomFromFloat(seed: Float, min: Float, max: Float): Float {

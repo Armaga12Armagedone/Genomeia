@@ -26,7 +26,7 @@ class CellSystem(
     val threadManager: ThreadManager?
 ): Disposable {
 
-    fun iterateCell() = with(cellEntity) {
+    fun iterateCellInParallel() = with(cellEntity) {
         if (threadManager == null) return@with
         val size = aliveList.size
 
@@ -52,7 +52,7 @@ class CellSystem(
         threadManager.futures.clear()
     }
 
-    private fun processCell(cellIndex: Int, threadId: Int) = with(cellEntity) {
+    fun processCell(cellIndex: Int, threadId: Int = 0) = with(cellEntity) {
         if (!isAlive[cellIndex]) return
 
         val isNeural = isNeural[cellIndex]

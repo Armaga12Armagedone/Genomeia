@@ -1,13 +1,6 @@
 package io.github.some_example_name.old.core
 
-import com.badlogic.gdx.Gdx
-import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.Texture
-import com.badlogic.gdx.graphics.g2d.NinePatch
-import com.badlogic.gdx.scenes.scene2d.utils.NinePatchDrawable
 import com.badlogic.gdx.utils.Disposable
-import com.kotcrab.vis.ui.VisUI
-import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.cells.base.CellListBuilder
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandsManager
@@ -25,50 +18,39 @@ import io.github.some_example_name.old.entities.PheromoneEntity
 import io.github.some_example_name.old.entities.ProducerEntity
 import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.entities.SpecialModDataEntity
-import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.entities.TailEntity
-import io.github.some_example_name.old.systems.pheromone.PheromonesManager
+import io.github.some_example_name.old.features.menu.MenuViewModel
+import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_HEIGHT
+import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_WIDTH
+import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.DivideManager
 import io.github.some_example_name.old.systems.genomics.MutateManager
 import io.github.some_example_name.old.systems.genomics.OrganManager
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
+import io.github.some_example_name.old.systems.pheromone.PheromonesManager
+import io.github.some_example_name.old.systems.physics.CollisionManager
 import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.physics.LinkPhysicsSystem
+import io.github.some_example_name.old.systems.physics.MovementManager
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem
 import io.github.some_example_name.old.systems.render.RenderBufferManager
 import io.github.some_example_name.old.systems.render.RenderSystem
-import io.github.some_example_name.old.systems.simulation.SimulationSystem
-import io.github.some_example_name.old.systems.simulation.ThreadManager
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_HEIGHT
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_WIDTH
-import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
-import io.github.some_example_name.old.systems.physics.CollisionManager
-import io.github.some_example_name.old.systems.physics.MovementManager
-import kotlin.getValue
+import io.github.some_example_name.old.systems.simulation.SimulationData
+import io.github.some_example_name.old.systems.simulation.SingleThreadSimulationSystem
 
-object DISimulationContainer:  DIContext, Disposable {
+object DISingleThreadSimulationContainer:  DIContext, Disposable {
 
-    override var gridWidth = 128
-    override var gridHeight = 128
-    const val HALF_CHUNK_HEIGHT = 4 // Also max particle speed
-    var chunkHeight = HALF_CHUNK_HEIGHT * 2
-    var heightMultiplier = chunkHeight * 2
+    override var gridWidth = 48
+    override var gridHeight = 48
+
     var gridSize = gridWidth * gridHeight
-    override var threadCount = (gridHeight / chunkHeight) / 2
-    override var totalChunks = threadCount * 2
+    override var threadCount = 1
+    override var totalChunks = 1
     override var chunkSize = gridSize / totalChunks
 
-    var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks
-    var linkMaxLength2 = 3f * 3f
     var cellsSettings = substrateSettings.cellsSettings
-
-    init {
-        if (gridHeight % heightMultiplier != 0) throw Exception("gridHeight should be a multiple of (halfChunkHeight * 2 * 2)")
-        println("thread count: $threadCount")
-        println("thread count: $heightMultiplier")
-    }
 
     override val gridManager = GridManager(
         gridWidth = gridWidth,
@@ -77,24 +59,24 @@ object DISimulationContainer:  DIContext, Disposable {
         maxAmountOfParticles = 4
     )
     private val cellListBuilder = CellListBuilder().apply {
-        bindToDIContext(this@DISimulationContainer)
+        bindToDIContext(this@DISingleThreadSimulationContainer)
     }
     val cellList = cellListBuilder.instances
     val zygote = cellListBuilder.zygote
 
     val tailEntity = TailEntity(
-        tailStartMaxAmount = 1_000
+        tailStartMaxAmount = 30
     )
     override val organEntity = OrganEntity(
-        organStartMaxAmount = 400
+        organStartMaxAmount = 10
     )
     val simulationData = SimulationData()
     override val particleEntity = ParticleEntity(
-        particlesStartMaxAmount = 30_000,
+        particlesStartMaxAmount = 800,
         gridManager = gridManager
     )
     private val neuralEntity = NeuralEntity(
-        neuralStartMaxAmount = 10_000,
+        neuralStartMaxAmount = 50,
         cellList = cellList
     )
     private val eyeEntity = EyeEntity(
@@ -111,7 +93,7 @@ object DISimulationContainer:  DIContext, Disposable {
     )
 
     override val specialEntity = SpecialEntity(
-        cellsStartMaxAmount = 10_000,
+        cellsStartMaxAmount = 100,
         eyeEntity = eyeEntity,
         tailEntity = tailEntity,
         specialModDataEntity = specialModDataEntity,
@@ -119,7 +101,7 @@ object DISimulationContainer:  DIContext, Disposable {
         pheromoneEmitterEntity = pheromoneEmitterEntity
     )
     override val cellEntity = CellEntity(
-        cellsStartMaxAmount = 10_000,
+        cellsStartMaxAmount = 300,
         particleEntity = particleEntity,
         simulationData = simulationData,
         substrateSettings = substrateSettings,
@@ -128,7 +110,7 @@ object DISimulationContainer:  DIContext, Disposable {
         specialEntity = specialEntity
     )
     override val linkEntity = LinkEntity(
-        20_000,
+        500,
         cellEntity = cellEntity,
         gridManager = gridManager,
         particleEntity = particleEntity,
@@ -138,7 +120,7 @@ object DISimulationContainer:  DIContext, Disposable {
         gridManager = gridManager
     )
     override val substancesEntity = SubstancesEntity(
-        startMaxAmount = 5_000,
+        startMaxAmount = 50,
         particleEntity = particleEntity,
         substrateSettings = substrateSettings
     )
@@ -226,10 +208,6 @@ object DISimulationContainer:  DIContext, Disposable {
         particleEntity = particleEntity,
         cellEntity = cellEntity
     )
-    val worldTerrainManager = WorldTerrainManager(
-        particleEntity = particleEntity,
-        substancesEntity = substancesEntity
-    )
 
     val collisionManager = CollisionManager(
         entity = particleEntity,
@@ -252,10 +230,6 @@ object DISimulationContainer:  DIContext, Disposable {
         substancesEntity = substancesEntity,
         pheromonesManager = pheromonesManager,
         collisionManager = collisionManager
-    )
-
-    val threadManager = ThreadManager(
-        simulationData = simulationData
     )
 
     val divideManager = DivideManager(
@@ -286,7 +260,7 @@ object DISimulationContainer:  DIContext, Disposable {
         gridManager = gridManager,
         divideManager = divideManager,
         mutateManager = mutateManager,
-        threadManager = threadManager
+        threadManager = null
     )
 
     val linkPhysicsSystem = LinkPhysicsSystem(
@@ -312,20 +286,21 @@ object DISimulationContainer:  DIContext, Disposable {
         pheromonesManager = pheromonesManager
     )
 
+    val worldTerrainManager = WorldTerrainManager(
+        particleEntity = particleEntity,
+        substancesEntity = substancesEntity
+    )
+
+    var menuViewModel: MenuViewModel? = null
 
     val simulationSystem by lazy {
-        SimulationSystem(
+        SingleThreadSimulationSystem(
             gridManager = gridManager,
             worldCommandsManager = worldCommandsManager,
             organManager = organManager,
-            organEntity = organEntity,
             cellEntity = cellEntity,
             linkEntity = linkEntity,
             particleEntity = particleEntity,
-            pheromoneEntity = pheromoneEntity,
-            substrateSettings = substrateSettings,
-            threadManager = threadManager,
-            genomeManager = genomeManager,
             particlePhysicsSystem = particlePhysicsSystem,
             linkPhysicsSystem = linkPhysicsSystem,
             simulationData = simulationData,
@@ -334,8 +309,7 @@ object DISimulationContainer:  DIContext, Disposable {
             entityList = entityList,
             renderBufferManager = renderBufferManager,
             pheromonesManager = pheromonesManager,
-            movementManager = movementManager,
-            worldTerrainManager = worldTerrainManager
+            movementManager = movementManager
         )
     }
 
@@ -348,16 +322,11 @@ object DISimulationContainer:  DIContext, Disposable {
         gridWidth = GRID_WIDTH
         gridHeight = GRID_HEIGHT
 
-        chunkHeight = HALF_CHUNK_HEIGHT * 2
-        heightMultiplier = chunkHeight * 2
         gridSize = gridWidth * gridHeight
-        threadCount = (gridHeight / chunkHeight) / 2
-        totalChunks = threadCount * 2
         chunkSize = gridSize / totalChunks
-        if (gridHeight % heightMultiplier != 0) throw Exception("gridHeight should be a multiple of (halfChunkHeight * 2 * 2)")
+
         gridManager.resize()
         cellListBuilder.resize()
-        threadManager.resize()
         worldCommandsManager.resize()
     }
 }
