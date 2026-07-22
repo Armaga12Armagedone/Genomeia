@@ -5,16 +5,12 @@ buildscript {
     google()
   }
 }
-
-plugins {
-  id 'com.android.application'
-  id 'kotlin-android'
-  id 'org.jetbrains.kotlin.plugin.serialization'   // ← Добавлено
-}
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
 android {
-  namespace "io.github.some_example_name"
-  compileSdk 34
+  namespace = "io.github.some_example_name"
+  compileSdk 36
   sourceSets {
     main {
       manifest.srcFile 'AndroidManifest.xml'
@@ -36,44 +32,36 @@ android {
   }
   defaultConfig {
     applicationId 'io.github.some_example_name'
-    minSdkVersion 19
-    targetSdkVersion 34
+    minSdkVersion 21
+    targetSdkVersion 36
     versionCode 1
     versionName "1.0"
-    multiDexEnabled true
   }
   compileOptions {
-    sourceCompatibility JavaVersion.VERSION_1_8
-    targetCompatibility JavaVersion.VERSION_1_8
-    coreLibraryDesugaringEnabled true
+    sourceCompatibility "21"
+    targetCompatibility "21"
+    coreLibraryDesugaringEnabled = true
   }
-
-  kotlin {
-    compilerOptions {
-      jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
-    }
-  }
-
   buildTypes {
     release {
       minifyEnabled true
-      shrinkResources true
-      proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+      proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), 'proguard-rules.pro'
     }
   }
+
+  kotlin.compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+
 }
 
 repositories {
-  mavenCentral()
+  // needed for AAPT2, may be needed for other tools
   google()
-  maven { url 'https://jitpack.io' }
 }
 
 configurations { natives }
 
 dependencies {
-  implementation 'androidx.activity:activity-ktx:1.9.0'
-  coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+  coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
   implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
   implementation 'androidx.core:core:1.13.1'
 
@@ -89,7 +77,7 @@ dependencies {
   natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-arm64-v8a"
   natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86"
   natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86_64"
-  implementation "games.spooky.gdx:gdx-nativefilechooser-android:$gdxNativefilechooserVersion"
+  implementation "games.spooky.gdx:gdx-nativefilechooser-android:2.4.0"
   implementation("io.ktor:ktor-client-okhttp:3.0.3")
 
 }
@@ -123,14 +111,6 @@ tasks.register('copyAndroidNatives') {
 
 tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") }.configureEach { packageTask ->
   packageTask.dependsOn 'copyAndroidNatives'
-}
-
-// Отключаем инкрементальную компиляцию и K2 (решаем проблему с FirIncompatibleClassExpressionChecker)
-tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-  kotlinOptions {
-    incremental = false
-    freeCompilerArgs += ["-Xno-k2", "-Xskip-metadata-version-check"]
-  }
 }
 
 tasks.register('run', Exec) {

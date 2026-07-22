@@ -3,13 +3,15 @@ eclipse.project.name = appName + '-core'
 
 dependencies {
   api "com.badlogicgames.gdx:gdx:$gdxVersion"
+  api "com.kotcrab.vis:vis-ui:$visUiVersion"
   api "org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion"
+  api "org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinxCoroutinesVersion"
   implementation "it.unimi.dsi:fastutil:8.5.16"
-  implementation "com.kotcrab.vis:vis-ui:1.5.3"
+//  implementation "com.kotcrab.vis:vis-ui:1.5.3"
   implementation "com.badlogicgames.gdx:gdx-freetype:$gdxVersion"
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.11.0")
   implementation "org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion"
-  implementation "games.spooky.gdx:gdx-nativefilechooser:$gdxNativefilechooserVersion"
+  implementation "games.spooky.gdx:gdx-nativefilechooser:2.4.0"
   if(enableGraalNative == 'true') {
     implementation "io.github.berstanio:gdx-svmhelper-annotations:$graalHelperVersion"
   }
@@ -22,13 +24,8 @@ dependencies {
 
   // для protobuf
   implementation("io.ktor:ktor-serialization-kotlinx-protobuf:3.0.3")
-//  // или org.jetbrains.kotlinx:kotlinx-serialization-protobuf
-//
-//  // платформенные движки
-//  // desktop (lwjgl3)
-//  implementation("io.ktor:ktor-client-cio:3.0.3")
-//  // android
-//  implementation("io.ktor:ktor-client-okhttp:3.0.3")
-//  // ios
-//  implementation("io.ktor:ktor-client-darwin:3.0.3")
+}
+
+jar {
+  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }

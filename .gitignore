@@ -1,7 +1,6 @@
 ## Gradle:
 .gradle/
 gradle-app.setting
-/gradle/gradle-daemon-jvm.properties
 /build/
 /android/build/
 /core/build/
@@ -154,8 +153,12 @@ Thumbs.db
 *.*#
 *#*#
 /.kotlin/
-/assets/assets.txt
-/genomes/
+/assets/assets.txt¶
+/genomes/¶
+
+# MOE / iOS heavy native files
+ios-moe/xcode/native/
+**/xcode/native/
 
 ## Special cases:
 

@@ -24,19 +24,20 @@
 -dontwarn android.support.**
 -dontwarn com.badlogic.gdx.backends.android.AndroidFragmentApplication
 
-## Needed by the gdx-controllers official extension.
-#-keep class com.badlogic.gdx.controllers.android.AndroidControllers
-#
-## Needed by the Box2D official extension.
-#-keepclassmembers class com.badlogic.gdx.physics.box2d.World {
-#   boolean contactFilter(long, long);
-#   void    beginContact(long);
-#   void    endContact(long);
-#   void    preSolve(long, long);
-#   void    postSolve(long, long);
-#   boolean reportFixture(long);
-#   float   reportRayFixture(long, float, float, float, float, float);
-#}
+# Needed by the gdx-controllers official extension.
+-keep class com.badlogic.gdx.controllers.android.AndroidControllers
+
+# Needed by the Box2D official extension.
+-keepclassmembers class com.badlogic.gdx.physics.box2d.World {
+   boolean contactFilter(long, long);
+   boolean getUseDefaultContactFilter();
+   void    beginContact(long);
+   void    endContact(long);
+   void    preSolve(long, long);
+   void    postSolve(long, long);
+   boolean reportFixture(long);
+   float   reportRayFixture(long, float, float, float, float, float);
+}
 
 # You will need the next three lines if you use scene2d for UI or gameplay.
 # If you don't use scene2d at all, you can remove or comment out the next line:
