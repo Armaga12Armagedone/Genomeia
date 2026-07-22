@@ -1,6 +1,10 @@
 package io.github.some_example_name.old.features.ecosystem
 
+import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.Texture
+import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
+import com.badlogic.gdx.utils.Scaling
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisImage
 import com.kotcrab.vis.ui.widget.VisLabel
@@ -12,6 +16,7 @@ import io.github.some_example_name.old.core.GlobalSimulationSettings
 import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.core.ui.setupTitleSize
 import kotlin.collections.iterator
+import kotlin.reflect.KMutableProperty
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
