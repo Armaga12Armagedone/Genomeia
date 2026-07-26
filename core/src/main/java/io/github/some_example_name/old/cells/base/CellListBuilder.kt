@@ -35,10 +35,11 @@ class CellListBuilder: WorldResizable {
         zygote,
         Producer(19),
         Breakaway(20),
-        NonWorkingCell2(21),
+        Fin(21),
         PheromoneEmitter(22),
         PheromoneSensor(23),
-        Punisher(24)
+        Punisher(24),
+        SpeedSensor(25)
     ).sortedBy { it.cellTypeId }
 
     override fun resize() {

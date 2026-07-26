@@ -23,6 +23,7 @@ flat out float ex_AngleCos;
 flat out float ex_AngleSin;
 flat out float ex_Energy;
 flat out int ex_cellType;
+flat out vec2 ex_Refract;   // ← случайный вектор рефракции
 
 float hash(float n) {
     return fract(sin(n) * 43758.5453123);
@@ -75,6 +76,11 @@ void main() {
     ex_Energy = energy * energy;
     ex_UV = a_position * 0.5 + 0.5;
     ex_cellType = cellType;
+
+    // === СЛУЧАЙНАЯ РЕФРАКЦИЯ (только от номера инстанса) ===
+    float hx = hash(float(id) * 12.9898);
+    float hy = hash(float(id) * 78.233);
+    ex_Refract = vec2(hx, hy) * 2.0 - 1.0;   // [-1…1] × [-1…1]
 
     float noiseAngle = (hash(float(id)) - 0.5) * 3.0;
     float ca = cos(noiseAngle);

@@ -124,6 +124,6 @@ class EditorSimulationSystem(
     }
 
     companion object {
-        const val TIME_SIMULATION = 1_000
+        const val TIME_SIMULATION = 1_000_000
     }
 }

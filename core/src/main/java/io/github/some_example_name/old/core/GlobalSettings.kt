@@ -13,6 +13,7 @@ data class GlobalSimulationSettings(
     var amountOfSolarEnergy: Float = 0.06f,
     var viscosityOfTheEnvironment: Float = 0.03f,
     var tailMaxSpeedCoefficient: Float = 0.00625f,
+    var finMaxSpeedCoefficient: Float = 0.0625f,
     var producerRestoreTimeTickCoefficient: Float = 4f,
     var amountOfFoodEnergy: Float = 4f,
     var rateOfEnergyTransferInLinks: Float = 0.03f,
@@ -64,7 +65,7 @@ class SubstrateSettings {
 
     fun getFileHandle(): FileHandle {
         val relativeFolderName = "settings"
-        val fileName = "GlobalSubstrateSettings-0.2.4.test.json"
+        val fileName = "GlobalSubstrateSettings-0.2.4.1.test.json"
 
         val saveDir: FileHandle = when (Gdx.app.type) {
             Application.ApplicationType.Desktop -> {

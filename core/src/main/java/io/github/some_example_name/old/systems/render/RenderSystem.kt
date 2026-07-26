@@ -46,7 +46,7 @@ class RenderSystem(
         shapeRenderer: ShapeRenderer,
         camera: OrthographicCamera
     ) {
-        shaderManager.create()
+        shaderManager.checkResize()
 //        pheromoneShaderManager.create()
         this.fontMatrix = fontMatrix
         this.spriteBatch = spriteBatch

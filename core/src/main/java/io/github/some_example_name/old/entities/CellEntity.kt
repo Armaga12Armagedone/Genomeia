@@ -125,7 +125,7 @@ class CellEntity(
         if (neuralEntity.isAlive[neuralIndex] && (neuralGeneration == null
                 || neuralEntity.getGeneration(neuralIndex) == neuralGeneration)) {
             neuralEntity.deleteNeural(neuralIndex)
-            neuralIndexes[cellIndex] -= -1
+            neuralIndexes[cellIndex] = -1
         }
     }
 

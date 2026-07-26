@@ -30,7 +30,7 @@ class SpecialEntity(
         if (tailEntity.isAlive[tailIndex] && (tailGeneration == null
                 || tailEntity.getGeneration(tailIndex) == tailGeneration)) {
             tailEntity.deleteTail(tailIndex)
-            specialTypeIndexes[cellIndex] -= -1
+            specialTypeIndexes[cellIndex] = -1
         }
     }
 
@@ -54,7 +54,7 @@ class SpecialEntity(
         if (eyeEntity.isAlive[eyeIndex] && (eyeGeneration == null
                 || eyeEntity.getGeneration(eyeIndex) == eyeGeneration)) {
             eyeEntity.deleteEye(eyeIndex)
-            specialTypeIndexes[cellIndex] -= -1
+            specialTypeIndexes[cellIndex] = -1
         }
     }
 
@@ -78,7 +78,7 @@ class SpecialEntity(
         if (producerEntity.isAlive[producerIndex] && (producerGeneration == null
                 || producerEntity.getGeneration(producerIndex) == producerGeneration)) {
             producerEntity.deleteProducer(producerIndex)
-            specialTypeIndexes[cellIndex] -= -1
+            specialTypeIndexes[cellIndex] = -1
         }
     }
 
@@ -99,7 +99,7 @@ class SpecialEntity(
         if (pheromoneEmitterEntity.isAlive[pheromoneEmitterIndex] && (pheromoneEmitterGeneration == null
                 || pheromoneEmitterEntity.getGeneration(pheromoneEmitterIndex) == pheromoneEmitterGeneration)) {
             pheromoneEmitterEntity.deletePheromoneEmitter(pheromoneEmitterIndex)
-            specialTypeIndexes[cellIndex] -= -1
+            specialTypeIndexes[cellIndex] = -1
         }
     }
 

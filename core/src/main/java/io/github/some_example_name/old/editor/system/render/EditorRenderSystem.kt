@@ -32,7 +32,7 @@ class EditorRenderSystem(
         shapeRenderer: ShapeRenderer,
         camera: OrthographicCamera
     ) {
-        shaderManager.create()
+        shaderManager.checkResize()
         this.camera = camera
         drawingHelperElements.create(shapeRenderer, camera)
     }

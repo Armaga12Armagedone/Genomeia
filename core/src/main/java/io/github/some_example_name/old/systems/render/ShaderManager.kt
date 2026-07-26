@@ -49,8 +49,24 @@ class ShaderManager(val texturePaths: List<String>) {
 
     // Ordered list of render components - easily reorderable
     private val components = mutableListOf<RenderComponent>()
+    var currentWidth = Gdx.graphics.width.coerceAtLeast(1)
+    var currentHeight = Gdx.graphics.height.coerceAtLeast(1)
 
-    fun create() {
+
+    init {
+        create()
+    }
+
+    fun checkResize() {
+        if (currentWidth != Gdx.graphics.width.coerceAtLeast(1) ||
+            currentHeight != Gdx.graphics.height.coerceAtLeast(1)) {
+            currentWidth = Gdx.graphics.width.coerceAtLeast(1)
+            currentHeight = Gdx.graphics.height.coerceAtLeast(1)
+            resize(currentWidth, currentHeight)
+        }
+    }
+
+    private fun create() {
         createFullscreenMesh()
         createFBOs()
 

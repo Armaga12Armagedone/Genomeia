@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.systems.render
 
 import io.github.some_example_name.old.cells.Cell
+import io.github.some_example_name.old.cells.Eye
 import io.github.some_example_name.old.cells.base.formulaType
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
@@ -80,11 +81,10 @@ class RenderBufferManager(
                     back.packed2[bufIndex] = bEnergy or (bCell shl 8)
 
                     if (!doesUsePostProcess) {
-                        val length = when (cellEntity.cellType[cellIndex].toInt()) {
-                            14 -> specialEntity.getVisibilityRange(cellIndex)
-                            3 -> 1f
-                            9 -> 1f
-                            18 -> 1f
+                        val cell = cellList[cellEntity.cellType[cellIndex].toInt()]
+                        val length = when {
+                            cell is Eye -> specialEntity.getVisibilityRange(cellIndex)
+                            cell.isDirected -> 1f
                             else -> 0f
                         }
                         with(cellEntity) {

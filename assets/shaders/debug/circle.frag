@@ -12,6 +12,7 @@ in vec2 ex_UV;
 flat in float ex_AngleCos;
 flat in float ex_AngleSin;
 flat in int ex_cellType;
+flat in vec2 ex_Refract;   // ← случайный вектор рефракции (от инстанса)
 
 out vec4 fragColor;
 
@@ -55,8 +56,8 @@ void main() {
     vec2 rotatedOffset = vec2(ca * offset.x - sa * offset.y, sa * offset.x + ca * offset.y);
     vec2 rotatedUV = center + rotatedOffset;
 
-    // === РЕФРАКЦИЯ (искажение) ===
-    vec2 refraction = normal.xy * 0.13 * (1.0 - normalized);
+    // === РЕФРАКЦИЯ (искажение) — теперь полностью от инстанса, угол не влияет ===
+    vec2 refraction = ex_Refract * 0.13 * (1.0 - normalized);
     vec2 distortedUV = rotatedUV * u_textureScale + refraction;
 
     vec4 texColor = texture(u_textureArray, vec3(distortedUV, float(ex_cellType)));
