@@ -41,8 +41,6 @@ import io.github.some_example_name.old.systems.render.RenderBufferManager
 import io.github.some_example_name.old.systems.render.RenderSystem
 import io.github.some_example_name.old.systems.simulation.SimulationSystem
 import io.github.some_example_name.old.systems.simulation.ThreadManager
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_HEIGHT
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_WIDTH
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.physics.CollisionManager
 import io.github.some_example_name.old.systems.physics.MovementManager
@@ -344,10 +342,6 @@ object DISimulationContainer:  DIContext, Disposable {
     }
 
     fun resizeWorld() {
-        if (GRID_WIDTH == gridWidth && GRID_HEIGHT == gridHeight) return
-        gridWidth = GRID_WIDTH
-        gridHeight = GRID_HEIGHT
-
         chunkHeight = HALF_CHUNK_HEIGHT * 2
         heightMultiplier = chunkHeight * 2
         gridSize = gridWidth * gridHeight

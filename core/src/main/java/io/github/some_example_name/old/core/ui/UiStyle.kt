@@ -31,6 +31,7 @@ import kotlin.jvm.java
 val STYLE_DARK = Color(0.5f, 0.5f, 0.5f, 1.00f)
 val STYLE_BLACK = Color(0.0f, 0.0f, 0.0f, 1.00f)
 val STYLE_BEIGE = Color(0.84f, 0.77f, 0.62f, 1.00f)
+val STYLE_BEIGE_BLACK = Color(0.44f, 0.37f, 0.22f, 1.00f)
 private val BTN_UP  = Color(0.16f, 0.16f, 0.18f, 0.82f)
 private val BTN_OVR = Color(0.28f, 0.27f, 0.30f, 0.90f)
 private val BTN_DWN = Color(0.38f, 0.37f, 0.42f, 0.95f)

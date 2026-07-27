@@ -1,220 +1,205 @@
 package io.github.some_example_name.old.features.settings
 
-import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
-import com.badlogic.gdx.Screen
-import com.badlogic.gdx.graphics.GL20
-import com.badlogic.gdx.graphics.Texture
-import com.badlogic.gdx.scenes.scene2d.Event
-import com.badlogic.gdx.scenes.scene2d.Stage
-import com.badlogic.gdx.utils.viewport.ScreenViewport
-import com.kotcrab.vis.ui.VisUI
-import com.kotcrab.vis.ui.widget.VisCheckBox.VisCheckBoxStyle
-import com.kotcrab.vis.ui.widget.VisLabel
-import io.github.some_example_name.old.core.ui.makeStyledSlider
+import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.utils.Align
 import com.kotcrab.vis.ui.widget.VisTable
-import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
+import com.kotcrab.vis.ui.widget.VisTextButton
+import io.github.some_example_name.old.commands.GoBack
+import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
-import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
-import io.github.some_example_name.old.core.DISimulationContainer.gridWidth
-import io.github.some_example_name.old.core.DISimulationContainer.heightMultiplier
-import io.github.some_example_name.old.features.menu.MenuScreen
-import io.github.some_example_name.old.game.applyCustomFont
-import io.github.some_example_name.old.core.ui.makeStyledButton
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRAVITATION
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_HEIGHT
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_WIDTH
-import kotlin.math.round
+import io.github.some_example_name.old.core.ui.VisDslScreen
+import io.github.some_example_name.old.core.ui.dp
+import io.github.some_example_name.old.core.ui.visLabel
+import io.github.some_example_name.old.core.ui.visSelectBox
+import io.github.some_example_name.old.core.ui.visSlider
+import io.github.some_example_name.old.core.ui.visTable
+import io.github.some_example_name.old.core.ui.visTextButton
+import io.github.some_example_name.old.core.ui.visToggleButton
+import io.github.some_example_name.old.core.ui.w
+import io.github.some_example_name.old.features.settings.SettingsScreen.Settings.*
 
-class SettingsScreen: Screen {
+class SettingsScreen : VisDslScreen(
+    background = Color(0.04f, 0.04f, 0.06f, 1f),
+    isScrollable = false
+) {
 
-    private lateinit var stage: Stage
-    private val extraTextures = mutableListOf<Texture>()
-
-    override fun show() {
-        stage = Stage(ScreenViewport())
-        stage.root.setOrigin(stage.width / 2f, stage.height / 2f)
-        Gdx.input.inputProcessor = stage
-
-        val table = VisTable()
-        table.setFillParent(true)
-        table.defaults().pad(10f)
-        stage.addActor(table)
-
-        val density = Gdx.graphics.density
-
-        val checkBoxStyle = VisCheckBoxStyle(VisUI.getSkin().get("default", VisCheckBoxStyle::class.java))
-        val checkBoxSize = if (Gdx.app.type == Application.ApplicationType.Android) 10f else 15f
-        checkBoxStyle.checkBackground.minWidth  = checkBoxSize * density
-        checkBoxStyle.checkBackground.minHeight = checkBoxSize * density
-        checkBoxStyle.checkBackgroundOver?.minWidth = checkBoxSize * density
-        checkBoxStyle.checkBackgroundOver?.minHeight = checkBoxSize * density
-        checkBoxStyle.checkBackgroundDown?.minWidth = checkBoxSize * density
-        checkBoxStyle.checkBackgroundDown?.minHeight = checkBoxSize * density
-        checkBoxStyle.tick.minWidth = checkBoxSize * density
-        checkBoxStyle.tick.minHeight = checkBoxSize * density
-        checkBoxStyle.tickDisabled?.minWidth = checkBoxSize * density
-        checkBoxStyle.tickDisabled?.minHeight = checkBoxSize * density
-        checkBoxStyle.font = if (Gdx.app.type == Application.ApplicationType.Android) game.largeFont else game.extraLargeFont
-
-
-        // === Громкость музыки ===
-        val musicLabel = VisLabel("${bundle.get("label.music_volume")}: ${GlobalSettings.MUSIC_VOLUME}")
-        game.applyCustomFont(musicLabel)
-        val musicSlider = makeStyledSlider(0f, 100f, 1f, false, extraTextures).apply {
-            value = GlobalSettings.MUSIC_VOLUME.toFloat()
-            addListener { e ->
-                if (valueChanged(e)) {
-                    GlobalSettings.MUSIC_VOLUME = value.toInt()
-                    game.currentMusic.volume = value / 100
-                    musicLabel.setText("${bundle.get("label.music_volume")}: ${GlobalSettings.MUSIC_VOLUME}")
-                }
-                false
-            }
-            invalidateHierarchy()
-        }
-        table.add(musicLabel).left()
-        table.row()
-        table.add(musicSlider).fillX()
-        table.row()
-
-        // === Громкость звуков ===
-        val soundLabel = VisLabel("${bundle.get("label.sound_volume")}: ${GlobalSettings.SOUND_VOLUME}")
-        game.applyCustomFont(soundLabel)
-        val soundSlider = makeStyledSlider(0f, 100f, 1f, false, extraTextures).apply {
-            value = GlobalSettings.SOUND_VOLUME.toFloat()
-            addListener { e ->
-                if (valueChanged(e)) {
-                    GlobalSettings.SOUND_VOLUME = value.toInt()
-                    soundLabel.setText("${bundle.get("label.sound_volume")}: ${GlobalSettings.SOUND_VOLUME}")
-                }
-                false
-            }
-            invalidateHierarchy()
-        }
-        table.add(soundLabel).left()
-        table.row()
-        table.add(soundSlider).fillX()
-        table.row()
-
-        val gridWidthLabel = VisLabel("World width: $GRID_WIDTH")
-        game.applyCustomFont(gridWidthLabel)
-        val gridWidthSlider = makeStyledSlider(16f, 3440f, heightMultiplier.toFloat(), false, extraTextures).apply {
-            value = GRID_WIDTH.toFloat()
-            addListener { e ->
-                if (valueChanged(e)) {
-                    GRID_WIDTH = value.toInt()
-                    gridWidthLabel.setText("World width: $GRID_WIDTH")
-                }
-                false
-            }
-            invalidateHierarchy()
-        }
-        table.add(gridWidthLabel).left()
-        table.row()
-        table.add(gridWidthSlider).fillX()
-        table.row()
-
-        val gridHeightLabel = VisLabel("World height: $GRID_HEIGHT")
-        game.applyCustomFont(gridHeightLabel)
-        val gridHeightSlider = makeStyledSlider(16f, 3440f, heightMultiplier.toFloat(), false, extraTextures).apply {
-            value = GRID_HEIGHT.toFloat()
-            addListener { e ->
-                if (valueChanged(e)) {
-                    GRID_HEIGHT = value.toInt()
-                    gridHeightLabel.setText("World height: $GRID_HEIGHT")
-                }
-                false
-            }
-            invalidateHierarchy()
-        }
-        table.add(gridHeightLabel).left()
-        table.row()
-        table.add(gridHeightSlider).fillX()
-        table.row()
-
-
-        val gravitationLabel = VisLabel("Gravitation: ${GRAVITATION  * 100}")
-        game.applyCustomFont(gravitationLabel)
-        val gravitationSlider = makeStyledSlider(-0.1f, 0.1f, 0.01f, false, extraTextures).apply {
-            value = GRAVITATION  * 100
-            addListener { e ->
-                if (valueChanged(e)) {
-                    GRAVITATION = round((value / 100f) * 10000f) / 10000f
-                    gravitationLabel.setText("Gravitation: ${round(value * 10000f) / 10000f}")
-                }
-                false
-            }
-            invalidateHierarchy()
-        }
-        table.add(gravitationLabel).left()
-        table.row()
-        table.add(gravitationSlider).fillX()
-        table.row()
-
-        val backButton = makeStyledButton(bundle.get("button.back"), game, extraTextures).apply {
-            addListener { e ->
-                if (clicked(e)) {
-                    game.screen = MenuScreen()
-                }
-                false
-            }
-        }
-        table.add(backButton).colspan(2).center().padTop(30f)
-            .width(Gdx.graphics.width * 0.20f)
-            .height(Gdx.graphics.height * 0.065f)
+    enum class Settings {
+        SOUND, GRAPHICS, LANGUAGE
     }
 
-    override fun render(delta: Float) {
-        Gdx.gl.glClearColor(0f, 0f, 0f, 1f)
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
+    // Сохраняем текущий выбранный таб между рекомпозициями
+    private var currentSettings = SOUND
+    private val viewModel = SettingsViewModel()
 
-        stage.act(delta)
-        stage.draw()
+    override fun VisTable.compose() {
+        visTable(cellInit = {
+            growX().fillX()
+            width(w * 0.5f)
+        }) {
+            // === Табы (теперь локализованные) ===
+            visTable {
+                lateinit var soundButton: VisTextButton
+                lateinit var graphicsButton: VisTextButton
+                lateinit var languageButton: VisTextButton
+
+                fun switchTo(selected: VisTextButton, settings: Settings) {
+                    soundButton.isChecked = selected === soundButton
+                    graphicsButton.isChecked = selected === graphicsButton
+                    languageButton.isChecked = selected === languageButton
+
+                    if (currentSettings == settings) return
+                    currentSettings = settings
+
+                    dynamicContent?.clearChildren()
+                    dynamicContent?.composeDynamic(settings)
+                    dynamicContent?.invalidateHierarchy()
+                }
+
+                soundButton = visToggleButton(
+                    text = bundle.get("settings.tab.sound"),
+                    checked = currentSettings == SOUND,
+                    onCheckedChange = {
+                        if (soundButton.isChecked) switchTo(soundButton, SOUND)
+                    }
+                ) { expandX().fillX() }
+
+                graphicsButton = visToggleButton(
+                    text = bundle.get("settings.tab.graphics"),
+                    checked = currentSettings == GRAPHICS,
+                    onCheckedChange = {
+                        if (graphicsButton.isChecked) switchTo(graphicsButton, GRAPHICS)
+                    }
+                ) { expandX().fillX() }
+
+                languageButton = visToggleButton(
+                    text = bundle.get("settings.tab.language"),
+                    checked = currentSettings == LANGUAGE,
+                    onCheckedChange = {
+                        if (languageButton.isChecked) switchTo(languageButton, LANGUAGE)
+                    }
+                ) { expandX().fillX() }
+            }
+
+            row()
+
+            // === Динамический контент ===
+            val dynamicContent = visTable (cellInit = {
+                growX()
+            }) { }
+            dynamicContent.composeDynamic(currentSettings)
+
+            // Сохраняем ссылку, чтобы switchTo мог её обновлять
+            this@SettingsScreen.dynamicContent = dynamicContent
+
+            row()
+
+            visTextButton(
+                text = bundle.get("button.back"),
+                onClick = { navigation.performCommand(GoBack) }
+            ) {
+                padTop(24f.dp())
+            }
+        }
     }
 
-    override fun resize(width: Int, height: Int) {
-        stage.viewport.update(width, height, true)
-        stage.root.setOrigin(stage.width / 2f, stage.height / 2f)
+    // Нужна ссылка на dynamic-таблицу из switchTo
+    private var dynamicContent: VisTable? = null
+
+    fun VisTable.sound() {
+        val musicLabel = visLabel(
+            text = "${bundle.get("label.music_volume")}: ${GlobalSettings.MUSIC_VOLUME}"
+        ) { left().fillX().growX() }
+        row()
+
+        visSlider(
+            min = 0f, max = 100f, step = 1f,
+            value = GlobalSettings.MUSIC_VOLUME.toFloat(),
+            onValueChange = { value ->
+                GlobalSettings.MUSIC_VOLUME = value.toInt()
+                game.currentMusic.volume = value / 100f
+                musicLabel.setText("${bundle.get("label.music_volume")}: ${GlobalSettings.MUSIC_VOLUME}")
+            }
+        ) { fillX() }
+        row()
+
+        val soundLabel = visLabel(
+            text = "${bundle.get("label.sound_volume")}: ${GlobalSettings.SOUND_VOLUME}"
+        ) { left().fillX() }
+        row()
+
+        visSlider(
+            min = 0f, max = 100f, step = 1f,
+            value = GlobalSettings.SOUND_VOLUME.toFloat(),
+            onValueChange = { value ->
+                GlobalSettings.SOUND_VOLUME = value.toInt()
+                soundLabel.setText("${bundle.get("label.sound_volume")}: ${GlobalSettings.SOUND_VOLUME}")
+            }
+        ) { fillX() }
+        row()
     }
 
-    override fun pause() {}
-    override fun resume() {}
-    override fun hide() {}
-    override fun dispose() {
-        stage.dispose()
-        extraTextures.forEach { it.dispose() }
+    fun VisTable.graphics() {
+        visLabel(bundle.get("settings.graphics.todo")) {
+            pad(16f)
+        }
     }
 
-    // Утилиты для читаемости
-    private fun clicked(e: Event) = e is ChangeListener.ChangeEvent
-    private fun changed(e: Event) = e is ChangeListener.ChangeEvent
-}
+    fun VisTable.language() {
+        val languages = viewModel.getAvailableLanguages()
 
-fun valueChanged(e: Event) = e is ChangeListener.ChangeEvent
+        val displayNames = languages.map { locale ->
+            locale.getDisplayName(locale).replaceFirstChar { it.uppercase() }
+        }.toTypedArray()
 
-// === Глобальные настройки ===
-object GlobalSettings {
-    var MSAA = 1
-    var SAFE_DIVISION_MODE = true
-    var HYDRODYNAMIC_DRAG = false
-    var DRAW_LINK_SHADER = true
-    var HYDRO_ENABLED = false
-    var HYDRO_VISUALIZATION = false
-    var MUSIC_VOLUME = 0
-    var SOUND_VOLUME = 50
-    var GRID_WIDTH = gridWidth
-    var GRID_HEIGHT = gridHeight
-    var GRAVITATION = 0f
+        val currentIndex = languages.indexOfFirst {
+            it.language == DIGameGlobalContainer.currentLocale.language
+        }.coerceAtLeast(0)
 
-//    var WORLD_SIZE_TYPE = WorldSize.XL
-//    var WORLD_CELL_WIDTH = WORLD_SIZE_TYPE.size
-//    var WORLD_CELL_HEIGHT = WORLD_SIZE_TYPE.size
-//    var GRID_SIZE = WORLD_CELL_WIDTH * WORLD_CELL_HEIGHT
-//    var WORLD_WIDTH = WORLD_CELL_WIDTH * CELL_SIZE
-//    var WORLD_HEIGHT = WORLD_CELL_HEIGHT * CELL_SIZE
-//    var MAX_ZOOM = WORLD_SIZE_TYPE.maxZoom
+        // SelectBox — оставляем nested, если планируешь туда ещё что-то
+        visTable(cellInit = { expandX().fillX() }) {
+            visSelectBox(
+                items = displayNames,
+                selectedIndex = currentIndex,
+                onChange = { _, index ->
+                    val newLocale = languages[index]
+                    GlobalSettings.currentLanguageTag = newLocale.toLanguageTag()
+                    DIGameGlobalContainer.setLanguage(newLocale)
+                    recompose()
+                }
+            ) {
+                expandX().fillX().padTop(16.dp())
+            }
+        }
+        row()
 
-    var UI_SCALE = 1f
+        // Hint — напрямую в таблицу language(), тогда он гарантированно на всю ширину
+        visLabel(
+            text = bundle.get("settings.language.hint"),
+            align = Align.center
+        ) {
+            padTop(8f)
+            expandX().fillX()
+        }.apply {
+            setWrap(true)
+        }
+        row()
+
+        visTable(cellInit = { expandX().fillX() }) {
+            visTextButton("Go to Github", onClick = {
+                Gdx.net.openURI("https://github.com/dendor0101/Genomeia")
+            }) {
+                // если кнопку тоже хочешь на всю ширину — добавь expandX().fillX()
+            }
+        }
+    }
+
+    fun VisTable.composeDynamic(settings: Settings) {
+        when (settings) {
+            SOUND -> sound()
+            GRAPHICS -> graphics()
+            LANGUAGE -> language()
+        }
+    }
 }

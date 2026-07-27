@@ -15,6 +15,8 @@ import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
+import io.github.some_example_name.old.commands.GoBack
+import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DIGameGlobalContainer.roundStyle
@@ -29,7 +31,7 @@ import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
 
-class EcoSystemScreenGlobalSettings: Screen {
+class EcoSystemScreenGlobalSettingsScreen: Screen {
 
     private lateinit var stage: Stage
     //private lateinit var textArea: ScrollableTextArea
@@ -38,6 +40,7 @@ class EcoSystemScreenGlobalSettings: Screen {
     private val json = Json()
     private var validationTask: Timer.Task? = null
     private val values = mutableListOf<Pair<String, VisTextField>>()
+    private val navigationCommandsManager = DIGameGlobalContainer.navigationCommandsManager
 
     override fun show() {
         json.setOutputType(JsonWriter.OutputType.json)
@@ -110,7 +113,7 @@ class EcoSystemScreenGlobalSettings: Screen {
         game.applyCustomFont(menuButton)
         menuButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
-                game.screen = EcoSystemScreen()
+                navigationCommandsManager.performCommand(GoBack)
             }
         })
         buttonsTable.add(menuButton).height(60f * Gdx.graphics.density)

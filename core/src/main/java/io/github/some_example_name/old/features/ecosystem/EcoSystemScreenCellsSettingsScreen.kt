@@ -18,6 +18,8 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.kotcrab.vis.ui.VisUI
 import com.kotcrab.vis.ui.util.TableUtils
 import com.kotcrab.vis.ui.widget.*
+import io.github.some_example_name.old.commands.GoBack
+import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DIGameGlobalContainer.particleTexturePaths
@@ -32,7 +34,7 @@ import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
 
-class EcoSystemScreenCellsSettings: Screen {
+class EcoSystemScreenCellsSettingsScreen: Screen {
 
     private lateinit var stage: Stage
     val gridTable = VisTable()
@@ -44,6 +46,7 @@ class EcoSystemScreenCellsSettings: Screen {
     private val panelSize = 280f
     private val panelsList = mutableListOf<VisTable>()
     private var settings: GlobalSimulationSettings = GlobalSimulationSettings()
+    private val navigationCommandsManager = DIGameGlobalContainer.navigationCommandsManager
 
     override fun show() {
         json.setOutputType(JsonWriter.OutputType.json)
@@ -157,7 +160,7 @@ class EcoSystemScreenCellsSettings: Screen {
         game.applyCustomFont(menuButton)
         menuButton.addListener(object : ChangeListener() {
             override fun changed(event: ChangeEvent, actor: Actor?) {
-                game.screen = EcoSystemScreen()
+                navigationCommandsManager.performCommand(GoBack)
             }
         })
         buttonsTable.add(menuButton).height(60f * Gdx.graphics.density)

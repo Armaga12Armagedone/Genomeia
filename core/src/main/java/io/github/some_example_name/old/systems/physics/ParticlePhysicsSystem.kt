@@ -1,19 +1,14 @@
 package io.github.some_example_name.old.systems.physics
 
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
-import io.github.some_example_name.old.core.DISimulationContainer.HALF_CHUNK_HEIGHT
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.entities.ParticleEntity
-import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.old.systems.simulation.SimulationData
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRAVITATION
-import kotlin.math.sqrt
 
 class ParticlePhysicsSystem(
     val entity: ParticleEntity,

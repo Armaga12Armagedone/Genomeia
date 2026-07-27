@@ -53,7 +53,6 @@ class ComposeGenomeEditor {
     fun composeGenomeEditor(
         stage: Stage,
         editorSimulationSystem: EditorSimulationSystem,
-        renderSystem: EditorRenderSystem,
         editorLogicSystem: EditorLogicSystem
     ) {
         val rootTable = globalVisTable {
@@ -113,7 +112,7 @@ class ComposeGenomeEditor {
                     )
                 }
 
-                visSelectBox(arrayOf("Main genome", "arm", "head", "tail", "neuron"))
+//                visSelectBox(arrayOf("Main genome", "arm", "head", "tail", "neuron"))
 
             }
             row()

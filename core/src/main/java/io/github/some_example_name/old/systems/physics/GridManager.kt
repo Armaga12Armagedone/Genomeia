@@ -102,7 +102,7 @@ class GridManager (
     }
 
     fun getParticles(x: Int, y: Int): IntArray {
-        if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
+        if (x !in 0..<gridWidth || y < 0 || y >= gridHeight) {
             return IntArray(0)
         }
         val cellIndex = y * gridWidth + x

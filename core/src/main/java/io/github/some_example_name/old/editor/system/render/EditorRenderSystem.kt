@@ -37,17 +37,17 @@ class EditorRenderSystem(
         drawingHelperElements.create(shapeRenderer, camera)
     }
 
-    private var buffer = allocateBuffer(RenderSystem.Companion.INITIAL_PARTICLE_CAPACITY)
+    private var buffer = allocateBuffer(RenderSystem.INITIAL_PARTICLE_CAPACITY)
     var isUpdateBuffer = true
 
     private fun allocateBuffer(numParticles: Int): ByteBuffer {
         return ByteBuffer
-            .allocateDirect(numParticles * RenderSystem.Companion.PARTICLE_STRUCT_SIZE)
+            .allocateDirect(numParticles * RenderSystem.PARTICLE_STRUCT_SIZE)
             .order(ByteOrder.nativeOrder())
     }
 
     private fun ensureCapacityForWrite(neededParticles: Int) {
-        val currentCapacity = buffer.capacity() / RenderSystem.Companion.PARTICLE_STRUCT_SIZE
+        val currentCapacity = buffer.capacity() / RenderSystem.PARTICLE_STRUCT_SIZE
         if (neededParticles + 10 <= currentCapacity) return
 
         var newCapacity = currentCapacity.toDouble()
@@ -113,7 +113,7 @@ class EditorRenderSystem(
             if (stage < stageInstructions.size) {
                 val genomeStage = stageInstructions[stage]
 
-                genomeStage.cellActions.forEach { cellActionId, action ->
+                genomeStage.cellActions.forEach { (_, action) ->
                     val divide = action.divide
                     if (divide != null) {
                         val index = editorSimulationSystem.mapCellGenomeIdToIndex[divide.id]

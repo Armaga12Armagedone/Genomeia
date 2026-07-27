@@ -1,11 +1,15 @@
 package io.github.some_example_name.old.entities
 
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.protobuf.ProtoNumber
+
+@OptIn(ExperimentalSerializationApi::class)
 class EyeEntity(
     eyeStartMaxAmount: Int
 ): Entity(eyeStartMaxAmount) {
 
-    var colorDifferentiation = ByteArray(maxAmount) { 7 }
-    var visibilityRange = FloatArray(maxAmount) { 4.25f }
+    @ProtoNumber(1) var colorDifferentiation = ByteArray(maxAmount) { 7 }
+    @ProtoNumber(2) var visibilityRange = FloatArray(maxAmount) { 4.25f }
 
     fun addEye(
         colorDifferentiation: Byte,

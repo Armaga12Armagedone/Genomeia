@@ -20,9 +20,6 @@ import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.entities.SpecialModDataEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.entities.TailEntity
-import io.github.some_example_name.old.features.menu.MenuViewModel
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_HEIGHT
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRID_WIDTH
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.DivideManager
@@ -291,7 +288,7 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
         substancesEntity = substancesEntity
     )
 
-    var menuViewModel: MenuViewModel? = null
+//    var menuViewModel: MenuViewModel? = null
 
     val simulationSystem by lazy {
         SingleThreadSimulationSystem(
@@ -318,10 +315,6 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
     }
 
     fun resizeWorld() {
-        if (GRID_WIDTH == gridWidth && GRID_HEIGHT == gridHeight) return
-        gridWidth = GRID_WIDTH
-        gridHeight = GRID_HEIGHT
-
         gridSize = gridWidth * gridHeight
         chunkSize = gridSize / totalChunks
 

@@ -10,7 +10,6 @@ import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
-import io.github.some_example_name.old.features.settings.GlobalSettings.GRAVITATION
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.old.systems.simulation.SimulationData
 
@@ -31,7 +30,7 @@ class MovementManager(
         val oldX = x[particleIndex].toInt()
         val oldY = y[particleIndex].toInt()
         val gridCellIndex = gridId[particleIndex]
-        vy[particleIndex] -= GRAVITATION
+        vy[particleIndex] -= 0
 
         processCellFrictionOld(particleIndex)
 

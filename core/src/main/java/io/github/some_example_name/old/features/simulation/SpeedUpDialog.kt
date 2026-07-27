@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.scenes.scene2d.Action
 import com.badlogic.gdx.scenes.scene2d.Actor
+import com.badlogic.gdx.scenes.scene2d.Event
 import com.badlogic.gdx.scenes.scene2d.actions.Actions
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.badlogic.gdx.utils.I18NBundle
@@ -16,7 +17,6 @@ import io.github.some_example_name.old.game.applyCustomFont
 import io.github.some_example_name.old.core.ui.makeStyledButton
 import io.github.some_example_name.old.core.ui.makeStyledSlider
 import io.github.some_example_name.old.core.ui.setupTitleSize
-import io.github.some_example_name.old.features.settings.valueChanged
 
 class SpeedUpDialog(
     val game: MyGame,
@@ -89,3 +89,6 @@ class SpeedUpDialog(
         ))
     }
 }
+
+
+fun valueChanged(e: Event) = e is ChangeListener.ChangeEvent

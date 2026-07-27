@@ -10,9 +10,9 @@ import com.badlogic.gdx.utils.Json
 import com.kotcrab.vis.ui.VisUI
 import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.cells.base.CellListBuilder
+import io.github.some_example_name.old.commands.NavigationCommandsManager
 import io.github.some_example_name.old.core.DISimulationContainer.gridHeight
 import io.github.some_example_name.old.core.DISimulationContainer.heightMultiplier
-import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.systems.genomics.Morphogenesis
 import io.github.some_example_name.old.systems.genomics.genome_deprecated.GenomeJsonReader
 import io.github.some_example_name.old.systems.render.ShaderManager
@@ -26,12 +26,36 @@ object DIGameGlobalContainer {
 
     lateinit var fileProvider: FileProvider
     val json by lazy { Json() }
-    val bundle: I18NBundle by lazy {
-        I18NBundle.createBundle(
+//    val bundle: I18NBundle by lazy {
+//        I18NBundle.createBundle(
+//            Gdx.files.internal("ui/i18n/MyBundle"),
+//            Locale.getDefault()
+//        )
+//    }
+
+    private var _currentLocale: Locale = Locale.getDefault()
+    private var _bundle: I18NBundle = createBundle(_currentLocale)
+
+    val bundle: I18NBundle get() = _bundle
+    val currentLocale: Locale get() = _currentLocale
+
+    fun setLanguage(locale: Locale) {
+        if (_currentLocale == locale) return
+
+        _currentLocale = locale
+        Locale.setDefault(locale)
+        _bundle = createBundle(locale)
+    }
+
+    private fun createBundle(locale: Locale): I18NBundle {
+        return I18NBundle.createBundle(
             Gdx.files.internal("ui/i18n/MyBundle"),
-            Locale.getDefault()
+            locale
         )
     }
+
+    /** Подписываются экраны, которые хотят автоматически перестраиваться */
+    var onLanguageChanged: (() -> Unit)? = null
 
     val genomeJsonReader = GenomeJsonReader()
 
@@ -86,4 +110,6 @@ object DIGameGlobalContainer {
             checkedOver = roundOver
         }
     }
+
+    val navigationCommandsManager = NavigationCommandsManager()
 }

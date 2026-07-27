@@ -61,6 +61,7 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
 
         super.onCreate(savedInstanceState)
         val config = AndroidApplicationConfiguration().apply {
+            useGyroscope = true
             useImmersiveMode = true
             useGL30 = true          // ← Это включает OpenGL ES 3.2 на поддерживаемых устройствах
 

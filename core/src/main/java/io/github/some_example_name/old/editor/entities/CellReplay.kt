@@ -94,7 +94,7 @@ class CellReplay(
         val start = tickStartIndices.getInt(tick)
         val count = replayCellsCounterInTick.getInt(tick)
 
-        if (indexInTick < 0 || indexInTick >= count) return null
+        if (indexInTick !in 0..<count) return null
 
         val pos = start + indexInTick
 

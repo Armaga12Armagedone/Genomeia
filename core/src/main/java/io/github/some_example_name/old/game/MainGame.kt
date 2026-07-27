@@ -3,6 +3,7 @@ package io.github.some_example_name.old.game
 import com.badlogic.gdx.Application
 import com.badlogic.gdx.Game
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.Input
 import com.badlogic.gdx.audio.Music
 import com.badlogic.gdx.audio.Sound
 import com.badlogic.gdx.graphics.Color
@@ -25,9 +26,7 @@ import com.kotcrab.vis.ui.widget.VisValidatableTextField
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.core.DISimulationContainer
-import io.github.some_example_name.old.features.settings.GlobalSettings.MSAA
 import io.github.some_example_name.old.features.settings.GlobalSettings.MUSIC_VOLUME
-import io.github.some_example_name.old.features.settings.GlobalSettings.UI_SCALE
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.features.menu.MenuScreen
 import kotlin.math.max
@@ -68,6 +67,8 @@ class MyGame(
         DIGameGlobalContainer.game = this
         DISimulationContainer
         DIGenomeEditorContainer
+
+        Gdx.input.setCatchKey(Input.Keys.BACK, true)
 
         // Генерация шрифта с большим размером (адаптировано под DPI).
         // На Android полный Gdx.graphics.density (часто 2.5–4) делает текст огромным:
@@ -115,7 +116,7 @@ class MyGame(
         }
 
         // Button font — generated at 2x size so scaling down in buttons stays sharp
-        val desiredButtonSize = (48 * fontDensity).toInt()
+        val desiredButtonSize = (28 * fontDensity).toInt()
         parameter.size = max(MIN_GEN_SIZE, desiredButtonSize)
         parameter.borderWidth = 1.2f
         parameter.borderColor = Color.WHITE
@@ -153,9 +154,6 @@ class MyGame(
             Gdx.audio.newSound(Gdx.files.internal("sounds/pik4.mp3")),
             Gdx.audio.newSound(Gdx.files.internal("sounds/pik5.mp3"))
         )
-
-        UI_SCALE = 1f//((if (Gdx.app.type == Application.ApplicationType.Android) Gdx.graphics.density / 2f else Gdx.graphics.density * 1.5f) * 10).toInt() / 10f
-        MSAA = if (Gdx.app.type == Application.ApplicationType.Android) 1 else 2
     }
 
     private fun shuffleTracks() {

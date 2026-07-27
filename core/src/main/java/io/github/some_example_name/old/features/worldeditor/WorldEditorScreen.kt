@@ -25,14 +25,14 @@ import com.kotcrab.vis.ui.widget.VisScrollPane
 import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
+import io.github.some_example_name.old.commands.GoBack
+import io.github.some_example_name.old.commands.GoSimulation
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.utils.brownColors
 import io.github.some_example_name.old.game.applyCustomFont
 import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.core.ui.setupTitleSize
 import io.github.some_example_name.old.features.settings.GlobalSettings
-import io.github.some_example_name.old.features.menu.MenuScreen
-import io.github.some_example_name.old.features.simulation.SimulationScreen
 
 
 //TODO Необходим рефаткоринг
@@ -68,6 +68,7 @@ class WorldEditorScreen: Screen {
     private val mousePos = Vector2()
     private var needTextureUpdate = false
     private var isErasing = false // Режим стирания
+    private val navigationCommandsManager = DIGameGlobalContainer.navigationCommandsManager
 
     // UI элементы
     private lateinit var stage: Stage
@@ -80,8 +81,8 @@ class WorldEditorScreen: Screen {
     private var worldLifeGame = WorldGenerator.GENERATOR_DAY_NIGHT
     private var worldSmoothing = WorldGenerator.GENERATOR_INTERPOLATE
 
-    var GRID_WIDTH = (GlobalSettings.GRID_WIDTH * 1.5).toInt()
-    var GRID_HEIGHT = (GlobalSettings.GRID_HEIGHT * 1.5).toInt()
+    var GRID_WIDTH = (128 * 1.5).toInt()
+    var GRID_HEIGHT = (128 * 1.5).toInt()
 
     private lateinit var seedLabel: VisLabel
     private lateinit var lifeGameLabel: VisLabel
@@ -135,7 +136,7 @@ class WorldEditorScreen: Screen {
             DIGameGlobalContainer.game.applyCustomFont(this)
             addListener(object : ChangeListener() {
                 override fun changed(event: ChangeEvent, actor: Actor) {
-                    DIGameGlobalContainer.game.screen = MenuScreen()
+                    navigationCommandsManager.performCommand(GoBack)
                 }
             })
         }
@@ -157,10 +158,7 @@ class WorldEditorScreen: Screen {
             DIGameGlobalContainer.game.applyCustomFont(this)
             addListener(object : ChangeListener() {
                 override fun changed(event: ChangeEvent, actor: Actor) {
-                    val oldScreen = DIGameGlobalContainer.game.screen
-                    DIGameGlobalContainer.game.screen =
-                        SimulationScreen(map, null) // Передаем map
-                    oldScreen.dispose()
+                    navigationCommandsManager.performCommand(GoSimulation(map, null))
                 }
             })
         }

@@ -6,8 +6,9 @@ import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.utils.Timer
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
+import io.github.some_example_name.old.commands.GoBack
 import io.github.some_example_name.old.core.DIGameGlobalContainer
-import io.github.some_example_name.old.core.ui.VisSimpleScreen
+import io.github.some_example_name.old.core.ui.VisDslScreen
 import io.github.some_example_name.old.core.ui.dp
 import io.github.some_example_name.old.core.ui.h
 import io.github.some_example_name.old.core.ui.repeat
@@ -17,17 +18,17 @@ import io.github.some_example_name.old.core.ui.visLeftArrowButton
 import io.github.some_example_name.old.core.ui.visTable
 import io.github.some_example_name.old.core.ui.visTextButton
 import io.github.some_example_name.old.core.ui.w
-import io.github.some_example_name.old.features.menu.MenuScreen
 
-class VisSupportSimpleScreen : VisSimpleScreen(isScrollable = true) {
+class SupportScreen : VisDslScreen(isScrollable = true) {
 
     private val qrTextures = mutableListOf<Texture>()
+    private val navigationCommandsManager = DIGameGlobalContainer.navigationCommandsManager
 
     override fun VisTable.compose() {
 
         visLeftArrowButton(
             onClick = {
-                DIGameGlobalContainer.game.screen = MenuScreen()
+                navigationCommandsManager.performCommand(GoBack)
             }
         ) {
             left()

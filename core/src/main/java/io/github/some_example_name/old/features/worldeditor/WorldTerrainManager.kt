@@ -24,8 +24,8 @@ class WorldTerrainManager(
     }
 
     fun initWorld(
-        gridWith: Int = GlobalSettings.GRID_WIDTH,
-        gridHeight: Int = GlobalSettings.GRID_HEIGHT
+        gridWith: Int = 128,
+        gridHeight: Int = 128
     ) {
         val random = Random(3)
         map?.let {
