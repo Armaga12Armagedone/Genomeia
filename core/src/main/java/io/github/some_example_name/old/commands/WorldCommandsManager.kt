@@ -12,6 +12,7 @@ import io.github.some_example_name.old.core.utils.OrderedIntPairMap
 import io.github.some_example_name.old.core.utils.collectParticles
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
+import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
@@ -32,6 +33,7 @@ class WorldCommandsManager(
     val organEntity: OrganEntity,
     val cellEntity: CellEntity,
     val linkEntity: LinkEntity,
+    val neuralLinkEntity: NeuralLinkEntity,
     val specialEntity: SpecialEntity,
     val particleEntity: ParticleEntity,
     val pheromoneEntity: PheromoneEntity,
@@ -90,18 +92,27 @@ class WorldCommandsManager(
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
 
-                        val otherCellIndex = ints[1]
-
                         val linkIndex = linkEntity.addLink(
                             cellIndex = cellIndex,
-                            otherCellIndex = otherCellIndex,
+                            otherCellIndex = ints[1],
                             linksLength = floats[0],
-                            isStickyLink = booleans[0],
-                            isNeuronLink = booleans[1],
-                            isLink1NeuralDirected = booleans[2],
-                            color = ints[2]
                         )
                         linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                    }
+                    WorldCommandType.ADD_NEURAL_LINK -> {
+                        val cellIndex = if (ints[0] == -1) {
+                            lastAddedCellIndexBuffer[threadId]
+                        } else ints[0]
+
+                        neuralLinkEntity.addNeuralLink(
+                            cellIndex = cellIndex,
+                            otherCellIndex = ints[1],
+                            isLink1NeuralDirected = booleans[0],
+                            color = ints[2]
+                        )
+                    }
+                    WorldCommandType.DELETE_NEURAL_LINK -> {
+                        neuralLinkEntity.deleteNeuralLink(linkIndex = ints[0], linkGeneration = ints[1])
                     }
                     WorldCommandType.DELETE_LINK -> {
                         val linkIndex = ints[0]
@@ -195,10 +206,6 @@ class WorldCommandsManager(
                                                 cellIndex = cellIndex,
                                                 otherCellIndex = it,
                                                 linksLength = sqrt(squareDist),
-                                                isStickyLink = false,
-                                                isNeuronLink = false,
-                                                isLink1NeuralDirected = false,
-                                                color = Color.RED.toIntBits()
                                             )
                                             linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
                                         }
@@ -334,7 +341,7 @@ class WorldCommandsManager(
                         cellEntity.command[cellIndex] = -1
                     }
                     WorldCommandType.ADD_NEURAL_CONNECTIONS_EMPTY_LIST -> {
-                        cellEntity.neuralConnections.put(ints[0], IntArrayList(4))
+                        cellEntity.neuralConnections.put(ints[0], IntArrayList(2))
                     }
                     WorldCommandType.MUTATE_ON_START -> {
                         val index = ints[0]
@@ -348,7 +355,7 @@ class WorldCommandsManager(
             }
         }
 
-        worldCommandSecondBuffer.forEachIndexed { threadId, worldCommandBuffer ->
+        worldCommandSecondBuffer.forEachIndexed { _, worldCommandBuffer ->
             worldCommandBuffer.consume { type, ints, floats, booleans ->
                 when (type) {
                     WorldCommandType.ADD_LINK_BY_ID -> {
@@ -356,8 +363,6 @@ class WorldCommandsManager(
                         val otherCellId = ints[1]
                         val organIndex = ints[2]
                         val linksLength = floats[0]
-                        val isNeuronLink = booleans[0]
-                        val isLink1NeuralDirected = booleans[1]
 
                         val cellIndex = organIndexCellIdMapIndex.get(organIndex, cellId)
                         val otherCellIndex = organIndexCellIdMapIndex.get(organIndex, otherCellId)
@@ -367,12 +372,27 @@ class WorldCommandsManager(
                                 cellIndex = cellIndex,
                                 otherCellIndex = otherCellIndex,
                                 linksLength = linksLength,
-                                isStickyLink = false,
-                                isNeuronLink = isNeuronLink,
+                            )
+                            linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                        }
+                    }
+
+                    WorldCommandType.ADD_NEURAL_LINK_BY_ID -> {
+                        val cellId = ints[0]
+                        val otherCellId = ints[1]
+                        val organIndex = ints[2]
+                        val isLink1NeuralDirected = booleans[0]
+
+                        val cellIndex = organIndexCellIdMapIndex.get(organIndex, cellId)
+                        val otherCellIndex = organIndexCellIdMapIndex.get(organIndex, otherCellId)
+
+                        if (cellIndex != -1 && otherCellIndex != -1 && neuralLinkEntity.linkIndexMap.get(cellIndex, otherCellIndex) == -1) {
+                            neuralLinkEntity.addNeuralLink(
+                                cellIndex = cellIndex,
+                                otherCellIndex = otherCellIndex,
                                 isLink1NeuralDirected = isLink1NeuralDirected,
                                 color = ints[3]
                             )
-                            linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
                         }
                     }
 

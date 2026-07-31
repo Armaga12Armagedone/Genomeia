@@ -7,12 +7,13 @@ import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.DISimulationContainer.linkMaxLength2
 import io.github.some_example_name.old.core.DISimulationContainer.threadManager
 import io.github.some_example_name.old.core.SubstrateSettings
+import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.genomics.CellSystem
+import io.github.some_example_name.old.systems.simulation.SimulationData
 import it.unimi.dsi.fastutil.ints.IntArrayList
-import kotlin.math.sqrt
 
 class LinkPhysicsSystem(
     val linkEntity: LinkEntity,
@@ -21,7 +22,8 @@ class LinkPhysicsSystem(
     val cellEntity: CellEntity,
     val cellSystem: CellSystem,
     val worldCommandsManager: WorldCommandsManager,
-    val diContext: DIContext
+    val diContext: DIContext,
+    val simulationData: SimulationData
 ) {
 
     fun iterateLinksInParallel() {
@@ -79,20 +81,8 @@ class LinkPhysicsSystem(
                 val dy = y[linkParticleA] - y[linkParticleB]
                 val distanceSquared = dx * dx + dy * dy
 
-                if (isLongNeuralLink[linkIndex]) {
-                    if (distanceSquared > 16) {
-                        worldCommandsManager.worldCommandBuffer[threadId].push(
-                            type = WorldCommandType.DELETE_LINK,
-                            ints = intArrayOf(linkIndex, linkEntity.getGeneration(linkIndex))
-                        )
-                        return@with
-                    }
-                    cellSystem.transportNeuralSignal(linkIndex, linkCellA, linkCellB, threadId)
-                    return@with
-                }
+               cellSystem.transportEnergy(linkCellA, linkCellB)
 
-                cellSystem.transportEnergy(linkCellA, linkCellB)
-                cellSystem.transportNeuralSignal(linkIndex, linkCellA, linkCellB, threadId)
                 val parentCellA = parentIndex[linkCellA]
                 val parentCellB = parentIndex[linkCellB]
                 if (linkCellA == parentCellB) {
@@ -120,17 +110,17 @@ class LinkPhysicsSystem(
                 val stiffness = 2 * stiffnessA * stiffnessB / (stiffnessA + stiffnessB)
 
                 if (distanceSquared < 0) throw Exception("distanceSquared < 0, distanceSquared = $distanceSquared")
-                val dist = sqrt(distanceSquared)
+                val invDist = invSqrt(distanceSquared)
+                val dist = distanceSquared * invDist
+
+                val dirX = dx * invDist
+                val dirY = dy * invDist
 
                 val degreeOfShorteningA = degreeOfShortening[linkCellA]
                 val degreeOfShorteningB = degreeOfShortening[linkCellB]
-                val degreeOfShortening = 2 * degreeOfShorteningA * degreeOfShorteningB / (degreeOfShorteningA + degreeOfShorteningB)
+                val degreeOfShortening = 2f * degreeOfShorteningA * degreeOfShorteningB / (degreeOfShorteningA + degreeOfShorteningB)
 
                 val force = (dist - linksNaturalLength[linkIndex] * degreeOfShortening) * stiffness
-
-                val dirX = dx / dist
-                val dirY = dy / dist
-
                 // Spring dampening
                 val dvx = vx[linkParticleA] - vx[linkParticleB]
                 val dvy = vy[linkParticleA] - vy[linkParticleB]
