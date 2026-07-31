@@ -84,8 +84,20 @@ class MovementManager(
         }
     }
 
-    private fun processCellFrictionOld(cellId: Int) = with(entity) {
-        vx[cellId] *= 1f - dragCoefficient[cellId]
-        vy[cellId] *= 1f - dragCoefficient[cellId]
+    private fun processCellFrictionOld(particleIndex: Int) = with(entity) {
+        if (isCell[particleIndex]) {
+            val cellIndex = holderEntityIndex[particleIndex]
+            val linkAmount = cellEntity.linkAmount[cellIndex]
+            val x = linkAmount * 0.25f
+            val x2 = x * x
+            val x4 = x2 * x2
+
+            val friction = (1f / (x4 + 1f)) * dragCoefficient[particleIndex]
+            vx[particleIndex] *= 1f - friction
+            vy[particleIndex] *= 1f - friction
+        } else {
+            vx[particleIndex] *= 1f - dragCoefficient[particleIndex]
+            vy[particleIndex] *= 1f - dragCoefficient[particleIndex]
+        }
     }
 }
