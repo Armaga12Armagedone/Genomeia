@@ -110,8 +110,10 @@ class LinkEntity(
 
         isLongNeuralLink[addLinkIndex] = linksLength <= 0
 
-        cellEntity.linkAmount[cellIndex] ++
-        cellEntity.linkAmount[otherCellIndex] ++
+        if (!isLongNeuralLink[addLinkIndex]) {
+            cellEntity.linkAmount[cellIndex]++
+            cellEntity.linkAmount[otherCellIndex]++
+        }
 
         linkIndexMap.put(cellIndex, otherCellIndex, addLinkIndex)
 
@@ -146,8 +148,10 @@ class LinkEntity(
                 cellEntity.neuronImpulseOutput[cellIndex] = 0f
             }
 
-            cellEntity.linkAmount[cellA] --
-            cellEntity.linkAmount[cellB] --
+            if (!isLongNeuralLink[linkIndex]) {
+                cellEntity.linkAmount[cellA]--
+                cellEntity.linkAmount[cellB]--
+            }
 
             links1[linkIndex] = -1
             links2[linkIndex] = -1
