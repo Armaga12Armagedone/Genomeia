@@ -1,5 +1,20 @@
 package io.github.some_example_name.old.commands
 
+/**
+ * Пер-поточный буфер отложенных команд.
+ *
+ * Про false sharing: буферы создаются пачкой (Array(threadCount) { WorldCommandBuffer() }),
+ * поэтому в памяти лежат подряд. Сам объект без padding'а занимает ~40 байт (заголовок +
+ * 4 ссылки на массивы + int size), то есть в одну 64-байтную кэш-линию попадают поля
+ * size СРАЗУ НЕСКОЛЬКИХ буферов. Каждый push() пишет size, и эта линия начинает
+ * мотаться между ядрами (RFO + инвалидация в чужих L1) — при том, что логически
+ * потоки не разделяют ничего.
+ *
+ * Лечим padding'ом: по 16 int (64 байта) до и после size, так что поле гарантированно
+ * лежит в линии, где кроме наших же байтов ничего нет. Поля одного размера HotSpot
+ * раскладывает в порядке объявления, поэтому padding реально окружает size.
+ * Цена — ~128 байт на поток (всего ~2 КБ), то есть ноль.
+ */
 class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный размер — на 1000 команд
     // Массив типов команд (int — ordinal enum)
     var commandTypes = IntArray(initialCapacity) { -1 }  // -1 = пусто
@@ -9,8 +24,21 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
     var floatParams = FloatArray(initialCapacity * WorldCommandType.MAX_FLOAT_PARAMS) { 0f }
     var booleanParams = BooleanArray(initialCapacity * WorldCommandType.MAX_BOOLEAN_PARAMS) { false }
 
-    // Текущий размер (кол-во команд в буфере)
+    // --- 64 байта padding перед size (не использовать) ---
+    @JvmField var pad00 = 0; @JvmField var pad01 = 0; @JvmField var pad02 = 0; @JvmField var pad03 = 0
+    @JvmField var pad04 = 0; @JvmField var pad05 = 0; @JvmField var pad06 = 0; @JvmField var pad07 = 0
+    @JvmField var pad08 = 0; @JvmField var pad09 = 0; @JvmField var pad10 = 0; @JvmField var pad11 = 0
+    @JvmField var pad12 = 0; @JvmField var pad13 = 0; @JvmField var pad14 = 0; @JvmField var pad15 = 0
+
+    // Текущий размер (кол-во команд в буфере). Пишется на каждый push из своего потока.
     var size = 0
+
+    // --- 64 байта padding после size (не использовать) ---
+    @JvmField var pad16 = 0; @JvmField var pad17 = 0; @JvmField var pad18 = 0; @JvmField var pad19 = 0
+    @JvmField var pad20 = 0; @JvmField var pad21 = 0; @JvmField var pad22 = 0; @JvmField var pad23 = 0
+    @JvmField var pad24 = 0; @JvmField var pad25 = 0; @JvmField var pad26 = 0; @JvmField var pad27 = 0
+    @JvmField var pad28 = 0; @JvmField var pad29 = 0; @JvmField var pad30 = 0; @JvmField var pad31 = 0
+
 
     // Добавление команды (push)
     fun push(type: WorldCommandType, ints: IntArray? = null, floats: FloatArray? = null, booleans: BooleanArray? = null) {

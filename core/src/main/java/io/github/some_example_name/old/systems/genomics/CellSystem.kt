@@ -147,17 +147,39 @@ class CellSystem(
         }
     }
 
+    /**
+     * Сравнение заполненности двух клеток без делений.
+     *
+     * Было: e1/m1 < e2/m2 и потом ещё раз e1/m1 != e2/m2 — это 4 деления на каждую связь
+     * за тик. Деление float на x86 — ~11-14 циклов латентности и, в отличие от умножения,
+     * плохо пайплайнится (один divider на порт), поэтому в цепочке зависимостей оно
+     * упирается в latency, а не в throughput.
+     *
+     * Стало: кросс-умножение e1*m2 vs e2*m1 — два умножения (латентность ~4 цикла,
+     * throughput 2/такт) и они независимы, поэтому считаются параллельно.
+     * Плюс результаты сравнения переиспользуются вместо повторного вычисления.
+     *
+     * Знак неравенства сохраняется, потому что maxEnergy всегда > 0 (см. CellSettings).
+     * Точность не хуже исходной: делений, каждое из которых округляет, стало ноль.
+     */
     fun transportEnergy(linkCell1: Int, linkCell2: Int) = with(cellEntity) {
-        val cell1maxEnergy = maxEnergy[linkCell1]
-        val cell2maxEnergy = maxEnergy[linkCell2]
-        if (energy[linkCell1] / cell1maxEnergy < energy[linkCell2] / cell2maxEnergy) {
-            energy[linkCell1] += energyTransportRate
-            energy[linkCell2] -= energyTransportRate
-        } else if (energy[linkCell1] / cell1maxEnergy != energy[linkCell2] / cell2maxEnergy) {
-            energy[linkCell1] -= energyTransportRate
-            energy[linkCell2] += energyTransportRate
+        val energy1 = energy[linkCell1]
+        val energy2 = energy[linkCell2]
+        val maxEnergy1 = maxEnergy[linkCell1]
+        val maxEnergy2 = maxEnergy[linkCell2]
+
+        val fullness1 = energy1 * maxEnergy2
+        val fullness2 = energy2 * maxEnergy1
+
+        if (fullness1 < fullness2) {
+            energy[linkCell1] = energy1 + energyTransportRate
+            energy[linkCell2] = energy2 - energyTransportRate
+        } else if (fullness1 > fullness2) {
+            energy[linkCell1] = energy1 - energyTransportRate
+            energy[linkCell2] = energy2 + energyTransportRate
         }
     }
+
 
     override fun dispose() {
 

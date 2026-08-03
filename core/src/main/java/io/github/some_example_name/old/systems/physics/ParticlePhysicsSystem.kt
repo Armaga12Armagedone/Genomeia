@@ -74,58 +74,73 @@ class ParticlePhysicsSystem(
         else if (isOdd) worldCommandsManager.oddCellCounter[threadId]
         else worldCommandsManager.evenCellCounter[threadId]
 
-        var x = start % width
+        // Двойной цикл по ряду/столбцу вместо i % width и i / width на каждую клетку.
+        // gridWidth — это var, поэтому JIT не может свернуть деление в сдвиг: раньше на
+        // каждую из ~16k клеток приходилось два настоящих idiv (20-40 циклов, divider не
+        // пайплайнится и блокирует порт). Теперь деление считается один раз на весь чанк,
+        // дальше только инкременты, и заодно исчезла проверка "x == width" на клетку.
+        var cellIndex = start
         var y = start / width
+        var x = start - y * width
 
-        for (cellIndex in start until end) {
-            val count = counts[cellIndex]
+        while (cellIndex < end) {
+            // Конец текущего ряда сетки. Внутри ряда индексы клеток идут подряд, так что
+            // внутренний цикл — это линейный проход по particleCounts и по grid,
+            // идеальный для аппаратного префетчера.
+            var rowEnd = (y + 1) * width
+            if (rowEnd > end) rowEnd = end
 
-            if (count > 0) {
-                if (count <= maxPerCell) {
-                    val base = cellIndex * maxPerCell
+            while (cellIndex < rowEnd) {
+                val count = counts[cellIndex]
 
-                    // Пары внутри одной клетки сетки: каждая пара ровно один раз (i < j).
-                    for (i in 0 until count) {
-                        val particleA = grid[base + i]
-                        for (j in i + 1 until count) {
-                            collisionManager.repulse(particleA, grid[base + j], threadId)
-                        }
-                    }
+                if (count > 0) {
+                    if (count <= maxPerCell) {
+                        val base = cellIndex * maxPerCell
 
-                    // Соседние клетки + раскладка по чанкам.
-                    for (i in 0 until count) {
-                        val particleIndex = grid[base + i]
-                        processNeighborsCellsCollision(particleIndex, x, y, threadId)
-
-                        if (stack != null) {
-                            if (stackCount >= stack.size) {
-                                stack = growChunkStack(stacks!!, threadId, stack)
+                        // Пары внутри одной клетки сетки: каждая пара ровно один раз (i < j).
+                        for (i in 0 until count) {
+                            val particleA = grid[base + i]
+                            for (j in i + 1 until count) {
+                                collisionManager.repulse(particleA, grid[base + j], threadId)
                             }
-                            stack[stackCount] = particleIndex
-                            stackCount++
                         }
+
+                        // Соседние клетки + раскладка по чанкам.
+                        for (i in 0 until count) {
+                            val particleIndex = grid[base + i]
+                            processNeighborsCellsCollision(particleIndex, x, y, threadId)
+
+                            if (stack != null) {
+                                if (stackCount >= stack.size) {
+                                    stack = growChunkStack(stacks!!, threadId, stack)
+                                }
+                                stack[stackCount] = particleIndex
+                                stackCount++
+                            }
+                        }
+                    } else {
+                        // Редкий путь: клетка переполнена, часть частиц лежит в списке-хвосте.
+                        stackCount = processOverflowedGridCell(
+                            cellIndex = cellIndex,
+                            gridX = x,
+                            gridY = y,
+                            threadId = threadId,
+                            stacks = stacks,
+                            stackCount = stackCount
+                        )
+                        // Стек мог быть перевыделен внутри — перечитываем ссылку.
+                        stack = stacks?.get(threadId)
                     }
-                } else {
-                    // Редкий путь: клетка переполнена, часть частиц лежит в списке-хвосте.
-                    stackCount = processOverflowedGridCell(
-                        cellIndex = cellIndex,
-                        gridX = x,
-                        gridY = y,
-                        threadId = threadId,
-                        stacks = stacks,
-                        stackCount = stackCount
-                    )
-                    // Стек мог быть перевыделен внутри — перечитываем ссылку.
-                    stack = stacks?.get(threadId)
                 }
+
+                cellIndex++
+                x++
             }
 
-            x++
-            if (x == width) {
-                x = 0
-                y++
-            }
+            x = 0
+            y++
         }
+
 
         // Единственная запись в разделяемый счётчик за весь чанк.
         if (stacks != null) {

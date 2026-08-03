@@ -16,7 +16,20 @@ class GridManager (
     var mapMoreThenMax = Array(diContext.totalChunks * 2) { Int2ObjectOpenHashMap<IntArrayList>() }
 
     private var halfChunkSize = diContext.chunkSize / 2
-    private fun getHalfChunkId(gridIndex: Int) = gridIndex / halfChunkSize
+
+    /**
+     * Сдвиг вместо деления, если halfChunkSize — степень двойки, иначе -1.
+     * idiv на x86 — это 20-40 циклов, он не пайплайнится и блокирует divider;
+     * сдвиг — 1 цикл. halfChunkSize = gridSize / (threadCount * 2) / 2 и степенью
+     * двойки быть не обязан (зависит от размеров мира), поэтому fallback сохранён.
+     */
+    private var halfChunkShift = shiftOfPowerOfTwo(halfChunkSize)
+
+    private fun getHalfChunkId(gridIndex: Int): Int {
+        val shift = halfChunkShift
+        return if (shift >= 0) gridIndex ushr shift else gridIndex / halfChunkSize
+    }
+
 
     fun addParticle(x: Int, y: Int, value: Int): Int {
         if (x !in 0..<gridWidth || y < 0 || y >= gridHeight) {
@@ -213,6 +226,7 @@ class GridManager (
         grid = IntArray(gridSize * maxAmountOfParticles) { -1 }
         particleCounts = IntArray(gridSize)
         halfChunkSize = diContext.chunkSize / 2
+        halfChunkShift = shiftOfPowerOfTwo(halfChunkSize)
         mapMoreThenMax = Array(diContext.totalChunks * 2) { Int2ObjectOpenHashMap<IntArrayList>() }
     }
 
@@ -224,5 +238,11 @@ class GridManager (
         @JvmField
         val EMPTY_PARTICLES = IntArray(0)
     }
+
 }
+
+/** Номер бита, если value — степень двойки, иначе -1 (тогда деление не заменить сдвигом). */
+private fun shiftOfPowerOfTwo(value: Int): Int =
+    if (value > 0 && (value and (value - 1)) == 0) Integer.numberOfTrailingZeros(value) else -1
+
 
