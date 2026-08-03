@@ -6,20 +6,34 @@ import io.github.some_example_name.old.cells.PheromoneEmitter
 import io.github.some_example_name.old.cells.Producer
 import io.github.some_example_name.old.cells.SpecialModData
 import io.github.some_example_name.old.cells.Tail
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.protobuf.ProtoNumber
+import kotlinx.serialization.Transient
 
+@Serializable
 class SpecialEntity(
-    cellsStartMaxAmount: Int,
-    private val eyeEntity: EyeEntity,
-    private val tailEntity: TailEntity,
-    private val specialModDataEntity: SpecialModDataEntity,
-    private val producerEntity: ProducerEntity,
-    private val pheromoneEmitterEntity: PheromoneEmitterEntity
-): Entity(cellsStartMaxAmount) {
+    @Transient val cellsStartMaxAmount: Int = 0
+) : Entity(cellsStartMaxAmount) {
 
-    //Special type entities
-    var specialTypeIndexes = IntArray(maxAmount) { -1 }
+    @Transient lateinit var eyeEntity: EyeEntity
+    @Transient lateinit var tailEntity: TailEntity
+    @Transient lateinit var specialModDataEntity: SpecialModDataEntity
+    @Transient lateinit var producerEntity: ProducerEntity
+    @Transient lateinit var pheromoneEmitterEntity: PheromoneEmitterEntity
 
-    //Special Tail
+    constructor(
+        cellsStartMaxAmount: Int,
+        eyeEntity: EyeEntity,
+        tailEntity: TailEntity,
+        specialModDataEntity: SpecialModDataEntity,
+        producerEntity: ProducerEntity,
+        pheromoneEmitterEntity: PheromoneEmitterEntity
+    ) : this(cellsStartMaxAmount) {
+        loadEntity(eyeEntity, tailEntity, specialModDataEntity, producerEntity, pheromoneEmitterEntity)
+    }
+
+    @ProtoNumber(1) var specialTypeIndexes = IntArray(maxAmount) { -1 }
+
     fun getTailGeneration(index: Int) = tailEntity.getGeneration(specialTypeIndexes[index])
     fun getSpeed(index: Int) = tailEntity.speed[specialTypeIndexes[index]]
     fun setSpeed(index: Int, value: Float) { tailEntity.speed[specialTypeIndexes[index]] = value }
@@ -30,18 +44,14 @@ class SpecialEntity(
         if (tailEntity.isAlive[tailIndex] && (tailGeneration == null
                 || tailEntity.getGeneration(tailIndex) == tailGeneration)) {
             tailEntity.deleteTail(tailIndex)
-            specialTypeIndexes[cellIndex] -= -1
+            specialTypeIndexes[cellIndex] = -1
         }
     }
 
-    fun addTail(
-        index: Int,
-        speed: Float = 0f
-    ) {
+    fun addTail(index: Int, speed: Float = 0f) {
         specialTypeIndexes[index] = tailEntity.addTail(speed)
     }
 
-    //Special Eye
     fun getEyeGeneration(index: Int) = eyeEntity.getGeneration(specialTypeIndexes[index])
     fun getColorDifferentiation(index: Int) = eyeEntity.colorDifferentiation[specialTypeIndexes[index]]
     fun setColorDifferentiation(index: Int, value: Byte) { eyeEntity.colorDifferentiation[specialTypeIndexes[index]] = value }
@@ -54,20 +64,14 @@ class SpecialEntity(
         if (eyeEntity.isAlive[eyeIndex] && (eyeGeneration == null
                 || eyeEntity.getGeneration(eyeIndex) == eyeGeneration)) {
             eyeEntity.deleteEye(eyeIndex)
-            specialTypeIndexes[cellIndex] -= -1
+            specialTypeIndexes[cellIndex] = -1
         }
     }
 
-    fun addEye(
-        index: Int,
-        colorDifferentiation: Int = 7,
-        visibilityRange: Float = 4.25f,
-    ) {
+    fun addEye(index: Int, colorDifferentiation: Int = 7, visibilityRange: Float = 4.25f) {
         specialTypeIndexes[index] = eyeEntity.addEye(colorDifferentiation.toByte(), visibilityRange)
     }
 
-
-    //Special Producer
     fun getProducerGeneration(index: Int) = producerEntity.getGeneration(specialTypeIndexes[index])
     fun getReproductionRestriction(index: Int) = producerEntity.reproductionRestriction[specialTypeIndexes[index]]
     fun setReproductionRestriction(index: Int, value: Int) { producerEntity.reproductionRestriction[specialTypeIndexes[index]] = value }
@@ -78,17 +82,14 @@ class SpecialEntity(
         if (producerEntity.isAlive[producerIndex] && (producerGeneration == null
                 || producerEntity.getGeneration(producerIndex) == producerGeneration)) {
             producerEntity.deleteProducer(producerIndex)
-            specialTypeIndexes[cellIndex] -= -1
+            specialTypeIndexes[cellIndex] = -1
         }
     }
 
-    fun addProducer(
-        index: Int
-    ) {
+    fun addProducer(index: Int) {
         specialTypeIndexes[index] = producerEntity.addProducer()
     }
 
-    //Special PheromoneEmitter
     fun getPheromoneEmitterGeneration(index: Int) = pheromoneEmitterEntity.getGeneration(specialTypeIndexes[index])
     fun getPheromoneEmitterLastImpulse(index: Int) = pheromoneEmitterEntity.lastImpulse[specialTypeIndexes[index]]
     fun setPheromoneEmitterLastImpulse(index: Int, value: Float) { pheromoneEmitterEntity.lastImpulse[specialTypeIndexes[index]] = value }
@@ -99,13 +100,11 @@ class SpecialEntity(
         if (pheromoneEmitterEntity.isAlive[pheromoneEmitterIndex] && (pheromoneEmitterGeneration == null
                 || pheromoneEmitterEntity.getGeneration(pheromoneEmitterIndex) == pheromoneEmitterGeneration)) {
             pheromoneEmitterEntity.deletePheromoneEmitter(pheromoneEmitterIndex)
-            specialTypeIndexes[cellIndex] -= -1
+            specialTypeIndexes[cellIndex] = -1
         }
     }
 
-    fun addPheromoneEmitter(
-        index: Int
-    ) {
+    fun addPheromoneEmitter(index: Int) {
         specialTypeIndexes[index] = pheromoneEmitterEntity.addPheromoneEmitter()
     }
 
@@ -120,65 +119,48 @@ class SpecialEntity(
     ): Int {
         val cellIndex = add()
         when (cell) {
-            is Tail -> {
-                addTail(cellIndex, speed)
-            }
-            is Eye -> {
-                addEye(cellIndex, colorDifferentiation, visibilityRange)
-            }
-            is Producer -> {
-                addProducer(cellIndex)
-            }
-            is PheromoneEmitter -> {
-                addPheromoneEmitter(cellIndex)
-            }
-            else -> {
-                specialTypeIndexes[cellIndex] = -1
-            }
+            is Tail -> addTail(cellIndex, speed)
+            is Eye -> addEye(cellIndex, colorDifferentiation, visibilityRange)
+            is Producer -> addProducer(cellIndex)
+            is PheromoneEmitter -> addPheromoneEmitter(cellIndex)
+            else -> specialTypeIndexes[cellIndex] = -1
         }
-
         if (cell.doesItHasSpecialModData) {
-//            if (specialModData != null) {
-//                specialTypeIndexes[cellIndex] = specialModDataEntity.addModData(specialModData)
-//            }
+            // specialModDataEntity.addModData(specialModData) – при необходимости раскомментировать
         }
         return cellIndex
     }
 
-    fun delete(
-        cell: Cell,
-        cellIndex: Int
-    ) {
+    fun delete(cell: Cell, cellIndex: Int) {
         delete(cellIndex)
         when (cell) {
-            is Tail -> {
-                deleteTail(cellIndex)
-            }
-            is Eye -> {
-                deleteEye(cellIndex)
-            }
-            is Producer -> {
-                deleteProducer(cellIndex)
-            }
-            is PheromoneEmitter -> {
-                deletePheromoneEmitter(cellIndex)
-            }
+            is Tail -> deleteTail(cellIndex)
+            is Eye -> deleteEye(cellIndex)
+            is Producer -> deleteProducer(cellIndex)
+            is PheromoneEmitter -> deletePheromoneEmitter(cellIndex)
             else -> {}
         }
-
         if (cell.doesItHasSpecialModData) {
             specialModDataEntity.deleteModData(cellIndex)
         }
     }
 
-
-    override fun onCopy() {
-
+    fun loadEntity(
+        eyeEntity: EyeEntity,
+        tailEntity: TailEntity,
+        specialModDataEntity: SpecialModDataEntity,
+        producerEntity: ProducerEntity,
+        pheromoneEmitterEntity: PheromoneEmitterEntity
+    ) {
+        this.eyeEntity = eyeEntity
+        this.tailEntity = tailEntity
+        this.specialModDataEntity = specialModDataEntity
+        this.producerEntity = producerEntity
+        this.pheromoneEmitterEntity = pheromoneEmitterEntity
     }
 
-    override fun onPaste() {
-
-    }
+    override fun onCopy() {}
+    override fun onPaste() {}
 
     override fun onClear(bound: Int) {
         specialTypeIndexes.clear()

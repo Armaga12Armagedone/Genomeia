@@ -1,14 +1,18 @@
 package io.github.some_example_name.old.entities
 
-class TailEntity(
-    tailStartMaxAmount: Int = 5_000
-): Entity(tailStartMaxAmount) {
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 
+@Serializable
+class TailEntity(
+    @Transient val tailStartMaxAmount: Int = 5_000
+) : Entity(tailStartMaxAmount) {
+
+    @ProtoNumber(1)
     var speed = FloatArray(maxAmount)
 
-    fun addTail(
-        speed: Float
-    ): Int {
+    fun addTail(speed: Float): Int {
         val tailIndex = add()
         this.speed[tailIndex] = speed
         return tailIndex
@@ -19,13 +23,16 @@ class TailEntity(
         speed[tailIndex] = 0f
     }
 
-    override fun onCopy() {
-
+    fun serializeEntity() {
+        super.saveSerialize()
     }
 
-    override fun onPaste() {
-
+    fun loadSerializedEntity() {
+        super.loadSerialize()
     }
+
+    override fun onCopy() {}
+    override fun onPaste() {}
 
     override fun onClear(bound: Int) {
         speed.clear()

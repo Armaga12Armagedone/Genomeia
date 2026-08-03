@@ -1,10 +1,18 @@
 package io.github.some_example_name.old.entities
 
-class EyeEntity(
-    eyeStartMaxAmount: Int
-): Entity(eyeStartMaxAmount) {
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 
+@Serializable
+class EyeEntity(
+    @Transient val eyeStartMaxAmount: Int = 0
+) : Entity(eyeStartMaxAmount) {
+
+    @ProtoNumber(1)
     var colorDifferentiation = ByteArray(maxAmount) { 7 }
+
+    @ProtoNumber(2)
     var visibilityRange = FloatArray(maxAmount) { 4.25f }
 
     fun addEye(
@@ -23,13 +31,16 @@ class EyeEntity(
         visibilityRange[eyeIndex] = 4.25f
     }
 
-    override fun onCopy() {
-
+    fun serializeEntity() {
+        super.saveSerialize()
     }
 
-    override fun onPaste() {
-
+    fun loadSerializedEntity() {
+        super.loadSerialize()
     }
+
+    override fun onCopy() {}
+    override fun onPaste() {}
 
     override fun onClear(bound: Int) {
         colorDifferentiation.clear(7)

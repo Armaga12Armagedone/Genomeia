@@ -4,30 +4,47 @@ import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.utils.UnorderedIntPairMap
 import io.github.some_example_name.old.systems.physics.GridManager
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 import kotlin.math.sqrt
 
+@Serializable
 class LinkEntity(
-    linksStartMaxAmount: Int,
-    val cellEntity: CellEntity,
-    val gridManager: GridManager,
-    val particleEntity: ParticleEntity,
-    val diContext: DIContext
+    @Transient val linksStartMaxAmount: Int = 0
 ) : Entity(linksStartMaxAmount) {
-    var links1 = IntArray(maxAmount) { -1 }
-    var links2 = IntArray(maxAmount) { -1 }
-    var linksGeneration1 = IntArray(maxAmount) { -1 }
-    var linksGeneration2 = IntArray(maxAmount) { -1 }
-    var linksNaturalLength = FloatArray(maxAmount) { -10f }
-    var isNeuronLink = BooleanArray(maxAmount)
-    var isLink1NeuralDirected = BooleanArray(maxAmount)
-    var isStickyLink = BooleanArray(maxAmount) { false }
-    var isLongNeuralLink = BooleanArray(maxAmount) { false }
-    var color = IntArray(maxAmount)
-    val linkIndexMap = UnorderedIntPairMap(100_000)
 
-    var linkPhase = BooleanArray(maxAmount)
-    var assignedThread = ByteArray(maxAmount) { -1 }
-    var linkToListPosition = IntArray(maxAmount) { -1 }
+    @Transient lateinit var cellEntity: CellEntity
+    @Transient lateinit var gridManager: GridManager
+    @Transient lateinit var particleEntity: ParticleEntity
+    @Transient lateinit var diContext: DIContext
+
+    constructor(
+        linksStartMaxAmount: Int,
+        cellEntity: CellEntity,
+        gridManager: GridManager,
+        particleEntity: ParticleEntity,
+        diContext: DIContext
+    ) : this(linksStartMaxAmount) {
+        loadEntity(cellEntity, gridManager, particleEntity, diContext)
+    }
+
+    @ProtoNumber(1) var links1 = IntArray(maxAmount) { -1 }
+    @ProtoNumber(2) var links2 = IntArray(maxAmount) { -1 }
+    @ProtoNumber(3) var linksGeneration1 = IntArray(maxAmount) { -1 }
+    @ProtoNumber(4) var linksGeneration2 = IntArray(maxAmount) { -1 }
+    @ProtoNumber(5) var linksNaturalLength = FloatArray(maxAmount) { -10f }
+    @ProtoNumber(6) var isNeuronLink = BooleanArray(maxAmount)
+    @ProtoNumber(7) var isLink1NeuralDirected = BooleanArray(maxAmount)
+    @ProtoNumber(8) var isStickyLink = BooleanArray(maxAmount) { false }
+    @ProtoNumber(9) var isLongNeuralLink = BooleanArray(maxAmount) { false }
+    @ProtoNumber(10) var color = IntArray(maxAmount)
+
+    @Transient val linkIndexMap = UnorderedIntPairMap(100_000)
+
+    @Transient var linkPhase = BooleanArray(maxAmount)
+    @Transient var assignedThread = ByteArray(maxAmount) { -1 }
+    @Transient var linkToListPosition = IntArray(maxAmount) { -1 }
 
     fun registerNewLink(
         linkIndex: Int,
@@ -35,7 +52,6 @@ class LinkEntity(
         oddLinkLists: Array<IntArrayList>
     ) {
         val cellIndex = links1[linkIndex]
-        //TODO тут есть проблема которая при особых условиях приведет к состоянию гонки
         val chunk = cellEntity.getGridId(cellIndex) / diContext.chunkSize
         val phase = chunk % 2
         val threadId = (chunk - phase) / 2
@@ -53,7 +69,6 @@ class LinkEntity(
         linkToListPosition[linkIndex] = position
     }
 
-    // === НОВЫЙ МЕТОД ДЛЯ БЫСТРОГО УДАЛЕНИЯ ===
     fun removeLinkFromLists(
         linkIndex: Int,
         evenLinkLists: Array<IntArrayList>,
@@ -65,13 +80,11 @@ class LinkEntity(
         val list = if (phase) evenLinkLists[threadId] else oddLinkLists[threadId]
         val pos = linkToListPosition[linkIndex]
 
-        // защита
         if (pos < 0 || pos >= list.size || list.getInt(pos) != linkIndex) {
             linkToListPosition[linkIndex] = -1
             return
         }
 
-        // === O(1) удаление: swap with last ===
         val lastPos = list.size - 1
         if (pos != lastPos) {
             val lastLinkIndex = list.getInt(lastPos)
@@ -80,7 +93,6 @@ class LinkEntity(
         }
         list.removeInt(lastPos)
 
-        // очистка
         linkToListPosition[linkIndex] = -1
         linkPhase[linkIndex] = false
         assignedThread[linkIndex] = -1
@@ -193,6 +205,36 @@ class LinkEntity(
 
         angleCompensationCos[cellIndex] = angleCos[cellIndex] * dirCos + angleSin[cellIndex] * dirSin
         angleCompensationSin[cellIndex] = angleSin[cellIndex] * dirCos - angleCos[cellIndex] * dirSin
+    }
+
+    fun loadEntity(
+        cellEntity: CellEntity,
+        gridManager: GridManager,
+        particleEntity: ParticleEntity,
+        diContext: DIContext
+    ) {
+        this.cellEntity = cellEntity
+        this.gridManager = gridManager
+        this.particleEntity = particleEntity
+        this.diContext = diContext
+    }
+
+    fun serializeEntity() {
+        super.saveSerialize()
+    }
+
+    fun loadSerializedEntity() {
+        super.loadSerialize()
+        // transient-массивы и linkIndexMap нужно перестроить
+        linkIndexMap.clear()
+        for (i in 0..lastId) {
+            if (isAlive[i]) {
+                linkIndexMap.put(links1[i], links2[i], i)
+            }
+        }
+        linkPhase = BooleanArray(maxAmount)
+        assignedThread = ByteArray(maxAmount) { -1 }
+        linkToListPosition = IntArray(maxAmount) { -1 }
     }
 
     override fun onCopy() {

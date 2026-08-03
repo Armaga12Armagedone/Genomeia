@@ -18,6 +18,7 @@ class GridManager (
     private var halfChunkSize = diContext.chunkSize / 2
     private fun getHalfChunkId(gridIndex: Int) = gridIndex / halfChunkSize
 
+    @Synchronized
     fun addParticle(x: Int, y: Int, value: Int): Int {
         if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
             //TODO Запретить спавн клетки за границей сетки
@@ -41,6 +42,7 @@ class GridManager (
         return cellIndex
     }
 
+    @Synchronized
     fun addCell(cellIndex: Int, value: Int): Int {
         if (particleCounts[cellIndex] >= maxAmountOfParticles) {
             val threadId = getHalfChunkId(cellIndex)
@@ -59,6 +61,7 @@ class GridManager (
         return cellIndex
     }
 
+    @Synchronized
     fun removeParticle(cellIndex: Int, value: Int): Boolean {
 //        if (x < 0 || x >= gridCellWidthSize || y < 0 || y >= gridCellHeightSize) {
 //            throw Exception("Out of grid bounds")

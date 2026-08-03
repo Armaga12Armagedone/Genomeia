@@ -149,7 +149,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         particleEntity = particleEntity,
         substrateSettings = DIGameGlobalContainer.substrateSettings
     )
-    override val pheromoneEntity = PheromoneEntity(gridManager)
+    override val pheromoneEntity = PheromoneEntity(100, gridManager)
 
     override val organManager = OrganManager(
         organEntity = organEntity,

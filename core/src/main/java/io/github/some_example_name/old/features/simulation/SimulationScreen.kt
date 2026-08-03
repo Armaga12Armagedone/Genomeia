@@ -16,6 +16,7 @@ import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.sun.org.apache.xerces.internal.dom.DOMImplementationSourceImpl
 import io.github.some_example_name.old.commands.PlayerCommand
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
@@ -279,15 +280,22 @@ class SimulationScreen(
             )
         controllerKeysToggle.isChecked = simulationSystem.simulationData.showControllerKeys
 
+        val saveMapButton =
+            makeStyledButton(
+                "Save Map",
+                DIGameGlobalContainer.game,
+                extraTextures
+            )
+
         val buttons = if (genomeName == null) {
             listOf(
                 menuButton, putOrganismToggle, selectGenomeButton, speedUpSimToggle,
-                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle
+                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle, saveMapButton
             )
         } else {
             listOf(
                 menuButton, putOrganismToggle, speedUpSimToggle, pauseSimToggle,
-                restartSimulationButton, drawRaysToggle, controllerKeysToggle
+                restartSimulationButton, drawRaysToggle, controllerKeysToggle, saveMapButton
             )
         }
 
@@ -651,6 +659,12 @@ class SimulationScreen(
                     },
                     isMenu = false
                 ).show(stage)
+            }
+        })
+
+        saveMapButton.addListener( object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                DISimulationContainer.mapSave.resaveMap()
             }
         })
     }

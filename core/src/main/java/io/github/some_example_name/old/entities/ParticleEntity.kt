@@ -2,28 +2,38 @@ package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 import kotlin.math.PI
 
+@Serializable
 class ParticleEntity(
-    particlesStartMaxAmount: Int,
-    val gridManager: GridManager
-): Entity(particlesStartMaxAmount) {
-    var gridId = IntArray(maxAmount) { -1 }
-    var x = FloatArray(maxAmount)
-    var y = FloatArray(maxAmount)
-    var vx = FloatArray(maxAmount)
-    var vy = FloatArray(maxAmount)
-    var radius = FloatArray(maxAmount) { PARTICLE_MAX_RADIUS }
-    var mass = FloatArray(maxAmount)
-    var color = IntArray(maxAmount)
-    var dragCoefficient = FloatArray(maxAmount) { 0.003f }
-    var effectOnContact = BooleanArray(maxAmount)
-    var isCollidable = BooleanArray(maxAmount)
-    var cellStiffness = FloatArray(maxAmount) { 0.5f }
-    var isCell = BooleanArray(maxAmount) { false }
-    var isSub = BooleanArray(maxAmount) { false }
-    var holderEntityIndex = IntArray(maxAmount) { -1 }
-    var isPheromoneEmitter = BooleanArray(maxAmount) { false }
+    @Transient val particlesStartMaxAmount: Int = 0
+) : Entity(particlesStartMaxAmount) {
+
+    @Transient lateinit var gridManager: GridManager
+
+    constructor(particlesStartMaxAmount: Int, gridManager: GridManager) : this(particlesStartMaxAmount) {
+        loadEntity(gridManager)
+    }
+
+    @ProtoNumber(1) var gridId = IntArray(maxAmount) { -1 }
+    @ProtoNumber(2) var x = FloatArray(maxAmount)
+    @ProtoNumber(3) var y = FloatArray(maxAmount)
+    @ProtoNumber(4) var vx = FloatArray(maxAmount)
+    @ProtoNumber(5) var vy = FloatArray(maxAmount)
+    @ProtoNumber(6) var radius = FloatArray(maxAmount) { PARTICLE_MAX_RADIUS }
+    @ProtoNumber(7) var mass = FloatArray(maxAmount)
+    @ProtoNumber(8) var color = IntArray(maxAmount)
+    @ProtoNumber(9) var dragCoefficient = FloatArray(maxAmount) { 0.003f }
+    @ProtoNumber(10) var effectOnContact = BooleanArray(maxAmount)
+    @ProtoNumber(11) var isCollidable = BooleanArray(maxAmount)
+    @ProtoNumber(12) var cellStiffness = FloatArray(maxAmount) { 0.5f }
+    @ProtoNumber(13) var isCell = BooleanArray(maxAmount) { false }
+    @ProtoNumber(14) var isSub = BooleanArray(maxAmount) { false }
+    @ProtoNumber(15) var holderEntityIndex = IntArray(maxAmount) { -1 }
+    @ProtoNumber(16) var isPheromoneEmitter = BooleanArray(maxAmount) { false }
 
     fun addParticle(
         x: Float,
@@ -84,13 +94,34 @@ class ParticleEntity(
         isPheromoneEmitter[particleIndex] = false
     }
 
-    override fun onCopy() {
-
+    fun loadEntity(gridManager: GridManager) {
+        this.gridManager = gridManager
     }
 
-    override fun onPaste() {
-
+    fun serializeEntity() {
+        super.saveSerialize()
     }
+
+    fun loadSerializedEntity() {
+        super.loadSerialize()
+        // ВНИМАНИЕ: после вызова loadSerializedEntity и loadEntity(gridManager)
+        // необходимо вызвать restoreGridManager() для восстановления состояния GridManager.
+    }
+
+    /**
+     * Восстанавливает структуры GridManager по загруженным данным.
+     * Должен вызываться после loadEntity(gridManager) и loadSerializedEntity().
+     */
+    fun restoreGridManager() {
+        for (i in 0..lastId) {
+            if (isAlive[i]) {
+                gridId[i] = gridManager.addParticle(x[i].toInt(), y[i].toInt(), i)
+            }
+        }
+    }
+
+    override fun onCopy() {}
+    override fun onPaste() {}
 
     override fun onClear(bound: Int) {
         gridId.clear(-1)

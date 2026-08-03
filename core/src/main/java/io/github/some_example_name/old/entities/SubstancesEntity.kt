@@ -1,14 +1,30 @@
 package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.core.SubstrateSettings
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 
+@Serializable
 class SubstancesEntity(
-    startMaxAmount: Int = 5_000,
-    private val particleEntity: ParticleEntity,
-    val substrateSettings: SubstrateSettings
-): Entity(startMaxAmount) {
+    @Transient private val initialMaxAmount: Int = 5_000
+) : Entity(initialMaxAmount) {
 
-    var particleIndex = IntArray(maxAmount) { -1 }
+    @Transient lateinit var particleEntity: ParticleEntity
+    @Transient lateinit var substrateSettings: SubstrateSettings
+
+    // Вторичный конструктор для обычного использования
+    constructor(
+        startMaxAmount: Int = 5_000,
+        particleEntity: ParticleEntity,
+        substrateSettings: SubstrateSettings
+    ) : this(startMaxAmount) {
+        loadEntity(particleEntity, substrateSettings)
+    }
+
+    @ProtoNumber(1) var particleIndex = IntArray(maxAmount) { -1 }
+    @ProtoNumber(2) var substanceType = ByteArray(maxAmount)
+
     fun getX(index: Int) = particleEntity.x[particleIndex[index]]
     fun getY(index: Int) = particleEntity.y[particleIndex[index]]
     fun setX(index: Int, value: Float) { particleEntity.x[particleIndex[index]] = value }
@@ -27,8 +43,6 @@ class SubstancesEntity(
     fun seGridId(index: Int, value: Int) { particleEntity.gridId[particleIndex[index]] = value }
     fun getColor(index: Int) = particleEntity.color[particleIndex[index]]
     fun setColor(index: Int, value: Int) { particleEntity.color[particleIndex[index]] = value }
-
-    var substanceType = ByteArray(maxAmount)
 
     fun addSubstance(
         x: Float,
@@ -54,7 +68,6 @@ class SubstancesEntity(
         )
 
         substanceType[subIndex] = subType
-
         return subIndex
     }
 
@@ -67,13 +80,27 @@ class SubstancesEntity(
         }
     }
 
-    override fun onCopy() {
-
+    fun loadEntity(
+        particleEntity: ParticleEntity,
+        substrateSettings: SubstrateSettings
+    ) {
+        this.particleEntity = particleEntity
+        this.substrateSettings = substrateSettings
     }
 
-    override fun onPaste() {
-
+    // Методы для процесса сохранения
+    fun serializeEntity() {
+        println("Start: ${maxAmount}")
+        super.saveSerialize()
     }
+
+    fun loadSerializedEntity() {
+        println("End: ${this.maxAmount}")
+        super.loadSerialize()
+    }
+
+    override fun onCopy() {}
+    override fun onPaste() {}
 
     override fun onClear(bound: Int) {
         particleIndex.clear(-1)
@@ -84,5 +111,4 @@ class SubstancesEntity(
         particleIndex = particleIndex.resize(-1)
         substanceType = substanceType.resize(-1)
     }
-
 }

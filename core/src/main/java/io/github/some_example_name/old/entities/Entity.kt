@@ -1,22 +1,61 @@
 package io.github.some_example_name.old.entities
 
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 
-abstract class Entity(startMaxAmount: Int) {
-    protected var maxAmount = startMaxAmount
-    var lastId = -1
+@Serializable
+abstract class Entity(
+    @ProtoNumber(500) val startMaxAmount: Int = 10
+) {
+    // Текущий максимальный размер – сохраняется, потому что может расти
+    @ProtoNumber(1000) var maxAmount: Int = startMaxAmount
 
+    // Идентификатор последней выданной сущности
+    @ProtoNumber(2000)
+    var lastId: Int = -1
+
+    // ------------------ Сериализуемые копии для хранения ------------------
+    @ProtoNumber(3000)
+    var generationList: List<Int> = emptyList()
+
+    @ProtoNumber(4000)
+    var isAliveList: List<Boolean> = emptyList()
+
+    @ProtoNumber(5000)
+    var positionInAliveList: List<Int> = emptyList()
+
+    @ProtoNumber(6000)
+    var aliveListData: List<Int> = emptyList()
+
+    @ProtoNumber(7000)
+    var deadStackData: List<Int> = emptyList()
+
+    // ------------------ Transient-рабочие структуры ------------------
+    @Transient
     var deadStack = IntArrayList(startMaxAmount)
 
+    @Transient
     var isAlive = BooleanArray(maxAmount)
+
+    @Transient
     private var generation = IntArray(maxAmount)
+
+    @Transient
+    var aliveList = IntArrayList(startMaxAmount)
+
+    @Transient
+    var positionInAlive = IntArray(maxAmount) { -1 }
+
+    @Transient
+    private var cellBoundBeforeClear = 0
+
+    @Transient
+    private var oldMaxBeforeResize = 0
+
     fun getGeneration(index: Int) = generation[index]
     fun isAliveAndSameGen(index: Int, gen: Int) = isAlive[index] && generation[index] == gen
-
-    var aliveList = IntArrayList(startMaxAmount)
-    var positionInAlive = IntArray(maxAmount) { -1 }
-    private var cellBoundBeforeClear = 0
-    private var oldMaxBeforeResize = 0
 
     protected fun add(): Int {
         val cellIndex = if (!deadStack.isEmpty()) {
@@ -53,7 +92,6 @@ abstract class Entity(startMaxAmount: Int) {
             positionInAlive[lastEntity] = pos
 
             aliveList.removeInt(lastPos)
-
             positionInAlive[index] = -1
         }
     }
@@ -76,6 +114,8 @@ abstract class Entity(startMaxAmount: Int) {
         val oldMax = maxAmount
         oldMaxBeforeResize = oldMax
         maxAmount = (oldMax * 5 / 4).coerceAtLeast(oldMax + 1)
+
+        // Расширяем transient-массивы
         run {
             val old = generation
             generation = IntArray(maxAmount)
@@ -97,11 +137,47 @@ abstract class Entity(startMaxAmount: Int) {
         onResize(oldMax)
     }
 
+    // Вызывается перед сериализацией
+    open fun saveSerialize() {
+        // Сохраняем только актуальные данные до lastId+1
+        val bound = lastId + 1
+        generationList = generation.copyOf(bound).toList()
+        isAliveList = isAlive.copyOf(bound).toList()
+        positionInAliveList = positionInAlive.copyOf(bound).toList()
+        aliveListData = aliveList.subList(0, aliveList.size)          // IntArrayList -> IntArray -> List
+        deadStackData = deadStack.subList(0, deadStack.size)
+    }
+
+    // Вызывается сразу после десериализации
+    open fun loadSerialize() {
+        // Восстанавливаем transient-массивы нужного размера (maxAmount уже восстановлен)
+        println(maxAmount)
+        println("GenList: ${generationList.size}")
+        println(startMaxAmount)
+        val safeMaxAmount = maxOf(maxAmount, generationList.size, startMaxAmount)
+
+        // Принудительно обновляем maxAmount, чтобы наследники (SubstancesEntity) видели правильное значение
+        maxAmount = safeMaxAmount
+        println(maxAmount)
+        generation = IntArray(maxAmount)
+        isAlive = BooleanArray(maxAmount)
+        positionInAlive = IntArray(maxAmount) { -1 }
+        // Копируем данные из списков (размеры списков могут быть меньше maxAmount)
+        generationList.forEachIndexed { index, value -> generation[index] = value }
+        isAliveList.forEachIndexed { index, value -> isAlive[index] = value }
+        positionInAliveList.forEachIndexed { index, value -> positionInAlive[index] = value }
+
+        // Восстанавливаем fastutil-коллекции
+        deadStack = IntArrayList(deadStackData)
+        aliveList = IntArrayList(aliveListData)
+    }
+
     protected abstract fun onCopy()
     protected abstract fun onPaste()
     protected abstract fun onClear(bound: Int)
     protected abstract fun onResize(oldMax: Int)
 
+    // Вспомогательные методы для очистки массивов наследников
     protected fun FloatArray.clear(defaultValue: Float = 0f) {
         this.fill(defaultValue, 0, cellBoundBeforeClear)
     }
@@ -118,25 +194,18 @@ abstract class Entity(startMaxAmount: Int) {
         this.fill(defaultValue, 0, cellBoundBeforeClear)
     }
 
-
     protected fun FloatArray.resize(defaultValue: Float = 0f): FloatArray {
         val old = this
-        val newArray = if (defaultValue == 0f)
-            FloatArray(maxAmount)
-        else
-            FloatArray(maxAmount) { defaultValue }
-
+        val newArray = if (defaultValue == 0f) FloatArray(maxAmount)
+        else FloatArray(maxAmount) { defaultValue }
         System.arraycopy(old, 0, newArray, 0, oldMaxBeforeResize)
         return newArray
     }
 
     protected fun IntArray.resize(defaultValue: Int = 0): IntArray {
         val old = this
-        val newArray = if (defaultValue == 0)
-            IntArray(maxAmount)
-        else
-            IntArray(maxAmount) { defaultValue }
-
+        val newArray = if (defaultValue == 0) IntArray(maxAmount)
+        else IntArray(maxAmount) { defaultValue }
         System.arraycopy(old, 0, newArray, 0, oldMaxBeforeResize)
         return newArray
     }
@@ -144,18 +213,14 @@ abstract class Entity(startMaxAmount: Int) {
     protected fun BooleanArray.resize(defaultValue: Boolean): BooleanArray {
         val old = this
         val newArray = BooleanArray(maxAmount) { defaultValue }
-
         System.arraycopy(old, 0, newArray, 0, oldMaxBeforeResize)
         return newArray
     }
 
     protected fun ByteArray.resize(defaultValue: Byte = 0): ByteArray {
         val old = this
-        val newArray = if (defaultValue == 0.toByte())
-            ByteArray(maxAmount)
-        else
-            ByteArray(maxAmount) { defaultValue }
-
+        val newArray = if (defaultValue == 0.toByte()) ByteArray(maxAmount)
+        else ByteArray(maxAmount) { defaultValue }
         System.arraycopy(old, 0, newArray, 0, oldMaxBeforeResize)
         return newArray
     }

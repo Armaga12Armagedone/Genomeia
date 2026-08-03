@@ -20,12 +20,33 @@ import com.kotcrab.vis.ui.widget.VisCheckBox
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisImageTextButton
 import com.kotcrab.vis.ui.widget.VisTable
+import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.DISimulationContainer.particleEntity
 import io.github.some_example_name.old.core.ui.makeStyledButton
 import io.github.some_example_name.old.core.ui.setupTitleSize
+import io.github.some_example_name.old.entities.CellEntity
+import io.github.some_example_name.old.entities.EyeEntity
+import io.github.some_example_name.old.entities.LinkEntity
+import io.github.some_example_name.old.entities.NeuralEntity
+import io.github.some_example_name.old.entities.OrganEntity
+import io.github.some_example_name.old.entities.ParticleEntity
+import io.github.some_example_name.old.entities.PheromoneEmitterEntity
+import io.github.some_example_name.old.entities.PheromoneEntity
+import io.github.some_example_name.old.entities.ProducerEntity
+import io.github.some_example_name.old.entities.SpecialEntity
+import io.github.some_example_name.old.entities.SpecialModDataEntity
+import io.github.some_example_name.old.entities.SubstancesEntity
+import io.github.some_example_name.old.entities.TailEntity
+import io.github.some_example_name.old.entities.samples.CellEntitySample
+import io.github.some_example_name.old.features.simulation.SimulationScreen
 import io.github.some_example_name.old.features.worldeditor.WorldEditorScreen
+import io.github.some_example_name.old.features.worldeditor.WorldGenerator
 import io.github.some_example_name.old.game.MyGame
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.protobuf.ProtoBuf
 import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.util.zip.ZipInputStream
@@ -101,15 +122,73 @@ class MapSelect(
 
         val maps = getMaps()
         val btnH = Gdx.graphics.height * 0.055f
+
         maps.forEachIndexed { index, string ->
             val texture = getTexture(string)
             val iconDrawable: Drawable = TextureRegionDrawable(TextureRegion(texture))
 
-            val button: VisImageTextButton = VisImageTextButton(string, iconDrawable)
+            val button: VisImageTextButton = VisImageTextButton(string, iconDrawable).also {
+                it.addListener( object: ClickListener() {
+                    override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                        val mapName = string
+                        val map = getMap(mapName)
+
+                        // 1. Загружаем данные сущностей (без привязок)
+                        getEntities(mapName)
+
+                        // 2. Привязываем зависимости, которые НЕ зависят от GridManager
+                        DISimulationContainer.cellEntity.loadEntity(
+                            particleEntity = DISimulationContainer.particleEntity,
+                            simulationData = DISimulationContainer.simulationData,
+                            substrateSettings = DIGameGlobalContainer.substrateSettings,
+                            neuralEntity = DISimulationContainer.neuralEntity,
+                            specialEntity = DISimulationContainer.specialEntity,
+                            cellList = DISimulationContainer.cellList
+                        )
+                        DISimulationContainer.specialEntity.loadEntity(
+                            eyeEntity = DISimulationContainer.eyeEntity,
+                            tailEntity = DISimulationContainer.tailEntity,
+                            specialModDataEntity = DISimulationContainer.specialModDataEntity,
+                            producerEntity = DISimulationContainer.producerEntity,
+                            pheromoneEmitterEntity = DISimulationContainer.pheromoneEmitterEntity
+                        )
+                        DISimulationContainer.substancesEntity.loadEntity(
+                            particleEntity = DISimulationContainer.particleEntity,
+                            substrateSettings = DIGameGlobalContainer.substrateSettings
+                        )
+                        DISimulationContainer.neuralEntity.loadEntity(DISimulationContainer.cellList)
+                        // Остальные сущности без transient-зависимостей (OrganEntity, TailEntity, EyeEntity и т.д.)
+                        // можно не привязывать, если они не имеют методов loadEntity с параметрами.
+
+                        // 3. Пересоздаём GridManager и все системы (теперь они увидят уже инициализированные сущности)
+                        DISimulationContainer.reInit()
+
+                        // 4. Привязываем GridManager-зависимые сущности к НОВОМУ GridManager
+                        DISimulationContainer.particleEntity.loadEntity(DISimulationContainer.gridManager)
+                        DISimulationContainer.particleEntity.restoreGridManager()   // восстановление индексов в сетке
+                        DISimulationContainer.linkEntity.loadEntity(
+                            cellEntity = DISimulationContainer.cellEntity,
+                            gridManager = DISimulationContainer.gridManager,
+                            particleEntity = DISimulationContainer.particleEntity,
+                            diContext = DISimulationContainer
+                        )
+                        DISimulationContainer.pheromoneEntity.loadEntity(DISimulationContainer.gridManager)
+
+                        // 5. Устанавливаем индекс карты
+                        DISimulationContainer.mapSave.currentMap = mapName.substringBefore('.').toInt()
+
+                        // 6. Открываем экран симуляции
+                        val old = DIGameGlobalContainer.game.screen
+                        DIGameGlobalContainer.game.screen = SimulationScreen(null, null)   // <-- передаём карту!
+                        old.dispose()
+                    }
+                })
+            }
             val size = 64f * density
             button.imageCell.size(size, size).padRight(8f * density)
 
             button.padRight(size + (8f * density))
+
             content.add(button).height(btnH).center().row()
             group.add(button)
         }
@@ -133,6 +212,206 @@ class MapSelect(
             })
         }
         scrollContentTable.add(bottomButtonTable).center().padTop(8f*density)
+    }
+
+    fun getMap(name: String): Array<BooleanArray> {
+        var map: Array<BooleanArray> = emptyArray()
+        ZipInputStream(FileInputStream(File(DISimulationContainer.baseMapDir+name))).use { zipIn ->
+            var entry = zipIn.nextEntry
+
+            while (entry != null) {
+                if (entry.name == "world.bin") {
+                    val dataIn = DataInputStream(zipIn).use { data ->
+                        val custom = data.readBoolean()
+                        println(custom)
+
+                        val width = data.readInt()
+                        val height = data.readInt()
+                        println("${width}:${height}")
+
+                        if (!custom) {
+                            val seed = data.readLong()
+                            map = WorldGenerator().generateWorld(width, height, seed)
+                        }
+                        else {
+                            val height = data.readInt()
+                            //val flatMap = mutableListOf<Boolean>()
+                            //val premap = Array<BooleanArray>(height) {}
+                            val mapArray = Array(height) { BooleanArray(0) }
+
+                            for (y in 0 until height) {
+                                val width = data.readInt()
+                                val bars = BooleanArray(width)
+                                for (x in 0 until width) {
+                                    bars[x] = data.readBoolean()
+                                }
+                                mapArray[y] = bars
+                            }
+
+                            map = mapArray
+                        }
+
+                        data.readInt()
+                    }
+                    break
+                }
+                entry = zipIn.nextEntry
+            }
+        }
+        return map
+    }
+
+    fun getEntities(name: String) {
+        ZipInputStream(FileInputStream(File(DISimulationContainer.baseMapDir+name))).use { zipIn ->
+            var entry = zipIn.nextEntry
+
+            while (entry != null) {
+                if (entry.name == "CellEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    // ДcellEntity
+                    var data = ProtoBuf.decodeFromByteArray(CellEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+//                    data.loadEntity(particleEntity = DISimulationContainer.particleEntity,
+//                        simulationData = DISimulationContainer.simulationData,
+//                        substrateSettings = DIGameGlobalContainer.substrateSettings,
+//                        neuralEntity = DISimulationContainer.neuralEntity,
+//                        specialEntity = DISimulationContainer.specialEntity,
+//                        cellList = DISimulationContainer.cellList)
+
+                    DISimulationContainer.cellEntity = data
+                }
+                if (entry.name == "SpecialEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(SpecialEntity.serializer(), bytes)
+
+                    data.loadSerialize()
+
+//                    data.loadEntity(
+//                        eyeEntity = DISimulationContainer.eyeEntity,
+//                        tailEntity = DISimulationContainer.tailEntity,
+//                        specialModDataEntity = DISimulationContainer.specialModDataEntity,
+//                        producerEntity = DISimulationContainer.producerEntity,
+//                        pheromoneEmitterEntity = DISimulationContainer.pheromoneEmitterEntity
+//                    )
+
+                    DISimulationContainer.specialEntity = data
+                }
+                if (entry.name == "SubstanceEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(SubstancesEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+
+//                    data.loadEntity(
+//                        particleEntity = DISimulationContainer.particleEntity,
+//                        substrateSettings = DIGameGlobalContainer.substrateSettings
+//                    )
+
+                    DISimulationContainer.substancesEntity = data
+                }
+                if (entry.name == "SpecialModDataEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(SpecialModDataEntity.serializer(), bytes)
+
+                    data.loadSerialize()
+
+                    DISimulationContainer.specialModDataEntity = data
+                }
+                if (entry.name == "TailEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(TailEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+
+                    DISimulationContainer.tailEntity = data
+                }
+                if (entry.name == "EyeEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(EyeEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+
+                    DISimulationContainer.eyeEntity = data
+                }
+                if (entry.name == "LinkEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(LinkEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+                    // data.loadEntity(cellEntity = DISimulationContainer.cellEntity, gridManager = DISimulationContainer.gridManager, particleEntity = DISimulationContainer.particleEntity, diContext = DISimulationContainer)
+
+                    DISimulationContainer.linkEntity = data
+                }
+                if (entry.name == "NeuralEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(NeuralEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+                    //data.loadEntity(DISimulationContainer.cellList)
+
+                    DISimulationContainer.neuralEntity = data
+                }
+                if (entry.name == "OrganEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(OrganEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+
+                    DISimulationContainer.organEntity = data
+                }
+                if (entry.name == "ParticleEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(ParticleEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+//                    data.loadEntity(DISimulationContainer.gridManager)
+                    println("Size x: ${data.x.size}, 0 index: ${data.x[0]}")
+//                    data.restoreGridManager()
+
+                    DISimulationContainer.particleEntity = data
+                }
+                if (entry.name == "PheromoneEmitterEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(PheromoneEmitterEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+
+                    DISimulationContainer.pheromoneEmitterEntity = data
+                }
+                if (entry.name == "PheromoneEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(PheromoneEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+                    //data.loadEntity(DISimulationContainer.gridManager)
+
+                    DISimulationContainer.pheromoneEntity = data
+                }
+                if (entry.name == "ProducerEntity.bin") {
+                    val bytes = zipIn.readBytes()
+
+                    var data = ProtoBuf.decodeFromByteArray(ProducerEntity.serializer(), bytes)
+
+                    data.loadSerializedEntity()
+
+                    DISimulationContainer.producerEntity = data
+                }
+                entry = zipIn.nextEntry
+            }
+        }
     }
 
     fun getTexture(name: String): Texture {

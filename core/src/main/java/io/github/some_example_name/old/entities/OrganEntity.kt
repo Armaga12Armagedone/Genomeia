@@ -1,21 +1,25 @@
 package io.github.some_example_name.old.entities
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 
+@Serializable
 class OrganEntity(
-    organStartMaxAmount: Int
-): Entity(organStartMaxAmount) {
+    @Transient val organStartMaxAmount: Int = 0
+) : Entity(organStartMaxAmount) {
 
-    var genomeIndex = IntArray(maxAmount) { -1 }
-    var genomeSize = IntArray(maxAmount)
-    var stage = IntArray(maxAmount)
-    var dividedTimes = IntArray(maxAmount)
-    var mutatedTimes = IntArray(maxAmount)
-    var alreadyGrownUp = BooleanArray(maxAmount)
-    var divideCounterThisStage = IntArray(maxAmount)
-    var mutateCounterThisStage = IntArray(maxAmount)
-    var divideAmountThisStage = IntArray(maxAmount)
-    var mutateAmountThisStage = IntArray(maxAmount)
-    var justChangedStage = BooleanArray(maxAmount)
+    @ProtoNumber(1) var genomeIndex = IntArray(maxAmount) { -1 }
+    @ProtoNumber(2) var genomeSize = IntArray(maxAmount)
+    @ProtoNumber(3) var stage = IntArray(maxAmount)
+    @ProtoNumber(4) var dividedTimes = IntArray(maxAmount)
+    @ProtoNumber(5) var mutatedTimes = IntArray(maxAmount)
+    @ProtoNumber(6) var alreadyGrownUp = BooleanArray(maxAmount)
+    @ProtoNumber(7) var divideCounterThisStage = IntArray(maxAmount)
+    @ProtoNumber(8) var mutateCounterThisStage = IntArray(maxAmount)
+    @ProtoNumber(9) var divideAmountThisStage = IntArray(maxAmount)
+    @ProtoNumber(10) var mutateAmountThisStage = IntArray(maxAmount)
+    @ProtoNumber(11) var justChangedStage = BooleanArray(maxAmount)
 
     fun addOrgan(
         genomeIndex: Int,
@@ -55,13 +59,16 @@ class OrganEntity(
         justChangedStage[organIndex] = true
     }
 
-    override fun onCopy() {
-
+    fun serializeEntity() {
+        super.saveSerialize()
     }
 
-    override fun onPaste() {
-
+    fun loadSerializedEntity() {
+        super.loadSerialize()
     }
+
+    override fun onCopy() {}
+    override fun onPaste() {}
 
     override fun onClear(bound: Int) {
         genomeIndex.clear(-1)

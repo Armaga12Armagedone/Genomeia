@@ -1,23 +1,35 @@
 package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.cells.Cell
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 
+@Serializable
 class NeuralEntity(
-    neuralStartMaxAmount: Int,
-    val cellList: List<Cell>
-): Entity(neuralStartMaxAmount) {
+    @Transient val neuralStartMaxAmount: Int = 0
+) : Entity(neuralStartMaxAmount) {
 
-    var isNeuronTransportable = BooleanArray(maxAmount)
-    var activationFuncType = ByteArray(maxAmount)
-    var a = FloatArray(maxAmount) { 1f }
-    var b = FloatArray(maxAmount)
-    var c = FloatArray(maxAmount)
-    var dTime = FloatArray(maxAmount) { -1f }
-    var remember = FloatArray(maxAmount)
-    var isSum = BooleanArray(maxAmount)
-    var tickPain = IntArray(maxAmount)
-    var tickRed = IntArray(maxAmount)
-    var weight = FloatArray(maxAmount)
+    @Transient lateinit var cellList: List<Cell>
+
+    constructor(
+        neuralStartMaxAmount: Int,
+        cellList: List<Cell>
+    ) : this(neuralStartMaxAmount) {
+        loadEntity(cellList)
+    }
+
+    @ProtoNumber(1) var isNeuronTransportable = BooleanArray(maxAmount)
+    @ProtoNumber(2) var activationFuncType = ByteArray(maxAmount)
+    @ProtoNumber(3) var a = FloatArray(maxAmount) { 1f }
+    @ProtoNumber(4) var b = FloatArray(maxAmount)
+    @ProtoNumber(5) var c = FloatArray(maxAmount)
+    @ProtoNumber(6) var dTime = FloatArray(maxAmount) { -1f }
+    @ProtoNumber(7) var remember = FloatArray(maxAmount)
+    @ProtoNumber(8) var isSum = BooleanArray(maxAmount)
+    @ProtoNumber(9) var tickPain = IntArray(maxAmount)
+    @ProtoNumber(10) var tickRed = IntArray(maxAmount)
+    @ProtoNumber(11) var weight = FloatArray(maxAmount)
 
     fun addNeural(
         cellType: Int,
@@ -28,14 +40,13 @@ class NeuralEntity(
         activationFuncType: Byte
     ): Int {
         val neuralIndex = add()
-
         this.isNeuronTransportable[neuralIndex] = cellList[cellType].isNeuronTransportable
         this.activationFuncType[neuralIndex] = activationFuncType
         this.a[neuralIndex] = a
         this.b[neuralIndex] = b
         this.c[neuralIndex] = c
         this.dTime[neuralIndex] = -1f
-        this.remember[neuralIndex]  = 0f
+        this.remember[neuralIndex] = 0f
         this.isSum[neuralIndex] = isSum
         this.tickPain[neuralIndex] = -1
         this.tickRed[neuralIndex] = -1
@@ -45,7 +56,6 @@ class NeuralEntity(
 
     fun deleteNeural(neuralIndex: Int) {
         delete(neuralIndex)
-
         isNeuronTransportable[neuralIndex] = true
         activationFuncType[neuralIndex] = 0
         a[neuralIndex] = 1f
@@ -59,13 +69,20 @@ class NeuralEntity(
         weight[neuralIndex] = 0.5f
     }
 
-    override fun onCopy() {
-
+    fun loadEntity(cellList: List<Cell>) {
+        this.cellList = cellList
     }
 
-    override fun onPaste() {
-
+    fun serializeEntity() {
+        super.saveSerialize()
     }
+
+    fun loadSerializedEntity() {
+        super.loadSerialize()
+    }
+
+    override fun onCopy() {}
+    override fun onPaste() {}
 
     override fun onClear(bound: Int) {
         isNeuronTransportable.clear(true)

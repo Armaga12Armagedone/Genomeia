@@ -55,6 +55,13 @@ class Synapse(cellTypeId: Int): Cell(
             if (cellIndex == signalFromCellIndex) outputSignalCellPain = signalToCellIndex
         }
 
+        if (inputSignalCellRed == -1 || cellIndex == -1 || outputSignalCellPain == -1) {//TODO: Решить проблему с синапсом, outputSignallCellPain равен -1
+//            println(inputSignalCellRed)
+//            println(cellIndex)
+//            println(outputSignalCellPain)
+            return
+        }
+
         if (cellList[cellType[inputSignalCellRed].toInt()] !is Neuron){
             neuronImpulseOutput[cellIndex] = 0f
             return

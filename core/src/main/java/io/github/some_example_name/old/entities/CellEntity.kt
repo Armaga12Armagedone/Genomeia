@@ -8,18 +8,38 @@ import io.github.some_example_name.old.systems.genomics.genome.CellAction
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 
+@Serializable
 class CellEntity(
-    cellsStartMaxAmount: Int,
-    private val particleEntity: ParticleEntity,
-    val simulationData: SimulationData,
-    val substrateSettings: SubstrateSettings,
-    val cellList: List<Cell>,
-    private val neuralEntity: NeuralEntity,
-    val specialEntity: SpecialEntity
+    @Transient val cellsStartMaxAmount: Int = 1
 ) : Entity(cellsStartMaxAmount) {
+
+    // Transient-зависимости, инициализируются через конструктор или loadEntity()
+    @Transient lateinit var particleEntity: ParticleEntity
+    @Transient lateinit var simulationData: SimulationData
+    @Transient lateinit var substrateSettings: SubstrateSettings
+    @Transient lateinit var neuralEntity: NeuralEntity
+    @Transient lateinit var specialEntity: SpecialEntity
+    @Transient lateinit var cellList: List<Cell>
+
+    // Вторичный конструктор для обычного создания
+    constructor(
+        cellsStartMaxAmount: Int,
+        particleEntity: ParticleEntity,
+        simulationData: SimulationData,
+        substrateSettings: SubstrateSettings,
+        neuralEntity: NeuralEntity,
+        specialEntity: SpecialEntity,
+        cellList: List<Cell>
+    ) : this(cellsStartMaxAmount) {
+        loadEntity(particleEntity, simulationData, substrateSettings, neuralEntity, specialEntity, cellList)
+    }
+
     //Particle entity
-    var particleIndexes = IntArray(maxAmount) { -1 }
+    @ProtoNumber(1) var particleIndexes = IntArray(maxAmount) { -1 }
     fun getParticleIndex(index: Int) = particleIndexes[index]
     fun getX(index: Int) = particleEntity.x[particleIndexes[index]]
     fun getY(index: Int) = particleEntity.y[particleIndexes[index]]
@@ -46,32 +66,37 @@ class CellEntity(
     fun setColor(index: Int, value: Int) { particleEntity.color[particleIndexes[index]] = value }
     fun getIsPheromoneEmitter(index: Int) = particleEntity.isPheromoneEmitter[particleIndexes[index]]
     fun setIsPheromoneEmitter(index: Int, value: Boolean) { particleEntity.isPheromoneEmitter[particleIndexes[index]] = value }
-    var cellGenomeId = IntArray(maxAmount) { -1 }
-    var cellActions: Array<CellAction?> = arrayOfNulls(maxAmount)
-    var organIndex = IntArray(maxAmount) { -1 }
-    var parentIndex = IntArray(maxAmount) { -1 }
-    var angleCos = FloatArray(maxAmount)
-    var angleSin = FloatArray(maxAmount)
-    var angleDirectedCos = FloatArray(maxAmount)
-    var angleDirectedSin = FloatArray(maxAmount)
-    var angleCompensationCos = FloatArray(maxAmount)
-    var angleCompensationSin = FloatArray(maxAmount)
-    var energyNecessaryToDivide = FloatArray(maxAmount) { 2f }
-    var energyNecessaryToMutate = FloatArray(maxAmount) { 1f }
-    var isDividedInThisStage = BooleanArray(maxAmount)
-    var isMutateInThisStage = BooleanArray(maxAmount)
-    var cellType = ByteArray(maxAmount)
-    var energy = FloatArray(maxAmount)
-    var maxEnergy = FloatArray(maxAmount)
-    var isNeural = BooleanArray(maxAmount)
-    var neuronImpulseInput = FloatArray(maxAmount)
-    var neuronImpulseOutput = FloatArray(maxAmount)
-    var isOnEdge = BooleanArray(maxAmount)
-    var degreeOfShortening = FloatArray(maxAmount) { 1f }
-    var pheromoneType = IntArray(maxAmount) { -1 }
-    var linkAmount = IntArray(maxAmount) { 0 }
-    var command = ByteArray(maxAmount) { -1 }
-    var neuralConnections = Int2ObjectOpenHashMap<IntArrayList>()
+
+    @ProtoNumber(2) var cellGenomeId = IntArray(maxAmount) { -1 }
+    @Transient var cellActions: Array<CellAction?> = arrayOfNulls(maxAmount)
+    @ProtoNumber(4) var organIndex = IntArray(maxAmount) { -1 }
+    @ProtoNumber(5) var parentIndex = IntArray(maxAmount) { -1 }
+    @ProtoNumber(6)  var angleCos = FloatArray(maxAmount)
+    @ProtoNumber(7) var angleSin = FloatArray(maxAmount)
+    @ProtoNumber(8) var angleDirectedCos = FloatArray(maxAmount)
+    @ProtoNumber(9) var angleDirectedSin = FloatArray(maxAmount)
+    @ProtoNumber(10) var angleCompensationCos = FloatArray(maxAmount)
+    @ProtoNumber(11) var angleCompensationSin = FloatArray(maxAmount)
+    @ProtoNumber(12) var energyNecessaryToDivide = FloatArray(maxAmount) { 2f }
+    @ProtoNumber(13) var energyNecessaryToMutate = FloatArray(maxAmount) { 1f }
+    @ProtoNumber(14) var isDividedInThisStage = BooleanArray(maxAmount)
+    @ProtoNumber(15) var isMutateInThisStage = BooleanArray(maxAmount)
+    @ProtoNumber(16) var cellType = ByteArray(maxAmount)
+    @ProtoNumber(17) var energy = FloatArray(maxAmount)
+    @ProtoNumber(18) var maxEnergy = FloatArray(maxAmount)
+    @ProtoNumber(19) var isNeural = BooleanArray(maxAmount)
+    @ProtoNumber(20) var neuronImpulseInput = FloatArray(maxAmount)
+    @ProtoNumber(21) var neuronImpulseOutput = FloatArray(maxAmount)
+    @ProtoNumber(22) var isOnEdge = BooleanArray(maxAmount)
+    @ProtoNumber(23) var degreeOfShortening = FloatArray(maxAmount) { 1f }
+    @ProtoNumber(24) var pheromoneType = IntArray(maxAmount) { -1 }
+    @ProtoNumber(25) var linkAmount = IntArray(maxAmount) { 0 }
+    @ProtoNumber(26) var command = ByteArray(maxAmount) { -1 }
+    @Transient var neuralConnections = Int2ObjectOpenHashMap<IntArrayList>()
+
+    @ProtoNumber(27) var neuralConnectionsData: Map<Int, List<Int>> = emptyMap()
+
+    @ProtoNumber(3) var cellActionsData: List<CellActionEntry> = emptyList()
 
     fun addNeuralConnection(cellIndex: Int, targetNeuralIndex: Int) {
         val list = neuralConnections[cellIndex] ?: IntArrayList(4).also {
@@ -89,7 +114,7 @@ class CellEntity(
     }
 
     //Neural entity
-    var neuralIndexes = IntArray(maxAmount) { -1 }
+    @ProtoNumber(28) var neuralIndexes = IntArray(maxAmount) { -1 }
     fun getNeuralGeneration(index: Int) = neuralEntity.getGeneration(neuralIndexes[index])
     fun getIsNeuronTransportable(index: Int) = neuralEntity.isNeuronTransportable[neuralIndexes[index]]
     fun setIsNeuronTransportable(index: Int, value: Boolean) { neuralEntity.isNeuronTransportable[neuralIndexes[index]] = value }
@@ -106,7 +131,7 @@ class CellEntity(
     fun getRemember(index: Int) = neuralEntity.remember[neuralIndexes[index]]
     fun setRemember(index: Int, value: Float) { neuralEntity.remember[neuralIndexes[index]] = value }
     fun getIsSum(index: Int) = neuralEntity.isSum[neuralIndexes[index]]
-    fun setIsSum(index: Int, value: Boolean) {neuralEntity.isSum.set(neuralIndexes[index], value)}
+    fun setIsSum(index: Int, value: Boolean) { neuralEntity.isSum.set(neuralIndexes[index], value) }
     fun getTickRed(index: Int) = neuralEntity.tickRed[neuralIndexes[index]]
     fun setTickRed(index: Int, value: Int) { neuralEntity.tickRed[neuralIndexes[index]] = value }
     fun getTickPain(index: Int) = neuralEntity.tickPain[neuralIndexes[index]]
@@ -125,7 +150,7 @@ class CellEntity(
         if (neuralEntity.isAlive[neuralIndex] && (neuralGeneration == null
                 || neuralEntity.getGeneration(neuralIndex) == neuralGeneration)) {
             neuralEntity.deleteNeural(neuralIndex)
-            neuralIndexes[cellIndex] -= -1
+            neuralIndexes[cellIndex] = -1
         }
     }
 
@@ -250,8 +275,8 @@ class CellEntity(
         energyNecessaryToMutate[cellIndex] = 1f
         isDividedInThisStage[cellIndex] = true
         isMutateInThisStage[cellIndex] = true
-        val cellType = cellType[cellIndex]
-        val cell = cellList[cellType.toInt()]
+        val ct = cellType[cellIndex]
+        val cell = cellList[ct.toInt()]
         this.cellType[cellIndex] = 0
         energy[cellIndex] = 0f
         maxEnergy[cellIndex] = 0f
@@ -270,13 +295,52 @@ class CellEntity(
         specialEntity.delete(cell = cell, cellIndex = cellIndex)
     }
 
-    override fun onCopy() {
+    fun serializeEntity() {
+        super.saveSerialize()
+        neuralConnectionsData = neuralConnections
+            .mapValues { it.value.toList() }
+            .toMap()
 
+        cellActionsData = cellActions
+            .mapIndexedNotNull { index, action ->
+                action?.let { CellActionEntry(index, it) }
+            }
     }
 
-    override fun onPaste() {
+    fun loadSerializedEntity() {
+        super.loadSerialize()
+        neuralConnections.clear()
+        for ((key, list) in neuralConnectionsData) {
+            neuralConnections[key] = IntArrayList(list)
+        }
 
+        cellActions = arrayOfNulls(maxAmount)
+        for (entry in cellActionsData) {
+            if (entry.index in cellActions.indices) {
+                cellActions[entry.index] = entry.action
+            }
+        }
     }
+
+    fun loadEntity(
+        particleEntity: ParticleEntity,
+        simulationData: SimulationData,
+        substrateSettings: SubstrateSettings,
+        neuralEntity: NeuralEntity,
+        specialEntity: SpecialEntity,
+        cellList: List<Cell>
+    ) {
+        this.particleEntity = particleEntity
+        this.simulationData = simulationData
+        this.substrateSettings = substrateSettings
+        this.neuralEntity = neuralEntity
+        this.specialEntity = specialEntity
+        this.cellList = cellList
+    }
+
+    override fun onCopy() {}
+
+    override fun onPaste() {}
 
     override fun onClear(bound: Int) {
         particleIndexes.clear(-1)
@@ -343,3 +407,9 @@ class CellEntity(
         command = command.resize(-1)
     }
 }
+
+@Serializable
+data class CellActionEntry(
+    @ProtoNumber(1) val index: Int,
+    @ProtoNumber(2) val action: CellAction
+)

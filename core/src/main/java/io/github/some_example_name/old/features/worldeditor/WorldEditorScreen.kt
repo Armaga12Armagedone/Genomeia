@@ -161,7 +161,7 @@ class WorldEditorScreen: Screen {
             addListener(object : ChangeListener() {
                 override fun changed(event: ChangeEvent, actor: Actor) {
                     val oldScreen = DIGameGlobalContainer.game.screen
-                    DISimulationContainer.mapSave.saveMap(edited, worldSeed.toInt(), map, canvasPixmap)
+                    DISimulationContainer.mapSave.saveMap(edited, worldSeed.hashCode().toLong(), map, canvasPixmap)
                     DIGameGlobalContainer.game.screen =
                         SimulationScreen(map, null) // Передаем map
                     oldScreen.dispose()

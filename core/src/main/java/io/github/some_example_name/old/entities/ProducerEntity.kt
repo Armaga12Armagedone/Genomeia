@@ -1,9 +1,15 @@
 package io.github.some_example_name.old.entities
 
-class ProducerEntity(
-    producerStartMaxAmount: Int
-): Entity(producerStartMaxAmount) {
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.protobuf.ProtoNumber
 
+@Serializable
+class ProducerEntity(
+    @Transient val producerStartMaxAmount: Int = 0
+) : Entity(producerStartMaxAmount) {
+
+    @ProtoNumber(1)
     var reproductionRestriction = IntArray(maxAmount)
 
     fun addProducer(): Int {
@@ -17,13 +23,16 @@ class ProducerEntity(
         this.reproductionRestriction[producerIndex] = 0
     }
 
-    override fun onCopy() {
-
+    fun serializeEntity() {
+        super.saveSerialize()
     }
 
-    override fun onPaste() {
-
+    fun loadSerializedEntity() {
+        super.loadSerialize()
     }
+
+    override fun onCopy() {}
+    override fun onPaste() {}
 
     override fun onClear(bound: Int) {
         reproductionRestriction.clear()
