@@ -33,7 +33,7 @@ class RenderBufferManager(
         RenderCellBufferData(initialCellCapacity)
     )
     private val pheromoneBuffers = arrayOf(
-        PheromoneBufferData(initialPheromoneCapacity),   // подбери нужный начальный размер (можно initialCellCapacity)
+        PheromoneBufferData(initialPheromoneCapacity),
         PheromoneBufferData(initialPheromoneCapacity)
     )
     private val linkBuffers = arrayOf(
@@ -54,7 +54,7 @@ class RenderBufferManager(
     fun getCurrentSpecificBufferData(): RenderSpecificBufferData =
         if (specificFrontIndex.get() == 0) specificBuffer0 else specificBuffer1
 
-    fun updateBuffer() {
+    fun updateBuffer(performanceInfo: String = "") {
         // ==================== CELL ====================
         with(particleEntity) {
             val needed = aliveList.size
@@ -204,9 +204,11 @@ class RenderBufferManager(
             particleAmount = particleEntity.lastId - particleEntity.deadStack.size + 1
             linksAmount = linkEntity.lastId - linkEntity.deadStack.size + 1
 
+            detailedPerformance = performanceInfo
+
             val cellIndex = simulationData.selectedCellIndex
             if (cellIndex != -1 && cellEntity.isAlive[cellIndex]) {
-                selectedCellIndex = cellEntity.cellGenomeId[cellIndex]//cellIndex
+                selectedCellIndex = cellEntity.cellGenomeId[cellIndex]
                 neuronImpulseInput = cellEntity.neuronImpulseInput[cellIndex]
                 neuronImpulseOutput = cellEntity.neuronImpulseOutput[cellIndex]
                 isCellSelected = true
@@ -315,5 +317,6 @@ data class RenderSpecificBufferData(
     var grabbedCellX: Float? = null,
     var grabbedCellY: Float? = null,
     var cellName: String? = null,
-    var selectedCellIndex: Int = -1
+    var selectedCellIndex: Int = -1,
+    var detailedPerformance: String = ""          // ← добавлено
 )

@@ -291,19 +291,21 @@ class RenderSystem(
         font.draw(
             spriteBatch,
             """
-                    FPS: ${Gdx.graphics.framesPerSecond}
-                    UPS: ${spec.ups}
-                    Update Time: ${spec.updateTime} ms
-                    Cells: ${spec.cellsAmount}
-                    Particles: ${spec.particleAmount}
-                    Links ${spec.linksAmount}
-                    NeuronImpulseInput ${spec.neuronImpulseInput}
-                    NeuronImpulseOutput ${spec.neuronImpulseOutput}
-                    Cell type ${spec.cellName}
-                    Selected cell index ${spec.selectedCellIndex}
+FPS: ${Gdx.graphics.framesPerSecond}
+UPS: ${spec.ups}
+Update Time: ${spec.updateTime} ms
+Cells: ${spec.cellsAmount}
+Particles: ${spec.particleAmount}
+Links ${spec.linksAmount}
+NeuronImpulseInput ${spec.neuronImpulseInput}
+NeuronImpulseOutput ${spec.neuronImpulseOutput}
+Cell type ${spec.cellName}
+
+Selected cell index ${spec.selectedCellIndex}
+${spec.detailedPerformance}
                 """.trimIndent(),
             30f,
-            200f
+            450f
         )
         font.data.setScale(1f)
         spriteBatch.end()

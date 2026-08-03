@@ -153,8 +153,8 @@ Thumbs.db
 *.*#
 *#*#
 /.kotlin/
-/assets/assets.txt¶
-/genomes/¶
+/assets/assets.txt
+/genomes/
 
 # MOE / iOS heavy native files
 ios-moe/xcode/native/

@@ -63,30 +63,81 @@ class SimulationSystem(
         }
     }
 
+    // --- Performance Profiler ---
+    private val perfBuffers = LinkedHashMap<String, ArrayDeque<Double>>()
+    private var perfText: String = ""
+    private var perfTickCounter = 0
+
+    private fun getBuffer(name: String): ArrayDeque<Double> {
+        return perfBuffers.getOrPut(name) { ArrayDeque(60) }
+    }
+
     fun updateTick() {
         if (simulationData.isFinish) {
             dispose()
+            return
         }
         if (simulationData.isRestart) {
             restartSim()
+            return
         }
 
         simulationData.tickCounter++
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
 
-        linkPhysicsSystem.iterateLinksInParallel()
-        neuralLinkManager.iterate()
-        processParticleCollision()
-        cellSystem.iterateCellInParallel()
-        pheromonesManager.iterate()
-        arrangementOfPositionsInTheGrid()
+        // --- Измерения ---
+        measure("1. Links Physics") { linkPhysicsSystem.iterateLinksInParallel() }
+        measure("2. Neural Links") { neuralLinkManager.iterate() }
+        measure("3. Particle Collision") { processParticleCollision() }
+        measure("4. Cell System") { cellSystem.iterateCellInParallel() }
+        measure("5. Pheromones") { pheromonesManager.iterate() }
+        measure("6. Arrangement Grid") { arrangementOfPositionsInTheGrid() }
+        measure("7. World Commands") { worldCommandsManager.executingCommandsFromTheWorld() }
+        measure("8. Organs") { organManager.performOrgansNextStage() }
+        measure("9. User Commands") { userCommandManager.processingCommandsFromUser() }
+        measure("10. Last World Cmds") { worldCommandsManager.executingLastCommandsFromTheWorld() }
+        measure("11. Render Buffer") { renderBufferManager.updateBuffer(perfText) }
 
-        worldCommandsManager.executingCommandsFromTheWorld()
-        organManager.performOrgansNextStage()
-        userCommandManager.processingCommandsFromUser()
-        worldCommandsManager.executingLastCommandsFromTheWorld()
+        // Обновляем текст раз в 60 тиков
+        perfTickCounter++
+        if (perfTickCounter >= 60) {
+            perfTickCounter = 0
+            updatePerformanceText()          // заполняет perfText
+        }
+    }
 
-        renderBufferManager.updateBuffer()
+    private inline fun measure(name: String, block: () -> Unit) {
+        val start = System.nanoTime()
+        block()
+        val ms = (System.nanoTime() - start) / 1_000_000.0
+
+        val buffer = getBuffer(name)
+        if (buffer.size >= 60) {
+            buffer.removeFirst()
+        }
+        buffer.addLast(ms)
+    }
+
+    private fun updatePerformanceText() {
+        val sb = StringBuilder()
+        sb.appendLine("=== PERFORMANCE (ms) ===")
+//        sb.appendLine("avg over last ${perfBuffers.values.firstOrNull()?.size ?: 0} ticks")
+//        sb.appendLine()
+
+        var total = 0.0
+
+        perfBuffers.forEach { (name, buffer) ->
+            if (buffer.isNotEmpty()) {
+                val avg = buffer.average()
+                total += avg
+                sb.appendLine("%-22s %7.2f".format(name, avg))
+            }
+        }
+
+        sb.appendLine("-----------------------------")
+        sb.appendLine("%-22s %7.2f".format("TOTAL", total))
+
+        perfText = sb.toString()
     }
 
     fun processParticleCollision() {

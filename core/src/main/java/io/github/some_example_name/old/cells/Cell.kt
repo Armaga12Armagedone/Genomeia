@@ -57,9 +57,26 @@ sealed class Cell(
 
     }
 
+    /**
+     * Вызывается из фазы коллизий (CollisionManager.repulse), т.е. изнутри обхода сетки.
+     *
+     * ЗАПРЕЩЕНО менять содержимое сетки: никаких gridManager.addParticle / addCell /
+     * removeParticle и ничего, что меняет particleCounts, grid или mapMoreThenMax.
+     * ParticlePhysicsSystem обходит слоты сетки напрямую, без копирования в промежуточный
+     * массив, поэтому мутация сетки во время обхода приведёт к пропуску/дублированию
+     * частиц, а при переполнении клетки — к рассинхрону particleCounts со списком-хвостом.
+     *
+     * Можно: писать в vx/vy/energy/radius/цвет и складывать отложенные команды в
+     * worldCommandsManager.worldCommandBuffer[threadId] — они исполнятся после фаз физики.
+     *
+     * Также помни, что метод вызывается из нескольких потоков: писать можно только по
+     * индексам участников контакта (cellIndex / particleIndexCollided) и в буфер своего
+     * threadId, без общего изменяемого состояния.
+     */
     open fun onContact(cellIndex: Int, particleIndexCollided: Int, distance: Float, threadId: Int) {
 
     }
+
 
     open fun onDie(cellIndex: Int) {
 

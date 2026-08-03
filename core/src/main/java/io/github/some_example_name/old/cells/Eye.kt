@@ -142,23 +142,22 @@ class Eye(cellTypeId: Int): Cell(
                 val pack = nx * gridHeight + ny
                 if (!visitedBits[threadId].get(pack)) {
                     visitedBits[threadId].set(pack)
-                    val items = gridManager.getParticles(nx, ny)
-                    if (items.isNotEmpty()) {
-                        for (index in items) {
-                            if (isSegmentIntersectingCircle(
-                                    x1,
-                                    y1,
-                                    x2,
-                                    y2,
-                                    particleEntity.x[index],
-                                    particleEntity.y[index],
-                                    r = particleEntity.radius[index]
-                                )
-                            ) {
-                                if (objectsCount < checkedObjectListId[threadId].size) {
-                                    checkedObjectListId[threadId][objectsCount] = index
-                                    objectsCount++
-                                }
+                    // Обход без аллокации: раньше getParticles копировал слоты клетки
+                    // в новый IntArray на каждый шаг DDA (3 клетки на шаг).
+                    gridManager.forEachParticleAt(nx, ny) { index ->
+                        if (isSegmentIntersectingCircle(
+                                x1,
+                                y1,
+                                x2,
+                                y2,
+                                particleEntity.x[index],
+                                particleEntity.y[index],
+                                r = particleEntity.radius[index]
+                            )
+                        ) {
+                            if (objectsCount < checkedObjectListId[threadId].size) {
+                                checkedObjectListId[threadId][objectsCount] = index
+                                objectsCount++
                             }
                         }
                     }

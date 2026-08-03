@@ -66,20 +66,13 @@ class SingleThreadSimulationSystem(
     }
 
     private fun processGridChunkPhysics() {
-        val start = 0
-        val end = gridManager.gridSize
-        for (i in start until end) {
-            val x = i % gridManager.gridWidth
-            val y = i / gridManager.gridWidth
-
-            if (gridManager.particleCounts[i] > 0) {
-                val particles = gridManager.getParticlesIndex(i)
-                particlePhysicsSystem.processCollisionsInTheSameCell(particles)
-                for (particleIndex in particles) {
-                    particlePhysicsSystem.processNeighborsCellsCollision(particleIndex, x, y)
-                }
-            }
-        }
+        particlePhysicsSystem.processGridRangePhysics(
+            start = 0,
+            end = gridManager.gridSize,
+            threadId = 0,
+            isOdd = false,
+            distributeIndices = false
+        )
     }
 
     fun dispose() {

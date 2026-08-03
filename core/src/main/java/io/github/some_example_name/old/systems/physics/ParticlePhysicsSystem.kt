@@ -24,18 +24,115 @@ class ParticlePhysicsSystem(
     val collisionManager: CollisionManager
 ) {
 
+    /**
+     * Многопоточная фаза: обрабатывает клетки сетки [start, end) и складывает индексы
+     * частиц в стек чанка для последующей фазы движения.
+     */
     fun processGridChunkPhysics(start: Int, end: Int, threadId: Int, isOdd: Boolean) {
-        for (i in start until end) {
-            val x = i % gridManager.gridWidth
-            val y = i / gridManager.gridWidth
+        processGridRangePhysics(start, end, threadId, isOdd, distributeIndices = true)
+    }
 
-            if (gridManager.particleCounts[i] > 0) {
-                val particles = gridManager.getParticlesIndex(i)
-                processCollisionsInTheSameCell(particles, threadId)
-                for (particleIndex in particles) {
-                    processNeighborsCellsCollision(particleIndex, x, y, threadId)
-                    distributeParticleIndicesAcrossChunks(particleIndex, threadId, isOdd)
+    /**
+     * Ядро широкой фазы.
+     *
+     * Ключевые моменты по производительности:
+     *  - НЕТ аллокаций: частицы клетки читаются прямо из gridManager.grid по слотам,
+     *    без copyOfRange (раньше это было ~150k аллокаций массивов за тик).
+     *  - НЕТ целочисленного деления на клетку: x/y ведутся инкрементально
+     *    (раньше было i % gridWidth и i / gridWidth = 2 idiv на каждую из 16k клеток).
+     *  - Ссылки на массивы подняты в локальные переменные: поля grid/particleCounts
+     *    объявлены как var, поэтому JIT обязан перечитывать их после каждой записи в память.
+     *
+     * Прямой обход сетки безопасен, потому что в этой фазе сетка не мутирует:
+     * repulse и onContact пишут только в vx/vy/energy/radius и в отложенные команды.
+     */
+    fun processGridRangePhysics(
+        start: Int,
+        end: Int,
+        threadId: Int,
+        isOdd: Boolean,
+        distributeIndices: Boolean
+    ) {
+        val grid = gridManager.grid
+        val counts = gridManager.particleCounts
+        val maxPerCell = gridManager.maxAmountOfParticles
+        val width = gridManager.gridWidth
+
+        var x = start % width
+        var y = start / width
+
+        for (cellIndex in start until end) {
+            val count = counts[cellIndex]
+
+            if (count > 0) {
+                if (count <= maxPerCell) {
+                    val base = cellIndex * maxPerCell
+
+                    // Пары внутри одной клетки сетки: каждая пара ровно один раз (i < j).
+                    for (i in 0 until count) {
+                        val particleA = grid[base + i]
+                        for (j in i + 1 until count) {
+                            collisionManager.repulse(particleA, grid[base + j], threadId)
+                        }
+                    }
+
+                    // Соседние клетки + раскладка по чанкам.
+                    for (i in 0 until count) {
+                        val particleIndex = grid[base + i]
+                        processNeighborsCellsCollision(particleIndex, x, y, threadId)
+                        if (distributeIndices) {
+                            distributeParticleIndicesAcrossChunks(particleIndex, threadId, isOdd)
+                        }
+                    }
+                } else {
+                    // Редкий путь: клетка переполнена, часть частиц лежит в списке-хвосте.
+                    processOverflowedGridCell(cellIndex, x, y, threadId, isOdd, distributeIndices)
                 }
+            }
+
+            x++
+            if (x == width) {
+                x = 0
+                y++
+            }
+        }
+    }
+
+    /**
+     * Холодный путь для переполненных клеток сетки (count > maxAmountOfParticles).
+     * Вынесен отдельно, чтобы не раздувать горячий цикл и не мешать его инлайнингу.
+     */
+    private fun processOverflowedGridCell(
+        cellIndex: Int,
+        gridX: Int,
+        gridY: Int,
+        threadId: Int,
+        isOdd: Boolean,
+        distributeIndices: Boolean
+    ) {
+        val count = gridManager.particleCounts[cellIndex]
+        val maxPerCell = gridManager.maxAmountOfParticles
+        val base = cellIndex * maxPerCell
+        val grid = gridManager.grid
+
+        val extraList = gridManager.overflowListOrNull(cellIndex)
+            ?: throw IllegalStateException("Overflow list is null but particleCounts > maxAmountOfParticles")
+        val extra = extraList.elements()
+        val extraSize = extraList.size
+
+        for (i in 0 until count) {
+            val particleA = if (i < extraSize) extra[i] else grid[base + i - extraSize]
+            for (j in i + 1 until count) {
+                val particleB = if (j < extraSize) extra[j] else grid[base + j - extraSize]
+                collisionManager.repulse(particleA, particleB, threadId)
+            }
+        }
+
+        for (i in 0 until count) {
+            val particleIndex = if (i < extraSize) extra[i] else grid[base + i - extraSize]
+            processNeighborsCellsCollision(particleIndex, gridX, gridY, threadId)
+            if (distributeIndices) {
+                distributeParticleIndicesAcrossChunks(particleIndex, threadId, isOdd)
             }
         }
     }
@@ -62,26 +159,35 @@ class ParticlePhysicsSystem(
         counters[threadId] = index + 1
     }
 
+    /**
+     * Полуобход соседей: три клетки сверху (x-1, x, x+1) и одна справа.
+     * Так каждая пара соседних клеток обрабатывается ровно один раз.
+     *
+     * Верхний ряд идёт одним отрезком — индексы клеток там последовательные,
+     * это дешевле трёх независимых обращений и дружелюбнее к префетчеру.
+     */
     fun processNeighborsCellsCollision(cellId: Int, gridX: Int, gridY: Int, threadId: Int = 0) {
-        gridManager.getParticles(gridX - 1, gridY + 1).also { ids ->
-            for (id in ids) collisionManager.repulse(cellId, id, threadId)
+        gridManager.forEachParticleInRowSegment(gridY + 1, gridX - 1, gridX + 1) { id ->
+            collisionManager.repulse(cellId, id, threadId)
         }
-        gridManager.getParticles(gridX, gridY + 1).also { ids ->
-            for (id in ids) collisionManager.repulse(cellId, id, threadId)
-        }
-        gridManager.getParticles(gridX + 1, gridY + 1).also { ids ->
-            for (id in ids) collisionManager.repulse(cellId, id, threadId)
-        }
-
-        gridManager.getParticles(gridX + 1, gridY).also { ids ->
-            for (id in ids) collisionManager.repulse(cellId, id, threadId)
+        gridManager.forEachParticleAt(gridX + 1, gridY) { id ->
+            collisionManager.repulse(cellId, id, threadId)
         }
     }
 
+    /**
+     * Оставлено для совместимости: попарный перебор по готовому массиву индексов.
+     * В горячем пути не используется — там работает processGridRangePhysics.
+     */
     fun processCollisionsInTheSameCell(cells: IntArray, threadId: Int = 0) {
-        for (i in cells.indices) {
-            for (j in i + 1 until cells.size) {
-                collisionManager.repulse(cells[i], cells[j], threadId)
+        processCollisionsInTheSameCell(cells, cells.size, threadId)
+    }
+
+    fun processCollisionsInTheSameCell(cells: IntArray, count: Int, threadId: Int = 0) {
+        for (i in 0 until count) {
+            val particleA = cells[i]
+            for (j in i + 1 until count) {
+                collisionManager.repulse(particleA, cells[j], threadId)
             }
         }
     }
