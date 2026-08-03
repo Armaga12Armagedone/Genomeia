@@ -15,6 +15,7 @@ class NeuralLinkEntity(
     var isLink1NeuralDirected = BooleanArray(maxAmount)
     var color = IntArray(maxAmount)
     val linkIndexMap = UnorderedIntPairMap(10_000)
+    val linkEditorIndexMap = UnorderedIntPairMap(100)
 
     fun addNeuralLink(
         cellIndex: Int,
@@ -35,6 +36,7 @@ class NeuralLinkEntity(
         cellEntity.linkAmount[otherCellIndex] ++
 
         linkIndexMap.put(cellIndex, otherCellIndex, addLinkIndex)
+        linkEditorIndexMap.put(cellIndex, otherCellIndex, addLinkIndex)
 
         with(cellEntity) {
             val cellA = cellList[cellType[cellIndex].toInt()]
@@ -57,8 +59,9 @@ class NeuralLinkEntity(
             val cellA = links1[linkIndex]
             val cellB = links2[linkIndex]
 
+            linkIndexMap.remove(cellA, cellB)
             if (!isEditor) {
-                linkIndexMap.remove(cellA, cellB)
+                linkEditorIndexMap.remove(cellA, cellB)
             }
 
             links1[linkIndex] = -1
@@ -89,6 +92,7 @@ class NeuralLinkEntity(
         isLink1NeuralDirected.clear(false)
         color.clear()
         linkIndexMap.clear()
+        linkEditorIndexMap.clear()
     }
 
     override fun onResize(oldMax: Int) {

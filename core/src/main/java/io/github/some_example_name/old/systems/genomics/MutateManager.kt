@@ -208,8 +208,8 @@ class MutateManager(
 
                     val linkedCellIndex = organToIdToIndex.get(organIndex[index], cellGenomeIdToConnectWith)
                     if (linkedCellIndex != -1) {
-                        if (linkData != null) {
-                            val neuralLinkIndex = neuralLinkEntity.linkIndexMap.get(index, linkedCellIndex)
+                        val neuralLinkIndex = neuralLinkEntity.linkIndexMap.get(index, linkedCellIndex)
+                        if (linkData != null && linkData.isNeuronal) {
                             val isLink1NeuralDirected: Boolean = linkData.directedNeuronLink == cellGenomeId[index]
                             val linkColor = (linkData.color ?: Color.CYAN).toIntBits()
 
@@ -228,11 +228,10 @@ class MutateManager(
                             }
                         } else {
                             //Удаление нейро-линка
-                            val linkIndex = neuralLinkEntity.linkIndexMap.get(index, linkedCellIndex)
-                            if (linkIndex != -1) {
+                            if (neuralLinkIndex != -1) {
                                 worldCommandsManager.worldCommandBuffer[threadId].push(
                                     type = WorldCommandType.DELETE_NEURAL_LINK,
-                                    ints = intArrayOf(linkIndex, neuralLinkEntity.getGeneration(linkIndex))
+                                    ints = intArrayOf(neuralLinkIndex, neuralLinkEntity.getGeneration(neuralLinkIndex))
                                 )
                             }
                         }

@@ -72,7 +72,7 @@ class LeftRightClickManager(
                 //Выполнение команды по созданию нейролинка
                 val cellFrom = toEditorDataMapper.mapToEditorData(previousCtrlClicked)
                 val cellTo = toEditorDataMapper.mapToEditorData(clickedIndex)
-                var neuralLinkIndex = neuralLinkEntity.linkIndexMap.get(previousCtrlClicked, clickedIndex)
+                var neuralLinkIndex = neuralLinkEntity.linkEditorIndexMap.get(previousCtrlClicked, clickedIndex)
 
                 var isLink1NeuralDirected = false
 
