@@ -40,6 +40,12 @@ class ParticlePhysicsSystem(
      *    без copyOfRange (раньше это было ~150k аллокаций массивов за тик).
      *  - НЕТ целочисленного деления на клетку: x/y ведутся инкрементально
      *    (раньше было i % gridWidth и i / gridWidth = 2 idiv на каждую из 16k клеток).
+     *  - НЕТ false sharing на счётчике чанка: позиция в стеке живёт в локальной
+     *    переменной и пишется в oddCellCounter/evenCellCounter один раз в конце.
+     *    Раньше counters[threadId] писался на КАЖДУЮ частицу, а все счётчики
+     *    (IntArray(threadCount), 8 int = 32 байта) лежат в одной кэш-линии — то есть
+     *    ~30k записей за тик гоняли одну линию между всеми ядрами по кругу
+     *    (RFO + инвалидация в остальных L1, десятки-сотни циклов на запись).
      *  - Ссылки на массивы подняты в локальные переменные: поля grid/particleCounts
      *    объявлены как var, поэтому JIT обязан перечитывать их после каждой записи в память.
      *
@@ -57,6 +63,16 @@ class ParticlePhysicsSystem(
         val counts = gridManager.particleCounts
         val maxPerCell = gridManager.maxAmountOfParticles
         val width = gridManager.gridWidth
+
+        val stacks: Array<IntArray>? = if (!distributeIndices) null
+        else if (isOdd) worldCommandsManager.oddCellChunkPositionStack
+        else worldCommandsManager.evenCellChunkPositionStack
+
+        // Позиция в стеке чанка держится в регистре, а не в разделяемом массиве счётчиков.
+        var stack = stacks?.get(threadId)
+        var stackCount = if (stacks == null) 0
+        else if (isOdd) worldCommandsManager.oddCellCounter[threadId]
+        else worldCommandsManager.evenCellCounter[threadId]
 
         var x = start % width
         var y = start / width
@@ -80,13 +96,27 @@ class ParticlePhysicsSystem(
                     for (i in 0 until count) {
                         val particleIndex = grid[base + i]
                         processNeighborsCellsCollision(particleIndex, x, y, threadId)
-                        if (distributeIndices) {
-                            distributeParticleIndicesAcrossChunks(particleIndex, threadId, isOdd)
+
+                        if (stack != null) {
+                            if (stackCount >= stack.size) {
+                                stack = growChunkStack(stacks!!, threadId, stack)
+                            }
+                            stack[stackCount] = particleIndex
+                            stackCount++
                         }
                     }
                 } else {
                     // Редкий путь: клетка переполнена, часть частиц лежит в списке-хвосте.
-                    processOverflowedGridCell(cellIndex, x, y, threadId, isOdd, distributeIndices)
+                    stackCount = processOverflowedGridCell(
+                        cellIndex = cellIndex,
+                        gridX = x,
+                        gridY = y,
+                        threadId = threadId,
+                        stacks = stacks,
+                        stackCount = stackCount
+                    )
+                    // Стек мог быть перевыделен внутри — перечитываем ссылку.
+                    stack = stacks?.get(threadId)
                 }
             }
 
@@ -96,20 +126,28 @@ class ParticlePhysicsSystem(
                 y++
             }
         }
+
+        // Единственная запись в разделяемый счётчик за весь чанк.
+        if (stacks != null) {
+            if (isOdd) worldCommandsManager.oddCellCounter[threadId] = stackCount
+            else worldCommandsManager.evenCellCounter[threadId] = stackCount
+        }
     }
 
     /**
      * Холодный путь для переполненных клеток сетки (count > maxAmountOfParticles).
      * Вынесен отдельно, чтобы не раздувать горячий цикл и не мешать его инлайнингу.
+     *
+     * Возвращает новую позицию в стеке чанка (счётчик не пишется в разделяемый массив).
      */
     private fun processOverflowedGridCell(
         cellIndex: Int,
         gridX: Int,
         gridY: Int,
         threadId: Int,
-        isOdd: Boolean,
-        distributeIndices: Boolean
-    ) {
+        stacks: Array<IntArray>?,
+        stackCount: Int
+    ): Int {
         val count = gridManager.particleCounts[cellIndex]
         val maxPerCell = gridManager.maxAmountOfParticles
         val base = cellIndex * maxPerCell
@@ -128,35 +166,33 @@ class ParticlePhysicsSystem(
             }
         }
 
+        var position = stackCount
+        var stack = stacks?.get(threadId)
+
         for (i in 0 until count) {
             val particleIndex = if (i < extraSize) extra[i] else grid[base + i - extraSize]
             processNeighborsCellsCollision(particleIndex, gridX, gridY, threadId)
-            if (distributeIndices) {
-                distributeParticleIndicesAcrossChunks(particleIndex, threadId, isOdd)
+
+            if (stack != null) {
+                if (position >= stack.size) {
+                    stack = growChunkStack(stacks!!, threadId, stack)
+                }
+                stack[position] = particleIndex
+                position++
             }
         }
+
+        return position
     }
 
-    private fun distributeParticleIndicesAcrossChunks(
-        cellIndex: Int,
-        threadId: Int,
-        isOdd: Boolean
-    ) {
-        val stacks = if (isOdd) worldCommandsManager.oddCellChunkPositionStack
-        else worldCommandsManager.evenCellChunkPositionStack
-        val counters = if (isOdd) worldCommandsManager.oddCellCounter
-        else worldCommandsManager.evenCellCounter
-
-        val index = counters[threadId]
-        var arr = stacks[threadId]
-
-        if (index >= arr.size) {
-            arr = arr.copyOf(arr.size + (arr.size shr 1))
-            stacks[threadId] = arr
-        }
-
-        arr[index] = cellIndex
-        counters[threadId] = index + 1
+    /**
+     * Растит стек чанка и публикует новую ссылку. Каждый поток трогает только свой слот,
+     * поэтому синхронизация не нужна; путь редкий, из горячего цикла вынесен.
+     */
+    private fun growChunkStack(stacks: Array<IntArray>, threadId: Int, current: IntArray): IntArray {
+        val grown = current.copyOf(current.size + (current.size shr 1))
+        stacks[threadId] = grown
+        return grown
     }
 
     /**
