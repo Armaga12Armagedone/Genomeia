@@ -1,9 +1,11 @@
 package io.github.some_example_name.old.systems.genomics
 
 import com.badlogic.gdx.utils.Disposable
+import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.cells.base.activation
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.WorldCommandType
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DISimulationContainer.energyTransportRate
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.entities.CellEntity
@@ -25,6 +27,15 @@ class CellSystem(
     val mutateManager: MutateManager,
     val threadManager: ThreadManager?
 ): Disposable {
+
+    /**
+     * Типы клеток массивом вместо List<Cell>.
+     *
+     * cellList[type].doOnTick(...) вызывается для каждой живой клетки каждый тик.
+     * Через List это invokeinterface List.get + checkcast, через массив — один aaload.
+     * Состав списка после старта не меняется, поэтому копия безопасна.
+     */
+    private val cells: Array<Cell> = cellEntity.cellList.toTypedArray()
 
     fun iterateCellInParallel() = with(cellEntity) {
         if (threadManager == null) return@with
@@ -57,8 +68,16 @@ class CellSystem(
 
         val isNeural = isNeural[cellIndex]
 
-        if (neuronImpulseInput[cellIndex].isNaN() || neuronImpulseOutput[cellIndex].isNaN()) {
-            throw Exception("neuronImpulseInput $cellIndex is Nan ${cellList[cellType[cellIndex].toInt()].name} ${neuronImpulseInput[cellIndex]} ${neuronImpulseOutput[cellIndex]}")
+        // Проверка на NaN — отладочная. DEBUG_CHECKS это const val, поэтому при false
+        // блок вырезается компилятором целиком: ни двух лишних чтений из массивов,
+        // ни двух сравнений, ни конкатенации строки, ни throw в горячем методе.
+        if (DEBUG_CHECKS &&
+            (neuronImpulseInput[cellIndex].isNaN() || neuronImpulseOutput[cellIndex].isNaN())
+        ) {
+            throw Exception(
+                "neuronImpulseInput $cellIndex is Nan ${cells[cellType[cellIndex].toInt()].name} " +
+                    "${neuronImpulseInput[cellIndex]} ${neuronImpulseOutput[cellIndex]}"
+            )
         }
 
         if (isNeural) {
@@ -70,7 +89,7 @@ class CellSystem(
             neuronImpulseOutput[cellIndex] = neuronImpulseInput[cellIndex]
         }
 
-        cellList[cellType[cellIndex].toInt()].doOnTick(cellIndex = cellIndex, threadId = threadId)
+        cells[cellType[cellIndex].toInt()].doOnTick(cellIndex = cellIndex, threadId = threadId)
 
         if (isNeural) {
             neuronImpulseInput[cellIndex] = if (getIsSum(cellIndex)) 0f else 1f
@@ -179,7 +198,6 @@ class CellSystem(
             energy[linkCell2] = energy2 + energyTransportRate
         }
     }
-
 
     override fun dispose() {
 

@@ -3,6 +3,7 @@ package io.github.some_example_name.old.systems.physics
 import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.WorldCommandType
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.DISimulationContainer.linkMaxLength2
 import io.github.some_example_name.old.core.DISimulationContainer.threadManager
@@ -109,7 +110,14 @@ class LinkPhysicsSystem(
                 val stiffnessB = cellStiffness[linkParticleB]
                 val stiffness = 2 * stiffnessA * stiffnessB / (stiffnessA + stiffnessB)
 
-                if (distanceSquared < 0) throw Exception("distanceSquared < 0, distanceSquared = $distanceSquared")
+                // Отладочная проверка: distanceSquared это сумма двух квадратов, отрицательной
+                // она может стать только при NaN/inf в координатах. При DEBUG_CHECKS = false
+                // конструкция вырезается компилятором, в байткоде не остаётся ни сравнения,
+                // ни конкатенации строки, ни throw внутри горячего метода.
+                if (DEBUG_CHECKS && distanceSquared < 0) {
+                    throw Exception("distanceSquared < 0, distanceSquared = $distanceSquared")
+                }
+
                 val invDist = invSqrt(distanceSquared)
                 val dist = distanceSquared * invDist
 

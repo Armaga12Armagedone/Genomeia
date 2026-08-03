@@ -121,9 +121,13 @@ class Eye(cellTypeId: Int): Cell(
         var tMaxX = if (dx == 0f) Float.POSITIVE_INFINITY else abs((xBound - x1) / dx)
         var tMaxY = if (dy == 0f) Float.POSITIVE_INFINITY else abs((yBound - y1) / dy)
 
-        val dirLength = 1.0f / invSqrt(dx * dx + dy * dy)
-        val normX = -dy / dirLength
-        val normY = dx / dirLength
+        // invSqrt возвращает 1/длину — им и надо умножать. Раньше здесь было
+        // 1f / invSqrt(...) (то есть деление, чтобы получить длину) и потом ещё два
+        // деления на неё же: три деления там, где достаточно двух умножений.
+        val invDirLength = invSqrt(dx * dx + dy * dy)
+        val normX = -dy * invDirLength
+        val normY = dx * invDirLength
+
         var objectsCount = 0
         val gridWidth = gridManager.gridWidth
         val gridHeight = gridManager.gridHeight
