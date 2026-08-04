@@ -66,17 +66,15 @@ class CollisionManager(
 
         val dx = positionsX[particleAId] - positionsX[particleBId]
         val dy = positionsY[particleAId] - positionsY[particleBId]
-        val dx2 = dx * dx
-        if (dx2 > MAX_RADIUS_SQUARED) return
-        val dy2 = dy * dy
-        if (dy2 > MAX_RADIUS_SQUARED) return
+        val distanceSquared = dx * dx + dy * dy
+
+        if (distanceSquared > MAX_RADIUS_SQUARED) return
 
         val radiusA = radii[particleAId]
         val radiusB = radii[particleBId]
         val particleRadius = radiusA + radiusB
         val radiusSquared = particleRadius * particleRadius
 
-        val distanceSquared = dx2 + dy2
         if (distanceSquared >= radiusSquared) return
 
         // Отсюда и ниже — путь реального пересечения. Всё, что выше, это ранний выход,
@@ -266,10 +264,27 @@ class CollisionManager(
         const val PARTICLE_MAX_RADIUS_SQUARED = 0.25f
 
         /**
-         * Именно 4f, а не 4: с Int'ом сравнение dx2 > MAX_RADIUS_SQUARED требует
-         * преобразования типа, и полагаться на то, что компилятор свернёт константу
-         * в float (а не расширит сравнение до double), не хочется.
+         * Квадрат предельного расстояния, на котором пересечение ещё возможно: сумма двух
+         * максимальных радиусов. Дальше него столкновения быть не может при любых радиусах,
+         * поэтому предфильтр в repulse отсеивает по нему, не читая radius[a] и radius[b].
+         *
+         * Было 4f, то есть предел 2. Это не давало неверных результатов — слишком свободный
+         * предфильтр лишь пропускает дальше пары, которые всё равно отсеет точная проверка,
+         * — но не отсекало и ничего: обход соседей идёт по ±1 клетке при размере клетки в
+         * 1 мировую единицу, поэтому расстояние между любой проверяемой парой и так меньше
+         * 2 ПО ПОСТРОЕНИЮ. Проверка была мёртвой, а каждый кандидат доходил до чтения обоих
+         * радиусов, чтобы отсеяться уже на точной проверке.
+         *
+         * ЭТО НЕ НОВОЕ ДОПУЩЕНИЕ. Обход ±1 клетки сам по себе уже требует, чтобы сумма
+         * радиусов не превышала размер клетки: иначе две частицы, которые должны
+         * столкнуться, могли бы оказаться в клетках через одну и не встретиться вовсе.
+         * Константа лишь делает это требование явным, поэтому и выражена через
+         * PARTICLE_MAX_RADIUS, а не числом.
+         *
+         * Само требование проверяется в repulse под DEBUG_CHECKS: радиус приходит в том
+         * числе из генома (Genome.radius), где ничем не ограничен.
          */
-        const val MAX_RADIUS_SQUARED = 4f
+        const val MAX_RADIUS_SQUARED =
+            (PARTICLE_MAX_RADIUS + PARTICLE_MAX_RADIUS) * (PARTICLE_MAX_RADIUS + PARTICLE_MAX_RADIUS)
     }
 }

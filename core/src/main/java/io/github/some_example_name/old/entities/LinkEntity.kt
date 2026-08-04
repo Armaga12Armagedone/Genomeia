@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.entities
 
+import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.systems.physics.GridManager
 
@@ -114,10 +115,70 @@ class LinkEntity(
         cellEntity.linkAmount[cellIndex] ++
         cellEntity.linkAmount[otherCellIndex] ++
 
-        cellEntity.addCellLink(cellIndex, otherCellIndex)
-        cellEntity.addCellLink(otherCellIndex, cellIndex)
+        cellEntity.addCellLink(cellIndex, otherCellIndex, addLinkIndex)
+        cellEntity.addCellLink(otherCellIndex, cellIndex, addLinkIndex)
 
         return addLinkIndex
+    }
+
+    /**
+     * Снимает ВСЕ связи умирающей клетки. Вызывать до cellEntity.deleteCell, из
+     * однопоточной фазы применения команд.
+     *
+     * ЗАЧЕМ
+     * -----
+     * Раньше это делалось лениво: processLink на каждой связи каждый тик проверял, живы ли
+     * обе клетки, и при смерти отправлял DELETE_LINK. Проверка — это isAlive[a], isAlive[b],
+     * getGeneration(a), getGeneration(b), linksGeneration1[i], linksGeneration2[i], то есть
+     * шесть чтений из шести разных массивов на КАЖДУЮ связь. При 480 тысячах связей это
+     * порядка трети всех обращений к памяти в методе, и вся эта работа пропорциональна
+     * числу связей в мире, хотя событие пропорционально числу смертей.
+     *
+     * Теперь стоимость платится один раз на смерть и равна числу связей самой клетки
+     * (не больше MAX_LINKS_PER_CELL), а из горячего цикла проверка убрана совсем.
+     *
+     * ПРО ОБХОД
+     * ---------
+     * Список соседей плотный, а deleteLink делает swap-with-last в обоих направлениях,
+     * поэтому после каждого удаления в слоте 0 снова оказывается живой сосед. Значит
+     * итератор не нужен и проблемы инвалидации тоже: просто разбираем слот 0, пока он занят.
+     * Каждая итерация уменьшает список ровно на один элемент, так что цикл конечен.
+     */
+    fun detachAllLinks(
+        cellIndex: Int,
+        evenLinkLists: Array<IntArrayList>,
+        oddLinkLists: Array<IntArrayList>
+    ) {
+        val base = cellIndex shl CellEntity.LINKS_SHIFT
+        val neighbours = cellEntity.cellLinks
+        val linkIds = cellEntity.cellLinkIds
+
+        while (neighbours[base] != -1) {
+            val otherCellIndex = neighbours[base]
+            val linkIndex = linkIds[base]
+
+            if (linkIndex == -1) {
+                // Рассинхронизации быть не должно, но зацикливаться на ней нельзя:
+                // убираем соседа руками, сохраняя плотность списка.
+                cellEntity.removeCellLink(cellIndex, otherCellIndex)
+                continue
+            }
+
+            // Сосед помечается ДО удаления: deleteLink обнулит links1/links2, и после
+            // него связь уже не скажет, кто был на другом конце.
+            cellEntity.isOnEdge[otherCellIndex] = true
+            cellEntity.setColor(otherCellIndex, EDGE_COLOR)
+            // Тот же смысл, что у reinitParentLink: у выжившего соседа не должно остаться
+            // ссылки на индекс, который вот-вот переиспользует новая клетка.
+            if (cellEntity.parentIndex[otherCellIndex] == cellIndex) {
+                cellEntity.parentIndex[otherCellIndex] = -1
+            }
+
+            removeLinkFromLists(linkIndex, evenLinkLists, oddLinkLists)
+            // Без проверки поколения: индекс взят из живого списка соседей прямо сейчас,
+            // переиспользовать его между этими двумя строками некому.
+            deleteLink(linkIndex)
+        }
     }
 
 
@@ -202,5 +263,10 @@ class LinkEntity(
         linkPhase = linkPhase.resize(false)
         assignedThread = assignedThread.resize(-1)
         linkToListPosition = linkToListPosition.resize(-1)
+    }
+
+    companion object {
+        /** Цвет клетки, оставшейся на краю после разрыва связи. Считается один раз. */
+        private val EDGE_COLOR = Color.RED.toIntBits()
     }
 }

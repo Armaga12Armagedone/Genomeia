@@ -106,6 +106,26 @@ class CellEntity(
     var cellLinks = IntArray(maxAmount * MAX_LINKS_PER_CELL) { -1 }
 
     /**
+     * Индексы связей, параллельно [cellLinks]: в слоте i лежит индекс той связи, которая
+     * соединяет клетку с соседом cellLinks[i]. Оба массива всегда меняются вместе.
+     *
+     * Зачем отдельный массив, а не пара в одном: [cellLinks] сканируется в repulse на
+     * каждое касание клеток, и весь смысл его раскладки в том, что первые HOT_LINKS слотов
+     * лежат в ОДНОЙ кэш-линии. Если положить рядом ещё и индекс связи, на ту же выборку
+     * понадобится две линии, и горячая проверка подорожает вдвое ради данных, которые ей
+     * не нужны. Здесь наоборот — этот массив холодный: он читается только при разрыве
+     * связи и при смерти клетки.
+     *
+     * Зачем он вообще: чтобы при смерти клетки можно было СРАЗУ снять все её связи. Раньше
+     * это делалось лениво — processLink каждый тик проверял у каждой связи, живы ли обе
+     * клетки, и по индексу клетки добраться до её связей было нельзя. Проверка стоила шесть
+     * чтений из шести разных массивов на каждую связь каждый тик; теперь та же работа
+     * делается один раз на смерть клетки и пропорциональна числу её связей, а не числу
+     * связей в мире.
+     */
+    var cellLinkIds = IntArray(maxAmount * MAX_LINKS_PER_CELL) { -1 }
+
+    /**
      * Горячая проверка из repulse.
      *
      * Первые HOT_LINKS слотов сканируются развёрнуто и без ранних выходов: они лежат в
@@ -161,12 +181,14 @@ class CellEntity(
      * Добавляет соседа в первый свободный слот. false — слотов больше нет.
      * Вызывается только из однопоточной фазы применения команд.
      */
-    fun addCellLink(cellIndex: Int, otherCellIndex: Int): Boolean {
+    fun addCellLink(cellIndex: Int, otherCellIndex: Int, linkIndex: Int): Boolean {
         val links = cellLinks
+        val linkIds = cellLinkIds
         val base = cellIndex shl LINKS_SHIFT
         for (i in base until base + MAX_LINKS_PER_CELL) {
             if (links[i] == -1) {
                 links[i] = otherCellIndex
+                linkIds[i] = linkIndex
                 return true
             }
         }
@@ -176,9 +198,13 @@ class CellEntity(
     /**
      * Удаляет одно вхождение соседа, сохраняя плотность списка (swap with last).
      * Если соседа нет — no-op (связь могла быть уже снята вместе со смертью клетки).
+     *
+     * На плотность опирается и быстрый выход из скана в [areCellsLinked], и [canAddCellLink],
+     * и обход в LinkEntity.detachAllLinks, поэтому оба массива двигаются синхронно.
      */
     fun removeCellLink(cellIndex: Int, otherCellIndex: Int) {
         val links = cellLinks
+        val linkIds = cellLinkIds
         val base = cellIndex shl LINKS_SHIFT
 
         var slot = -1
@@ -194,11 +220,14 @@ class CellEntity(
 
         links[slot] = links[last]
         links[last] = -1
+        linkIds[slot] = linkIds[last]
+        linkIds[last] = -1
     }
 
     fun clearCellLinks(cellIndex: Int) {
         val base = cellIndex shl LINKS_SHIFT
         cellLinks.fill(-1, base, base + MAX_LINKS_PER_CELL)
+        cellLinkIds.fill(-1, base, base + MAX_LINKS_PER_CELL)
     }
 
 
@@ -398,9 +427,10 @@ class CellEntity(
         this.degreeOfShortening[cellIndex] = 1f
         pheromoneType[cellIndex] = -1
         linkAmount[cellIndex] = 0
-        // Сами связи ещё живы (их снимет LinkPhysicsSystem, увидев мёртвую клетку и
-        // отправив DELETE_LINK), но список этой клетки уже не нужен, а слот индекса
-        // может быть переиспользован. Обратные ссылки у соседей уберёт deleteLink.
+        // К этому моменту связей быть уже не должно: их снимает LinkEntity.detachAllLinks,
+        // которую DELETE_CELL вызывает ДО deleteCell. Здесь остаётся страховка на случай
+        // пути смерти, который detachAllLinks не позвал: индексы клеток переиспользуются
+        // через deadStack, и остаточный сосед достался бы новой клетке.
         clearCellLinks(cellIndex)
         command[cellIndex] = -1
         neuralConnections.remove(cellIndex)
@@ -448,6 +478,7 @@ class CellEntity(
         pheromoneType.clear(-1)
         linkAmount.clear(0)
         cellLinks.fill(-1, 0, bound shl LINKS_SHIFT)
+        cellLinkIds.fill(-1, 0, bound shl LINKS_SHIFT)
         command.clear(-1)
         neuralConnections.clear()
         organToIdToIndex.clear()
@@ -491,6 +522,11 @@ class CellEntity(
             val old = cellLinks
             cellLinks = IntArray(maxAmount shl LINKS_SHIFT) { -1 }
             System.arraycopy(old, 0, cellLinks, 0, oldMax shl LINKS_SHIFT)
+        }
+        run {
+            val old = cellLinkIds
+            cellLinkIds = IntArray(maxAmount shl LINKS_SHIFT) { -1 }
+            System.arraycopy(old, 0, cellLinkIds, 0, oldMax shl LINKS_SHIFT)
         }
         command = command.resize(-1)
     }

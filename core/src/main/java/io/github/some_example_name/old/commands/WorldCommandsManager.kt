@@ -121,10 +121,20 @@ class WorldCommandsManager(
                     }
                     WorldCommandType.DELETE_LINK -> {
                         val linkIndex = ints[0]
-                        linkEntity.removeLinkFromLists(
-                            linkIndex, evenLinkLists, oddLinkLists
-                        )
-                        linkEntity.deleteLink(linkIndex, linkGeneration = ints[1])
+                        // Проверка поколения ДО removeLinkFromLists, а не только внутри
+                        // deleteLink. Индекс связи мог быть освобождён и тут же
+                        // переиспользован новой связью в этой же фазе: detachAllLinks
+                        // возвращает индексы в deadStack, а ADD_LINK берёт их оттуда (LIFO).
+                        // Тогда removeLinkFromLists нашла бы по этому индексу ЖИВУЮ новую
+                        // связь (её собственная позиция в списке, её собственный индекс —
+                        // защита внутри метода такое не ловит) и выкинула бы её из списка
+                        // слота: связь осталась бы в LinkEntity, но перестала бы обсчитываться.
+                        if (linkEntity.isAliveAndSameGen(linkIndex, ints[1])) {
+                            linkEntity.removeLinkFromLists(
+                                linkIndex, evenLinkLists, oddLinkLists
+                            )
+                            linkEntity.deleteLink(linkIndex, linkGeneration = ints[1])
+                        }
                     }
                     WorldCommandType.ADD_CELL -> {
                         val isMorphogenesis = booleans[1]
@@ -257,6 +267,11 @@ class WorldCommandsManager(
                             pheromoneEntity.addPheromone(x, y, emitterIndex = substancesEntity.particleIndex[newSubIndex], type = 0)
                             pheromoneEntity.addPheromone(x, y, emitterIndex = -1, type = 18, time = 0.3f)
                             organManager.cellDeleted(cellIndex)
+                            // Строго до deleteCell: detachAllLinks читает список соседей
+                            // умирающей клетки, а deleteCell его затирает. Здесь же
+                            // выжившие соседи получают isOnEdge и сброс parentIndex —
+                            // раньше это делал processLink, увидев мёртвую клетку.
+                            linkEntity.detachAllLinks(cellIndex, evenLinkLists, oddLinkLists)
                             cellEntity.deleteCell(cellIndex)
                             cellList[cellEntity.cellType[cellIndex].toInt()].onDie(cellIndex)
                         }

@@ -75,32 +75,34 @@ class LinkPhysicsSystem(
         val linkCellA = linkEntity.links1[linkIndex]
         val linkCellB = linkEntity.links2[linkIndex]
 
-
-        //TODO весь блок с удалением можно убрать, так как теперь есть
-        val isAlive = cellEntity.isAlive
-        val linkCellAIsDead = !isAlive[linkCellA] ||
-            cellEntity.getGeneration(linkCellA) != linkEntity.linksGeneration1[linkIndex]
-        val linkCellBIsDead = !isAlive[linkCellB] ||
-            cellEntity.getGeneration(linkCellB) != linkEntity.linksGeneration2[linkIndex]
-
-        if (linkCellAIsDead || linkCellBIsDead) {
-            if (PROFILE_COUNTERS) SimCounters.increment(threadId, SimCounters.LINK_BREAKS)
-            linkEntity.reinitParentLink(linkIndex)
-            // Скалярный push: без intArrayOf и без arraycopy на два int'а.
-            worldCommandsManager.worldCommandBuffer[threadId].push(
-                WorldCommandType.DELETE_LINK,
-                linkIndex,
-                linkEntity.getGeneration(linkIndex)
-            )
-            if (linkCellAIsDead && !linkCellBIsDead) {
-                cellEntity.isOnEdge[linkCellB] = true
-                cellEntity.setColor(linkCellB, Color.RED.toIntBits())
+        // Проверки "жива ли клетка на конце связи" здесь больше нет.
+        //
+        // Она стоила шесть чтений из шести разных массивов (isAlive дважды, generation
+        // клетки дважды, linksGeneration1/2 связи) на КАЖДУЮ связь КАЖДЫЙ тик — то есть
+        // примерно треть всех обращений к памяти в этом методе, — и вся эта работа была
+        // пропорциональна числу связей в мире, хотя само событие пропорционально числу
+        // смертей. Теперь связи умирающей клетки снимаются сразу, в LinkEntity.detachAllLinks
+        // из обработчика DELETE_CELL, и до этого метода мёртвая связь просто не доходит:
+        // detachAllLinks убирает её из списков слотов до начала следующего тика.
+        //
+        // Инвариант, на котором это держится: единственный путь смерти клетки — команда
+        // DELETE_CELL, а она однопоточная и идёт до фазы связей следующего тика.
+        //
+        // Если инвариант когда-нибудь нарушат (появится ещё один путь смерти, который не
+        // зовёт detachAllLinks), симуляция начнёт молча считать физику по мёртвым индексам.
+        // Поэтому под DEBUG_CHECKS он проверяется явно — включать при любой правке путей
+        // жизненного цикла клетки.
+        if (DEBUG_CHECKS) {
+            val isAlive = cellEntity.isAlive
+            if (!isAlive[linkCellA] || !isAlive[linkCellB] ||
+                cellEntity.getGeneration(linkCellA) != linkEntity.linksGeneration1[linkIndex] ||
+                cellEntity.getGeneration(linkCellB) != linkEntity.linksGeneration2[linkIndex]
+            ) {
+                throw IllegalStateException(
+                    "живая связь $linkIndex ссылается на мёртвую клетку: " +
+                        "A=$linkCellA B=$linkCellB — detachAllLinks не был вызван"
+                )
             }
-            if (linkCellBIsDead && !linkCellAIsDead) {
-                cellEntity.isOnEdge[linkCellA] = true
-                cellEntity.setColor(linkCellA, Color.RED.toIntBits())
-            }
-            return
         }
 
         val linkParticleA = cellEntity.getParticleIndex(linkCellA)
