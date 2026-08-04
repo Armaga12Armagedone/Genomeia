@@ -49,104 +49,145 @@ class LinkPhysicsSystem(
         threadManager.futures.clear()
     }
 
-    fun processLink(linkIndex: Int, threadId: Int = 0) = with(particleEntity) {
-        with(cellEntity) {
-            with(linkEntity) {
-                val linkCellA = links1[linkIndex]
-                val linkCellB = links2[linkIndex]
+    /**
+     * Обработка одной связи. Вызывается для каждой связи каждый тик, из нескольких потоков.
+     *
+     * Раньше тело метода жило в трёх вложенных with (particleEntity, cellEntity, linkEntity),
+     * из-за чего каждое обращение вида x[i] или links1[i] превращалось в чтение поля
+     * соответствующего объекта плюс чтение элемента. Поля сущностей — var (их
+     * переоткрывают при росте), а в середине метода стоят вызовы transportEnergy,
+     * processCellAngle и reinitParentIndex, которые для JIT могут записать что угодно
+     * в любое поле, поэтому после каждого вызова все ссылки на массивы приходилось
+     * перечитывать. Теперь массивы поднимаются в локальные переменные (регистры) один раз.
+     *
+     * Инвариант тот же, что и в repulse: в параллельной фазе массивы не пересоздаются,
+     * меняются только элементы, а рост сущностей идёт в однопоточной фазе применения команд.
+     */
+    fun processLink(linkIndex: Int, threadId: Int = 0) {
+        val linkEntity = linkEntity
+        val cellEntity = cellEntity
+        val particleEntity = particleEntity
 
-                val linkCellAIsDead = !cellEntity.isAlive[linkCellA] || cellEntity.getGeneration(linkCellA) != linksGeneration1[linkIndex]
-                val linkCellBIsDead = !cellEntity.isAlive[linkCellB] || cellEntity.getGeneration(linkCellB) != linksGeneration2[linkIndex]
+        val linkCellA = linkEntity.links1[linkIndex]
+        val linkCellB = linkEntity.links2[linkIndex]
 
-                if (linkCellAIsDead || linkCellBIsDead) {
-                    linkEntity.reinitParentLink(linkIndex)
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.DELETE_LINK,
-                        ints = intArrayOf(linkIndex, linkEntity.getGeneration(linkIndex))
-                    )
-                    if (linkCellAIsDead && !linkCellBIsDead) {
-                        isOnEdge[linkCellB] = true
-                        setColor(linkCellB, Color.RED.toIntBits())
-                    }
-                    if (linkCellBIsDead && !linkCellAIsDead) {
-                        isOnEdge[linkCellA] = true
-                        setColor(linkCellA, Color.RED.toIntBits())
-                    }
-                    return@with
-                }
+        val isAlive = cellEntity.isAlive
+        val linkCellAIsDead = !isAlive[linkCellA] ||
+            cellEntity.getGeneration(linkCellA) != linkEntity.linksGeneration1[linkIndex]
+        val linkCellBIsDead = !isAlive[linkCellB] ||
+            cellEntity.getGeneration(linkCellB) != linkEntity.linksGeneration2[linkIndex]
 
-                val linkParticleA = getParticleIndex(linkCellA)
-                val linkParticleB = getParticleIndex(linkCellB)
-
-                val dx = x[linkParticleA] - x[linkParticleB]
-                val dy = y[linkParticleA] - y[linkParticleB]
-                val distanceSquared = dx * dx + dy * dy
-
-               cellSystem.transportEnergy(linkCellA, linkCellB)
-
-                val parentCellA = parentIndex[linkCellA]
-                val parentCellB = parentIndex[linkCellB]
-                if (linkCellA == parentCellB) {
-                    cellSystem.processCellAngle(linkCellB, linkCellA)
-                }
-                if (linkCellB == parentCellA) {
-                    cellSystem.processCellAngle(linkCellA, linkCellB)
-                }
-
-                if (distanceSquared > linkMaxLength2) {
-                    linkEntity.reinitParentLink(linkIndex)
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.DELETE_LINK,
-                        ints = intArrayOf(linkIndex, linkEntity.getGeneration(linkIndex))
-                    )
-                    isOnEdge[linkCellB] = true
-                    setColor(linkCellB, Color.RED.toIntBits())
-                    isOnEdge[linkCellA] = true
-                    setColor(linkCellA, Color.RED.toIntBits())
-                    return
-                }
-
-                val stiffnessA = cellStiffness[linkParticleA]
-                val stiffnessB = cellStiffness[linkParticleB]
-                val stiffness = 2 * stiffnessA * stiffnessB / (stiffnessA + stiffnessB)
-
-                // Отладочная проверка: distanceSquared это сумма двух квадратов, отрицательной
-                // она может стать только при NaN/inf в координатах. При DEBUG_CHECKS = false
-                // конструкция вырезается компилятором, в байткоде не остаётся ни сравнения,
-                // ни конкатенации строки, ни throw внутри горячего метода.
-                if (DEBUG_CHECKS && distanceSquared < 0) {
-                    throw Exception("distanceSquared < 0, distanceSquared = $distanceSquared")
-                }
-
-                val invDist = invSqrt(distanceSquared)
-                val dist = distanceSquared * invDist
-
-                val dirX = dx * invDist
-                val dirY = dy * invDist
-
-                val degreeOfShorteningA = degreeOfShortening[linkCellA]
-                val degreeOfShorteningB = degreeOfShortening[linkCellB]
-                val degreeOfShortening = 2f * degreeOfShorteningA * degreeOfShorteningB / (degreeOfShorteningA + degreeOfShorteningB)
-
-                val force = (dist - linksNaturalLength[linkIndex] * degreeOfShortening) * stiffness
-                // Spring dampening
-                val dvx = vx[linkParticleA] - vx[linkParticleB]
-                val dvy = vy[linkParticleA] - vy[linkParticleB]
-
-                val dampeningConstant = 0.3f
-                val dampeningForce = dampeningConstant * (dvx * dirX + dvy * dirY)
-
-                val fx = (force + dampeningForce) * dirX
-                val fy = (force + dampeningForce) * dirY
-
-                vx[linkParticleB] += fx
-                vy[linkParticleB] += fy
-                vx[linkParticleA] -= fx
-                vy[linkParticleA] -= fy
-
-                if (parentIndex[linkCellA] == -1) reinitParentIndex(linkCellA, linkCellB)
-                if (parentIndex[linkCellB] == -1) reinitParentIndex(linkCellB, linkCellA)
+        if (linkCellAIsDead || linkCellBIsDead) {
+            linkEntity.reinitParentLink(linkIndex)
+            // Скалярный push: без intArrayOf и без arraycopy на два int'а.
+            worldCommandsManager.worldCommandBuffer[threadId].push(
+                WorldCommandType.DELETE_LINK,
+                linkIndex,
+                linkEntity.getGeneration(linkIndex)
+            )
+            if (linkCellAIsDead && !linkCellBIsDead) {
+                cellEntity.isOnEdge[linkCellB] = true
+                cellEntity.setColor(linkCellB, Color.RED.toIntBits())
             }
+            if (linkCellBIsDead && !linkCellAIsDead) {
+                cellEntity.isOnEdge[linkCellA] = true
+                cellEntity.setColor(linkCellA, Color.RED.toIntBits())
+            }
+            return
         }
+
+        val linkParticleA = cellEntity.getParticleIndex(linkCellA)
+        val linkParticleB = cellEntity.getParticleIndex(linkCellB)
+
+        val positionsX = particleEntity.x
+        val positionsY = particleEntity.y
+
+        val dx = positionsX[linkParticleA] - positionsX[linkParticleB]
+        val dy = positionsY[linkParticleA] - positionsY[linkParticleB]
+        val distanceSquared = dx * dx + dy * dy
+
+        cellSystem.transportEnergy(linkCellA, linkCellB)
+
+        val parentIndices = cellEntity.parentIndex
+        val parentCellA = parentIndices[linkCellA]
+        val parentCellB = parentIndices[linkCellB]
+        if (linkCellA == parentCellB) {
+            cellSystem.processCellAngle(linkCellB, linkCellA)
+        }
+        if (linkCellB == parentCellA) {
+            cellSystem.processCellAngle(linkCellA, linkCellB)
+        }
+
+        if (distanceSquared > linkMaxLength2) {
+            linkEntity.reinitParentLink(linkIndex)
+            worldCommandsManager.worldCommandBuffer[threadId].push(
+                WorldCommandType.DELETE_LINK,
+                linkIndex,
+                linkEntity.getGeneration(linkIndex)
+            )
+            cellEntity.isOnEdge[linkCellB] = true
+            cellEntity.setColor(linkCellB, Color.RED.toIntBits())
+            cellEntity.isOnEdge[linkCellA] = true
+            cellEntity.setColor(linkCellA, Color.RED.toIntBits())
+            return
+        }
+
+        val cellStiffness = particleEntity.cellStiffness
+        val stiffnessA = cellStiffness[linkParticleA]
+        val stiffnessB = cellStiffness[linkParticleB]
+        // Гармоническое среднее. У клеток одного типа значения совпадают — самый частый
+        // случай, — поэтому равенство проверяется отдельно и деление пропускается по
+        // хорошо предсказываемой ветке.
+        val stiffness = if (stiffnessA == stiffnessB) stiffnessA
+        else 2f * stiffnessA * stiffnessB / (stiffnessA + stiffnessB)
+
+        // Отладочная проверка: distanceSquared это сумма двух квадратов, отрицательной
+        // она может стать только при NaN/inf в координатах. При DEBUG_CHECKS = false
+        // конструкция вырезается компилятором, в байткоде не остаётся ни сравнения,
+        // ни конкатенации строки, ни throw внутри горячего метода.
+        if (DEBUG_CHECKS && distanceSquared < 0) {
+            throw Exception("distanceSquared < 0, distanceSquared = $distanceSquared")
+        }
+
+        val invDist = invSqrt(distanceSquared)
+        val dist = distanceSquared * invDist
+
+        val dirX = dx * invDist
+        val dirY = dy * invDist
+
+        val degreeOfShorteningArray = cellEntity.degreeOfShortening
+        val degreeOfShorteningA = degreeOfShorteningArray[linkCellA]
+        val degreeOfShorteningB = degreeOfShorteningArray[linkCellB]
+        val degreeOfShortening = if (degreeOfShorteningA == degreeOfShorteningB) degreeOfShorteningA
+        else 2f * degreeOfShorteningA * degreeOfShorteningB /
+            (degreeOfShorteningA + degreeOfShorteningB)
+
+        val force =
+            (dist - linkEntity.linksNaturalLength[linkIndex] * degreeOfShortening) * stiffness
+
+        // Spring dampening
+        val velocitiesX = particleEntity.vx
+        val velocitiesY = particleEntity.vy
+
+        val dvx = velocitiesX[linkParticleA] - velocitiesX[linkParticleB]
+        val dvy = velocitiesY[linkParticleA] - velocitiesY[linkParticleB]
+
+        val dampeningConstant = 0.3f
+        val dampeningForce = dampeningConstant * (dvx * dirX + dvy * dirY)
+
+        val totalForce = force + dampeningForce
+        val fx = totalForce * dirX
+        val fy = totalForce * dirY
+
+        velocitiesX[linkParticleB] += fx
+        velocitiesY[linkParticleB] += fy
+        velocitiesX[linkParticleA] -= fx
+        velocitiesY[linkParticleA] -= fy
+
+        // Элементы читаются заново (а не берутся из parentCellA/B): reinitParentIndex
+        // мог только что записать сюда значение.
+        if (parentIndices[linkCellA] == -1) linkEntity.reinitParentIndex(linkCellA, linkCellB)
+        if (parentIndices[linkCellB] == -1) linkEntity.reinitParentIndex(linkCellB, linkCellA)
+
     }
 }

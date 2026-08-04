@@ -98,9 +98,11 @@ class CellSystem(
         }
 
         if (energy[cellIndex] < 0f) {
+            // Скалярный push: без intArrayOf и без arraycopy на два int'а.
             worldCommandsManager.worldCommandBuffer[threadId].push(
-                type = WorldCommandType.DELETE_CELL,
-                ints = intArrayOf(cellIndex, getGeneration(cellIndex))
+                WorldCommandType.DELETE_CELL,
+                cellIndex,
+                getGeneration(cellIndex)
             )
         }
 
@@ -147,18 +149,20 @@ class CellSystem(
                     //TODO Make a more accurate energy calculation
                     energyNecessaryToDivide[cellIndex] = 3.0f
                     worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.DIVIDE_ALIVE_CELL_ACTION_COUNTER,
-                        intArrayOf(organIndex)
+                        WorldCommandType.DIVIDE_ALIVE_CELL_ACTION_COUNTER,
+                        organIndex
                     )
+
                 }
 
                 if (isMutateNotNull) {
                     //TODO Make a more accurate energy calculation
                     energyNecessaryToMutate[cellIndex] = 2.0f
                     worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.MUTATE_ALIVE_CELL_ACTION_COUNTER,
-                        intArrayOf(organIndex)
+                        WorldCommandType.MUTATE_ALIVE_CELL_ACTION_COUNTER,
+                        organIndex
                     )
+
                 }
             }
             mutateManager.mutateCell(cellIndex, threadId)

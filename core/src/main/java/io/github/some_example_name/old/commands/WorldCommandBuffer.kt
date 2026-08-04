@@ -55,6 +55,60 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
         size++
     }
 
+    /**
+     * Скалярные перегрузки push для горячих путей.
+     *
+     * Обычный push(type, ints = intArrayOf(a, b)) на каждую команду:
+     *  - аллоцирует IntArray в eden (заголовок 16 байт + данные, ~24-32 байта),
+     *  - заполняет его,
+     *  - вызывает System.arraycopy, чтобы переложить 1-3 int'а (вызов intrinsic'а
+     *    с проверками границ и типов оправдан на килобайтах, а не на 8 байтах),
+     *  - оставляет мусор, который потом собирает GC.
+     * Escape analysis тут не спасает: массив передаётся в чужой метод, который его
+     * копирует, а push при таком количестве вызовов не всегда инлайнится.
+     * Команды летят из onContact и из физики связей, то есть десятки тысяч за тик
+     * на все потоки — это заметный поток аллокаций, а аллокация это ещё и запись
+     * в свежую (холодную) кэш-линию eden'а.
+     *
+     * Здесь значения пишутся прямо в слот буфера: ни аллокации, ни arraycopy, ни мусора.
+     * Слот всегда вмещает 3 int'а, потому что MAX_INT_PARAMS = 9.
+     */
+    fun push(type: WorldCommandType, int0: Int) {
+        if (size >= commandTypes.size) resize()
+
+        val index = size
+        commandTypes[index] = type.ordinal
+        intParams[index * WorldCommandType.MAX_INT_PARAMS] = int0
+
+        size = index + 1
+    }
+
+    fun push(type: WorldCommandType, int0: Int, int1: Int) {
+        if (size >= commandTypes.size) resize()
+
+        val index = size
+        commandTypes[index] = type.ordinal
+        val base = index * WorldCommandType.MAX_INT_PARAMS
+        intParams[base] = int0
+        intParams[base + 1] = int1
+
+        size = index + 1
+    }
+
+    fun push(type: WorldCommandType, int0: Int, int1: Int, int2: Int) {
+        if (size >= commandTypes.size) resize()
+
+        val index = size
+        commandTypes[index] = type.ordinal
+        val base = index * WorldCommandType.MAX_INT_PARAMS
+        intParams[base] = int0
+        intParams[base + 1] = int1
+        intParams[base + 2] = int2
+
+        size = index + 1
+    }
+
+
     // Обработка всех команд (consume) — итерация и вызов обработчика
     inline fun consume(processor: (WorldCommandType, IntArray, FloatArray, BooleanArray) -> Unit) {
         val tempInts = IntArray(WorldCommandType.MAX_INT_PARAMS)
