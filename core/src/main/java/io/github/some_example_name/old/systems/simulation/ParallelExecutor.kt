@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.systems.simulation
 
+import io.github.some_example_name.old.core.PROFILE_UTILIZATION
 import java.util.concurrent.atomic.AtomicIntegerArray
 import java.util.concurrent.locks.LockSupport
 
@@ -86,7 +87,7 @@ class ParallelExecutor(val workerCount: Int) {
         fun run(chunkIndex: Int, workerId: Int)
     }
 
-    /** Номер текущего задания. Volatile-запись здесь — это и есть публикация стадии. */
+    /** Номер текущего задания. \Volatile-запись здесь — это и есть публикация стадии. */
     @Volatile
     private var epoch = 0L
 
@@ -99,6 +100,23 @@ class ParallelExecutor(val workerCount: Int) {
      */
     private var currentJob: ChunkJob? = null
     private var currentChunkCount = 0
+
+    /**
+     * Номер фазы для профайлера. Обычное поле: его видимость обеспечивает та же
+     * volatile-запись в epoch, что и для currentJob.
+     */
+    private var currentStageId = -1
+
+    /**
+     * Время, проведённое каждым воркером внутри drain(), по фазам.
+     * Индекс: (stageId * MAX_WORKERS + workerId) * PADDING — воркеры разнесены по
+     * кэш-линиям, потому что пишут одновременно.
+     */
+    private val busyNanos =
+        if (PROFILE_UTILIZATION) LongArray(MAX_STAGES * MAX_WORKERS * PADDING) else LongArray(0)
+
+    /** Время стадии по стенным часам. Пишет только главный поток, padding не нужен. */
+    private val stageWallNanos = if (PROFILE_UTILIZATION) LongArray(MAX_STAGES) else LongArray(0)
 
     private val control = AtomicIntegerArray(CONTROL_SIZE)
     private val parkFlags = AtomicIntegerArray(workerCount * PADDING)
@@ -127,17 +145,25 @@ class ParallelExecutor(val workerCount: Int) {
      *
      * Вызывать можно только из одного потока — того, что владеет циклом симуляции.
      */
-    fun runChunks(chunkCount: Int, job: ChunkJob) {
+    fun runChunks(chunkCount: Int, stageId: Int, job: ChunkJob) {
         if (chunkCount <= 0) return
+
+        val stageStart = if (PROFILE_UTILIZATION) System.nanoTime() else 0L
 
         // Один воркер — нет смысла в атомарном курсоре и барьере вообще.
         if (workerCount == 1) {
             for (i in 0 until chunkCount) job.run(i, 0)
+            if (PROFILE_UTILIZATION && stageId in 0 until MAX_STAGES) {
+                val elapsed = System.nanoTime() - stageStart
+                stageWallNanos[stageId] += elapsed
+                busyNanos[stageId * MAX_WORKERS * PADDING] += elapsed
+            }
             return
         }
 
         currentJob = job
         currentChunkCount = chunkCount
+        currentStageId = stageId
         control.set(CURSOR, 0)
         control.set(PENDING, workerCount)
 
@@ -149,7 +175,7 @@ class ParallelExecutor(val workerCount: Int) {
         }
 
         // Главный поток работает наравне с остальными.
-        drain(0)
+        drainTimed(0)
         control.getAndDecrement(PENDING)
 
         var spins = 0
@@ -164,6 +190,59 @@ class ParallelExecutor(val workerCount: Int) {
                 spins = 0
             }
         }
+
+        // Считается после ожидания: стадия заканчивается, когда закончил последний воркер.
+        if (PROFILE_UTILIZATION && stageId in 0 until MAX_STAGES) {
+            stageWallNanos[stageId] += System.nanoTime() - stageStart
+        }
+    }
+
+    /**
+     * drain() с замером.
+     *
+     * Меряется именно drain, а не весь цикл ожидания: воркер выходит из drain сразу,
+     * как только очередь чанков опустела, поэтому это ровно время полезной работы.
+     * Разница между суммой этих времён и (workerCount * время стадии) и есть простой
+     * на барьере, то есть цена неравномерности нагрузки.
+     *
+     * Два nanoTime на воркера на стадию — порядка сотни вызовов за тик.
+     */
+    private fun drainTimed(workerId: Int) {
+        if (!PROFILE_UTILIZATION) {
+            drain(workerId)
+            return
+        }
+
+        val stageId = currentStageId
+        val start = System.nanoTime()
+        drain(workerId)
+        if (stageId in 0 until MAX_STAGES && workerId < MAX_WORKERS) {
+            busyNanos[(stageId * MAX_WORKERS + workerId) * PADDING] += System.nanoTime() - start
+        }
+    }
+
+    /**
+     * Суммарное время работы всех воркеров в фазе за окно, с обнулением.
+     * Читать только из потока симуляции между стадиями.
+     */
+    fun takeStageBusyNanos(stageId: Int): Long {
+        if (!PROFILE_UTILIZATION || stageId !in 0 until MAX_STAGES) return 0L
+        var total = 0L
+        val base = stageId * MAX_WORKERS * PADDING
+        for (worker in 0 until MAX_WORKERS) {
+            val index = base + worker * PADDING
+            total += busyNanos[index]
+            busyNanos[index] = 0
+        }
+        return total
+    }
+
+    /** Время фазы по стенным часам за окно, с обнулением. */
+    fun takeStageWallNanos(stageId: Int): Long {
+        if (!PROFILE_UTILIZATION || stageId !in 0 until MAX_STAGES) return 0L
+        val total = stageWallNanos[stageId]
+        stageWallNanos[stageId] = 0
+        return total
     }
 
     /**
@@ -210,7 +289,7 @@ class ParallelExecutor(val workerCount: Int) {
             }
 
             seen = epoch
-            drain(workerId)
+            drainTimed(workerId)
             control.getAndDecrement(PENDING)
         }
     }
@@ -251,5 +330,11 @@ class ParallelExecutor(val workerCount: Int) {
 
         /** Главный поток спинит агрессивнее: он ждёт заведомо короткий хвост стадии. */
         private const val MAIN_SPIN_LIMIT = 200_000
+
+        /** Буферы профайлера индексируются номером фазы, поэтому размер берётся оттуда же. */
+        private const val MAX_STAGES = Phase.COUNT
+
+        /** Потолок для индексации буферов занятости, а не ограничение на воркеров. */
+        private const val MAX_WORKERS = 64
     }
 }

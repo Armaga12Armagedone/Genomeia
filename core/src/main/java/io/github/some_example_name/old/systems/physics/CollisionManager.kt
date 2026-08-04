@@ -4,10 +4,12 @@ import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.core.DEBUG_CHECKS
+import io.github.some_example_name.old.core.PROFILE_COUNTERS
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
+import io.github.some_example_name.old.systems.simulation.SimCounters
 import kotlin.math.sqrt
 
 class CollisionManager(
@@ -77,6 +79,12 @@ class CollisionManager(
         val distanceSquared = dx2 + dy2
         if (distanceSquared >= radiusSquared) return
 
+        // Отсюда и ниже — путь реального пересечения. Всё, что выше, это ранний выход,
+        // и разница в цене между ними порядковая; отношение COLLISIONS к PAIR_CANDIDATES
+        // говорит, насколько плотно сетка отбирает кандидатов, то есть имеет ли смысл
+        // мельчить клетки.
+        if (PROFILE_COUNTERS) SimCounters.increment(threadId, SimCounters.COLLISIONS)
+
         // Дальше начинается редкая часть (реальное пересечение), только здесь имеет смысл
         // поднимать остальные массивы: на пути раннего выхода они бы стоили лишних чтений.
         val isCellFlags = entity.isCell
@@ -98,6 +106,11 @@ class CollisionManager(
                     holderIndices[particleBId]
                 )
             ) {
+                // Пересечение было, но работы не будет. Если таких пар много, значит
+                // заметная доля дорогого пути тратится впустую, и связанные пары стоит
+                // отсеивать раньше — например, вообще не класть соседей по пружине
+                // в один список кандидатов.
+                if (PROFILE_COUNTERS) SimCounters.increment(threadId, SimCounters.LINKED_SKIPS)
                 return
             }
         }
@@ -116,6 +129,11 @@ class CollisionManager(
 
         if (isParticleAIsCell) {
             if (effectOnContact[particleAId]) {
+                // Самая дорогая точка метода: вызов через 27 подклассов Cell, то есть
+                // vtable + непредсказуемый indirect branch + отсутствие инлайнинга.
+                // Доля CONTACTS в COLLISIONS показывает, какую часть времени фазы
+                // занимает именно она, и стоит ли городить группировку по cellType.
+                if (PROFILE_COUNTERS) SimCounters.increment(threadId, SimCounters.CONTACTS)
                 val cellAIndex = holderIndices[particleAId]
                 val cellType = cellEntity.cellType[cellAIndex].toInt()
                 cells[cellType].onContact(
@@ -128,6 +146,7 @@ class CollisionManager(
         }
         if (isParticleBIsCell) {
             if (effectOnContact[particleBId]) {
+                if (PROFILE_COUNTERS) SimCounters.increment(threadId, SimCounters.CONTACTS)
                 val cellBIndex = holderIndices[particleBId]
                 val cellType = cellEntity.cellType[cellBIndex].toInt()
                 cells[cellType].onContact(

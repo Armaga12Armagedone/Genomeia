@@ -4,6 +4,7 @@ import io.github.some_example_name.old.core.DISimulationContainer.chunkSize
 import io.github.some_example_name.old.core.DISimulationContainer.gridSize
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.DISimulationContainer.totalChunks
+import io.github.some_example_name.old.core.WORKER_COUNT_OVERRIDE
 import io.github.some_example_name.old.core.WorldResizable
 
 class ThreadManager(
@@ -125,12 +126,13 @@ class ThreadManager(
      */
     inline fun runChunkStage(
         isOdd: Boolean,
+        stageId: Int = -1,
         crossinline job: (start: Int, end: Int, slot: Int) -> Unit
     ) {
         val first = if (isOdd) 1 else 0
         val slots = (totalChunks - first + 1) / 2
 
-        executor.runChunks(slots) { slot, _ ->
+        executor.runChunks(slots, stageId) { slot, _ ->
             val chunk = first + slot * 2
             val start = chunk * chunkSize
             val end = if (chunk == totalChunks - 1) gridSize else (chunk + 1) * chunkSize
@@ -142,8 +144,8 @@ class ThreadManager(
      * Стадия, работа которой уже разложена по слотам заранее (списки связей, стеки частиц).
      * Раздача тоже динамическая: слоты неравномерны по объёму работы ровно так же, как чанки.
      */
-    inline fun runSlotStage(slotCount: Int, crossinline job: (slot: Int) -> Unit) {
-        executor.runChunks(slotCount) { slot, _ -> job(slot) }
+    inline fun runSlotStage(slotCount: Int, stageId: Int = -1, crossinline job: (slot: Int) -> Unit) {
+        executor.runChunks(slotCount, stageId) { slot, _ -> job(slot) }
     }
 
     override fun resize() {
@@ -173,8 +175,18 @@ class ThreadManager(
          *    слоты разбирают остальные.
          *
          * Верхняя граница — число слотов: больше воркеров, чем слотов, всё равно нечем занять.
+         *
+         * availableProcessors() возвращает ЛОГИЧЕСКИЕ ядра, поэтому на машине с SMT он
+         * вдвое завышает полезное число спинящих воркеров: два воркера на одном физическом
+         * ядре делят L1/L2 и отнимают такты друг у друга в спин-петле. Определить число
+         * физических ядер из JVM переносимо нельзя, поэтому оно задаётся константой
+         * WORKER_COUNT_OVERRIDE (0 — прежнее поведение).
          */
-        fun workerCount(): Int =
-            minOf(threadCount, Runtime.getRuntime().availableProcessors())
+        fun workerCount(): Int {
+            val hardware =
+                if (WORKER_COUNT_OVERRIDE > 0) WORKER_COUNT_OVERRIDE
+                else Runtime.getRuntime().availableProcessors()
+            return minOf(threadCount, hardware)
+        }
     }
 }

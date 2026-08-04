@@ -2,6 +2,7 @@ package io.github.some_example_name.old.systems.physics
 
 import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DIContext
+import io.github.some_example_name.old.core.PROFILE_LOG
 import io.github.some_example_name.old.core.WorldResizable
 
 /**
@@ -122,6 +123,18 @@ class GridManager (
     private var pendingCount = 0
 
     /**
+     * Статистика занятости сетки, снимается в проходе префиксной суммы (см. [rebuild]).
+     * Нужна профайлеру: по ней считается реальная плотность и число пар-кандидатов,
+     * а плотность — главный аргумент в вопросе "упёрлись ли мы в кэш". Собирается только
+     * при PROFILE_LOG, иначе конструкция вырезается компилятором и цикл остаётся прежним.
+     */
+    var occupiedCells = 0
+        private set
+
+    var maxParticlesInCell = 0
+        private set
+
+    /**
      * Отметка "частица лежит в pending". Нужна на один вырожденный случай: индекс мёртвой
      * частицы может быть переиспользован новой в том же тике (deadStack — LIFO), и тогда
      * один и тот же индекс окажется и в старом particleIdx, и в pending — то есть попал бы
@@ -229,13 +242,28 @@ class GridManager (
         val starts = cellStart
         val size = gridSize
         var running = 0
+        var occupied = 0
+        var maxInCell = 0
         for (cellIndex in 0 until size) {
             val count = counts[cellIndex]
             starts[cellIndex] = running
             counts[cellIndex] = running
             running += count
+
+            if (PROFILE_LOG) {
+                // Без if/else, чтобы не добавлять в цикл ветку с плохим предсказанием:
+                // при плотности порядка единицы "клетка пустая" — это ~50/50, то есть
+                // худший случай для предсказателя. Обе конструкции ложатся в cmov.
+                occupied += if (count > 0) 1 else 0
+                maxInCell = if (count > maxInCell) count else maxInCell
+            }
         }
         starts[size] = running
+
+        if (PROFILE_LOG) {
+            occupiedCells = occupied
+            maxParticlesInCell = maxInCell
+        }
 
         if (DEBUG_CHECKS && running != total) {
             throw IllegalStateException("prefix sum mismatch: $running != $total")

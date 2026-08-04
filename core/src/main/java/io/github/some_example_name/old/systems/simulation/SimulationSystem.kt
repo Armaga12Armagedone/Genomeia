@@ -2,6 +2,7 @@ package io.github.some_example_name.old.systems.simulation
 
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.UserCommandManager
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.entities.CellEntity
@@ -64,15 +65,16 @@ class SimulationSystem(
     }
 
     // --- Performance Profiler ---
-    private val perfBuffers = LinkedHashMap<String, ArrayDeque<Double>>()
-    private var perfText: String = ""
-    private var perfTickCounter = 0
-
-    private fun getBuffer(name: String): ArrayDeque<Double> {
-        return perfBuffers.getOrPut(name) { ArrayDeque(60) }
-    }
+    //
+    // Замер идёт всегда (два nanoTime на фазу — ~0.6 мкс на тик), вывод в CSV включается
+    // флагом PROFILE_LOG. Накопители — обычные LongArray по номеру фазы: ни строк,
+    // ни хэш-мапы, ни боксинга Double в цикле симуляции.
+    private val profiler = PhaseProfiler()
+    private val worldStats = WorldStats()
 
     fun updateTick() {
+        val tickStart = System.nanoTime()
+
         if (simulationData.isFinish) {
             dispose()
             return
@@ -86,73 +88,91 @@ class SimulationSystem(
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
 
         // --- Измерения ---
-        measure("1. Links Physics") { linkPhysicsSystem.iterateLinksInParallel() }
-        measure("2. Neural Links") { neuralLinkManager.iterate() }
-        measure("3. Particle Collision") { processParticleCollision() }
-        measure("4. Cell System") { cellSystem.iterateCellInParallel() }
-        measure("5. Pheromones") { pheromonesManager.iterate() }
-        measure("6. Arrangement Grid") { arrangementOfPositionsInTheGrid() }
-        measure("7. World Commands") { worldCommandsManager.executingCommandsFromTheWorld() }
-        measure("8. Organs") { organManager.performOrgansNextStage() }
-        measure("9. User Commands") { userCommandManager.processingCommandsFromUser() }
-        measure("10. Last World Cmds") { worldCommandsManager.executingLastCommandsFromTheWorld() }
+        profiler.measure(Phase.LINKS) { linkPhysicsSystem.iterateLinksInParallel() }
+        profiler.measure(Phase.NEURAL) { neuralLinkManager.iterate() }
+        profiler.measure(Phase.COLLIDE) { processParticleCollision() }
+        profiler.measure(Phase.CELLS) { cellSystem.iterateCellInParallel() }
+        profiler.measure(Phase.PHEROMONE) { pheromonesManager.iterate() }
+        profiler.measure(Phase.ARRANGE) { arrangementOfPositionsInTheGrid() }
+        profiler.measure(Phase.WORLD_CMD) { worldCommandsManager.executingCommandsFromTheWorld() }
+        profiler.measure(Phase.ORGANS) { organManager.performOrgansNextStage() }
+        profiler.measure(Phase.USER_CMD) { userCommandManager.processingCommandsFromUser() }
+        profiler.measure(Phase.LAST_WORLD_CMD) { worldCommandsManager.executingLastCommandsFromTheWorld() }
         // Единственное место, где меняется структура пространственной сетки. Стоит здесь,
         // потому что к этому моменту уже применены все перемещения (фаза 6) и все
         // создания/удаления частиц (фазы 7-10), то есть сетка собирается один раз по
         // финальному состоянию тика. Фазы 1-6 следующего тика читают её только на чтение,
         // поэтому многопоточным фазам не нужно ни блокировок, ни чётно-нечётных ограничений
         // из-за мутации сетки.
-        measure("10.5 Grid Rebuild") { gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId) }
+        profiler.measure(Phase.REBUILD) { gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId) }
 
-        measure("11. Render Buffer") { renderBufferManager.updateBuffer(perfText) }
+        profiler.measure(Phase.RENDER) { renderBufferManager.updateBuffer(profiler.text) }
 
-        // Обновляем текст раз в 60 тиков
-        perfTickCounter++
-        if (perfTickCounter >= 60) {
-            perfTickCounter = 0
-            updatePerformanceText()          // заполняет perfText
+        // Полный тик меряется отдельно, а не суммой фаз: разница между ним и суммой —
+        // это неучтённое время (паузы GC, вытеснение потока планировщиком), и она сама
+        // по себе диагностична.
+        profiler.record(Phase.TICK, System.nanoTime() - tickStart)
+
+        if (profiler.endTick()) {
+            fillWorldStats()
+            profiler.flush(worldStats)
         }
     }
 
-    private inline fun measure(name: String, block: () -> Unit) {
-        val start = System.nanoTime()
-        block()
-        val ms = (System.nanoTime() - start) / 1_000_000.0
+    /**
+     * Снимок объёма мира на момент закрытия окна усреднения.
+     *
+     * Считается раз в PROFILE_WINDOW_TICKS тиков, поэтому дороговизна не важна — но всё
+     * равно это только вычитания и сумма по 16 спискам.
+     *
+     * Количества живых сущностей берутся так же, как их считает оверлей: lastId минус
+     * размер стека переиспользуемых индексов.
+     */
+    private fun fillWorldStats() {
+        val stats = worldStats
 
-        val buffer = getBuffer(name)
-        if (buffer.size >= 60) {
-            buffer.removeFirst()
+        stats.tick = simulationData.tickCounter.toLong()
+        stats.ups = simulationData.ups
+
+        stats.cells = cellEntity.lastId - cellEntity.deadStack.size + 1
+        stats.particles = particleEntity.lastId - particleEntity.deadStack.size + 1
+        stats.links = linkEntity.lastId - linkEntity.deadStack.size + 1
+
+        stats.gridSize = gridManager.gridSize
+        stats.occupiedCells = gridManager.occupiedCells
+        stats.maxParticlesInCell = gridManager.maxParticlesInCell
+
+        stats.workers = threadManager.executor.workerCount
+
+        stats.pairCandidatesTotal = SimCounters.take(SimCounters.PAIR_CANDIDATES)
+        stats.collisionsTotal = SimCounters.take(SimCounters.COLLISIONS)
+        stats.linkedSkipsTotal = SimCounters.take(SimCounters.LINKED_SKIPS)
+        stats.contactsTotal = SimCounters.take(SimCounters.CONTACTS)
+        stats.linkBreaksTotal = SimCounters.take(SimCounters.LINK_BREAKS)
+        stats.linkAnglesTotal = SimCounters.take(SimCounters.LINK_ANGLES)
+
+        // Занятость снимается по всем фазам разом: takeStage* обнуляет накопители,
+        // поэтому пропущенная фаза копила бы данные до следующего окна и врала.
+        val executor = threadManager.executor
+        for (phase in 0 until Phase.COUNT) {
+            stats.stageBusyNanos[phase] = executor.takeStageBusyNanos(phase)
+            stats.stageWallNanos[phase] = executor.takeStageWallNanos(phase)
         }
-        buffer.addLast(ms)
-    }
 
-    private fun updatePerformanceText() {
-        val sb = StringBuilder()
-        sb.appendLine("=== PERFORMANCE (ms) ===")
-//        sb.appendLine("avg over last ${perfBuffers.values.firstOrNull()?.size ?: 0} ticks")
-//        sb.appendLine()
-
-        var total = 0.0
-
-        perfBuffers.forEach { (name, buffer) ->
-            if (buffer.isNotEmpty()) {
-                val avg = buffer.average()
-                total += avg
-                sb.appendLine("%-22s %7.2f".format(name, avg))
-            }
-        }
-
-        sb.appendLine("-----------------------------")
-        sb.appendLine("%-22s %7.2f".format("TOTAL", total))
-
-        perfText = sb.toString()
+        // Сколько связей реально обходит фаза 1. Это НЕ то же самое, что число живых
+        // связей: в списки слотов попадают только те, что зарегистрированы через
+        // registerNewLink, и по ним же идёт обход.
+        var processed = 0
+        for (list in worldCommandsManager.oddLinkLists) processed += list.size
+        for (list in worldCommandsManager.evenLinkLists) processed += list.size
+        stats.linksProcessed = processed
     }
 
     fun processParticleCollision() {
-        threadManager.runChunkStage(isOdd = true) { start, end, threadId ->
+        threadManager.runChunkStage(isOdd = true, stageId = Phase.COLLIDE) { start, end, threadId ->
             particlePhysicsSystem.processGridChunkPhysics(start, end, threadId, isOdd = true)
         }
-        threadManager.runChunkStage(isOdd = false) { start, end, threadId ->
+        threadManager.runChunkStage(isOdd = false, stageId = Phase.COLLIDE) { start, end, threadId ->
             particlePhysicsSystem.processGridChunkPhysics(start, end, threadId, isOdd = false)
         }
     }
@@ -171,14 +191,14 @@ class SimulationSystem(
      * чанкам обе стадии можно будет слить в одну.
      */
     fun arrangementOfPositionsInTheGrid() {
-        threadManager.runSlotStage(threadCount) { chunk ->
+        threadManager.runSlotStage(threadCount, Phase.ARRANGE) { chunk ->
             val stack = worldCommandsManager.oddCellChunkPositionStack[chunk]
             for (i in 0..<worldCommandsManager.oddCellCounter[chunk]) {
                 movementManager.moveParticle(stack[i], chunk)
             }
         }
 
-        threadManager.runSlotStage(threadCount) { chunk ->
+        threadManager.runSlotStage(threadCount, Phase.ARRANGE) { chunk ->
             val stack = worldCommandsManager.evenCellChunkPositionStack[chunk]
             for (i in 0..<worldCommandsManager.evenCellCounter[chunk]) {
                 movementManager.moveParticle(stack[i], chunk)
@@ -212,11 +232,17 @@ class SimulationSystem(
     private fun restartSim() {
         dispose()
         simulationData.isRestart = false
-        worldTerrainManager.initWorld()
+        worldTerrainManager.initWorld(
+            gridWith = DISimulationContainer.gridWidth,
+            gridHeight = DISimulationContainer.gridHeight
+        )
     }
 
     fun initMap() {
-        worldTerrainManager.initWorld()
+        worldTerrainManager.initWorld(
+            gridWith = DISimulationContainer.gridWidth,
+            gridHeight = DISimulationContainer.gridHeight
+        )
     }
 
     companion object {

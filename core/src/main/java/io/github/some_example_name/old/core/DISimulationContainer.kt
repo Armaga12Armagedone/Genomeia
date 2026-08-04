@@ -43,8 +43,8 @@ import kotlin.getValue
 
 object DISimulationContainer : DIContext, Disposable {
 
-    override var gridWidth = 128
-    override var gridHeight = 128
+    override var gridWidth = 256
+    override var gridHeight = 256
     const val HALF_CHUNK_HEIGHT = 4 // Also max particle speed
     var chunkHeight = HALF_CHUNK_HEIGHT * 2
     var heightMultiplier = chunkHeight * 2

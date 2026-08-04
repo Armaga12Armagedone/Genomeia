@@ -13,6 +13,7 @@ import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.GridManager
+import io.github.some_example_name.old.systems.simulation.Phase
 import io.github.some_example_name.old.systems.simulation.ThreadManager
 import kotlin.math.sqrt
 
@@ -49,7 +50,7 @@ class CellSystem(
         // блоков ровно threadCount. Раздаются они динамически: клетки разной сложности
         // (нейронные, делящиеся, обычные), и блок с тяжёлыми клетками раньше задерживал
         // всю стадию, пока остальные ядра стояли на барьере Future.get.
-        threadManager.runSlotStage(threadCount) { slot ->
+        threadManager.runSlotStage(threadCount, Phase.CELLS) { slot ->
             val start = slot * chunkSize
             val end = minOf(start + chunkSize, size)
             for (i in start until end) {

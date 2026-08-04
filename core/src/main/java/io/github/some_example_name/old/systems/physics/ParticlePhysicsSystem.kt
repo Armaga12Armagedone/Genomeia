@@ -2,12 +2,14 @@ package io.github.some_example_name.old.systems.physics
 
 import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.commands.WorldCommandsManager
+import io.github.some_example_name.old.core.PROFILE_COUNTERS
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
+import io.github.some_example_name.old.systems.simulation.SimCounters
 import io.github.some_example_name.old.systems.simulation.SimulationData
 
 class ParticlePhysicsSystem(
@@ -90,6 +92,10 @@ class ParticlePhysicsSystem(
         var y = start / width
         var x = start - y * width
 
+        // Накопитель пар-кандидатов держится в регистре и уезжает в разделяемый массив
+        // один раз в конце чанка — тот же приём, что и со счётчиком стека.
+        var pairCandidates = 0L
+
         // Левая граница первой клетки чанка. Дальше она не перечитывается: правая граница
         // клетки — это левая граница следующей, а клетки внутри чанка идут подряд.
         var from = starts[cellIndex]
@@ -105,6 +111,16 @@ class ParticlePhysicsSystem(
                 val to = starts[cellIndex + 1]
 
                 if (to > from) {
+                    if (PROFILE_COUNTERS) {
+                        // Ровно та же арифметика, что делают циклы ниже: C(n,2) пар внутри
+                        // клетки плюс n * (сколько частиц в просматриваемых соседях).
+                        // Считается по границам клеток, а не инкрементом в repulse:
+                        // на клетку это ~4 чтения из cellStart, который здесь и так
+                        // стримится через кэш, вместо миллиона инкрементов за тик.
+                        val n = (to - from).toLong()
+                        pairCandidates += n * (n - 1) / 2 + n * neighborCandidateCount(x, y)
+                    }
+
                     // Пары внутри одной клетки сетки: каждая пара ровно один раз (i < j).
                     // Частицы клетки лежат в particleIdx подряд, ограничения на их
                     // количество больше нет.
@@ -146,6 +162,43 @@ class ParticlePhysicsSystem(
             if (isOdd) worldCommandsManager.oddCellCounter[threadId] = stackCount
             else worldCommandsManager.evenCellCounter[threadId] = stackCount
         }
+
+        if (PROFILE_COUNTERS) {
+            SimCounters.add(threadId, SimCounters.PAIR_CANDIDATES, pairCandidates)
+        }
+    }
+
+    /**
+     * Сколько частиц лежит в клетках, которые просматривает [processNeighborsCellsCollision]
+     * для клетки (x, y): верхний отрезок из трёх клеток плюс одна справа.
+     *
+     * Логика клампинга границ повторяет forEachParticleInRowSegment и forEachParticleAt
+     * один в один — если там что-то поменяется, здесь надо поменять тоже, иначе счётчик
+     * начнёт врать. Дублирование сознательное: звать сами обходы ради счёта означало бы
+     * лишний проход по particleIdx, а так это чистая арифметика по cellStart.
+     */
+    private fun neighborCandidateCount(gridX: Int, gridY: Int): Long {
+        val starts = gridManager.cellStart
+        val width = gridManager.gridWidth
+        var total = 0L
+
+        val upY = gridY + 1
+        if (upY < gridManager.gridHeight) {
+            val from = if (gridX - 1 < 0) 0 else gridX - 1
+            val to = if (gridX + 1 >= width) width - 1 else gridX + 1
+            if (from <= to) {
+                val rowBase = upY * width
+                total += (starts[rowBase + to + 1] - starts[rowBase + from]).toLong()
+            }
+        }
+
+        val rightX = gridX + 1
+        if (rightX < width) {
+            val right = gridY * width + rightX
+            total += (starts[right + 1] - starts[right]).toLong()
+        }
+
+        return total
     }
 
     /**
@@ -191,4 +244,5 @@ class ParticlePhysicsSystem(
             }
         }
     }
+
 }

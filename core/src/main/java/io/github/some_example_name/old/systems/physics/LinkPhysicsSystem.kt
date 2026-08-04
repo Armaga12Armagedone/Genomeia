@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.DEBUG_CHECKS
+import io.github.some_example_name.old.core.PROFILE_COUNTERS
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.DISimulationContainer.linkMaxLength2
 import io.github.some_example_name.old.core.DISimulationContainer.threadManager
@@ -13,6 +14,8 @@ import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.genomics.CellSystem
+import io.github.some_example_name.old.systems.simulation.Phase
+import io.github.some_example_name.old.systems.simulation.SimCounters
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import it.unimi.dsi.fastutil.ints.IntArrayList
 
@@ -42,7 +45,7 @@ class LinkPhysicsSystem(
      * теперь спиновый: без submit, аллокации FutureTask и парковки потоков.
      */
     private fun processPhase(lists: Array<IntArrayList>) {
-        threadManager.runSlotStage(lists.size) { slot ->
+        threadManager.runSlotStage(lists.size, Phase.LINKS) { slot ->
             val list = lists[slot]
             for (i in list.indices) {
                 processLink(list.getInt(i), slot)
@@ -72,6 +75,8 @@ class LinkPhysicsSystem(
         val linkCellA = linkEntity.links1[linkIndex]
         val linkCellB = linkEntity.links2[linkIndex]
 
+
+        //TODO весь блок с удалением можно убрать, так как теперь есть
         val isAlive = cellEntity.isAlive
         val linkCellAIsDead = !isAlive[linkCellA] ||
             cellEntity.getGeneration(linkCellA) != linkEntity.linksGeneration1[linkIndex]
@@ -79,6 +84,7 @@ class LinkPhysicsSystem(
             cellEntity.getGeneration(linkCellB) != linkEntity.linksGeneration2[linkIndex]
 
         if (linkCellAIsDead || linkCellBIsDead) {
+            if (PROFILE_COUNTERS) SimCounters.increment(threadId, SimCounters.LINK_BREAKS)
             linkEntity.reinitParentLink(linkIndex)
             // Скалярный push: без intArrayOf и без arraycopy на два int'а.
             worldCommandsManager.worldCommandBuffer[threadId].push(
@@ -113,13 +119,16 @@ class LinkPhysicsSystem(
         val parentCellA = parentIndices[linkCellA]
         val parentCellB = parentIndices[linkCellB]
         if (linkCellA == parentCellB) {
+            if (PROFILE_COUNTERS) SimCounters.increment(threadId, SimCounters.LINK_ANGLES)
             cellSystem.processCellAngle(linkCellB, linkCellA)
         }
         if (linkCellB == parentCellA) {
+            if (PROFILE_COUNTERS) SimCounters.increment(threadId, SimCounters.LINK_ANGLES)
             cellSystem.processCellAngle(linkCellA, linkCellB)
         }
 
         if (distanceSquared > linkMaxLength2) {
+            if (PROFILE_COUNTERS) SimCounters.increment(threadId, SimCounters.LINK_BREAKS)
             linkEntity.reinitParentLink(linkIndex)
             worldCommandsManager.worldCommandBuffer[threadId].push(
                 WorldCommandType.DELETE_LINK,
