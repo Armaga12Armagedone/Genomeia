@@ -5,46 +5,25 @@ import io.github.some_example_name.old.core.DISimulationContainer.gridSize
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.DISimulationContainer.totalChunks
 import io.github.some_example_name.old.core.WorldResizable
-import io.github.some_example_name.old.systems.simulation.SimulationSystem.Companion.DELTA_SIM_TICK_TIME
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
-import java.util.concurrent.TimeUnit
 
 class ThreadManager(
     val simulationData: SimulationData
 ): WorldResizable {
 
-    var executor: ExecutorService = createDaemonFixedThreadPool()
-    val futures = mutableListOf<Future<*>>()
+    /**
+     * Пул постоянных воркеров вместо ExecutorService. Раньше каждая стадия стоила N
+     * аллокаций FutureTask, N вставок в очередь пула, N пробуждений потоков и N парковок
+     * главного потока на Future.get — порядка 15-40 мкс на стадию, то есть при 6-8 стадиях
+     * 15-30% времени тика уходило в накладные расходы планировщика. См. ParallelExecutor.
+     */
+    var executor = ParallelExecutor(workerCount())
+        private set
 
     var isRunning = false
 
-    private fun createDaemonFixedThreadPool(): ExecutorService {
-        return Executors.newFixedThreadPool(threadCount) { runnable ->
-            val thread = Thread(runnable)
-            thread.isDaemon = true
-            thread.name = "Sim-Worker-${threadCount}"
-            thread
-        }
-    }
-
-    private fun shutdownExecutor(exec: ExecutorService) {
-        exec.shutdown()
-        try {
-            if (!exec.awaitTermination(1000, TimeUnit.MILLISECONDS)) {
-                exec.shutdownNow()
-            }
-        } catch (e: InterruptedException) {
-            exec.shutdownNow()
-            Thread.currentThread().interrupt()
-        }
-    }
-
     fun dispose() {
         isRunning = false
-        shutdownExecutor(executor)
-        futures.clear()
+        executor.shutdown()
     }
 
     fun stopSimulationLoop() {
@@ -128,27 +107,74 @@ class ThreadManager(
         }
     }
 
+    /**
+     * Стадия по чанкам сетки одной чётности.
+     *
+     * Чанки раздаются динамически: освободившийся воркер берёт следующий сам. Раньше была
+     * жёсткая привязка "чанк i потоку i", а работа между чанками распределена крайне
+     * неравномерно — организмы кучкуются, и в одном чанке могут быть тысячи частиц, в
+     * соседнем десятки. Время стадии определяется самым загруженным потоком, поэтому при
+     * статической раздаче стадия упиралась в один перегруженный чанк, пока остальные ядра
+     * стояли на барьере. Теперь ядро, разобравшее пустой чанк, идёт помогать с очередью.
+     *
+     * [slot] — это номер чанка внутри своей чётности (chunkIndex / 2 в старой нумерации).
+     * По нему индексируются per-chunk структуры: буферы команд, стеки позиций, списки
+     * связей. Два одновременно обрабатываемых чанка одной чётности не соседствуют в
+     * пространстве, поэтому потоки не пишут в одни и те же частицы, а разные slot'ы
+     * не пишут в одни и те же вспомогательные структуры — синхронизация не нужна.
+     */
     inline fun runChunkStage(
         isOdd: Boolean,
-        crossinline job: (start: Int, end: Int, threadId: Int) -> Unit
+        crossinline job: (start: Int, end: Int, slot: Int) -> Unit
     ) {
-        var threadCounter = 0
         val first = if (isOdd) 1 else 0
-        for (i in first until totalChunks step 2) {
-            val start = i * chunkSize
-            val end = if (i == totalChunks - 1) gridSize else (i + 1) * chunkSize
-            val threadId = threadCounter++
-            futures.add(executor.submit { job(start, end, threadId) })
+        val slots = (totalChunks - first + 1) / 2
+
+        executor.runChunks(slots) { slot, _ ->
+            val chunk = first + slot * 2
+            val start = chunk * chunkSize
+            val end = if (chunk == totalChunks - 1) gridSize else (chunk + 1) * chunkSize
+            job(start, end, slot)
         }
-        futures.forEach { it.get() }   // <- barrier for this stage
-        futures.clear()
+    }
+
+    /**
+     * Стадия, работа которой уже разложена по слотам заранее (списки связей, стеки частиц).
+     * Раздача тоже динамическая: слоты неравномерны по объёму работы ровно так же, как чанки.
+     */
+    inline fun runSlotStage(slotCount: Int, crossinline job: (slot: Int) -> Unit) {
+        executor.runChunks(slotCount) { slot, _ -> job(slot) }
     }
 
     override fun resize() {
-        val oldExecutor = executor
-        executor = createDaemonFixedThreadPool()
+        val old = executor
+        executor = ParallelExecutor(workerCount())
+        old.shutdown()
+    }
 
-        shutdownExecutor(oldExecutor)
-        futures.clear()
+    companion object {
+        /**
+         * Число потоков теперь не равно числу чанков.
+         *
+         * threadCount по смыслу это количество ПРОСТРАНСТВЕННЫХ СЛОТОВ в стадии
+         * (gridHeight / chunkHeight / 2), и оно задаётся геометрией мира, а не железом.
+         * Уменьшать chunkHeight, чтобы получить больше слотов, нельзя: поток, считающий
+         * связи своего чанка, пишет в скорости частиц на расстояние до sqrt(linkMaxLength2)
+         * клеток за его границы, поэтому между чанками одной чётности нужен зазор не меньше
+         * двух таких длин — при chunkHeight = 8 и максимальной длине связи 3 это выполняется
+         * ровно с запасом 2. Уменьшение чанка сразу даёт гонку на vx/vy.
+         *
+         * Зато воркеров можно сделать МЕНЬШЕ, чем слотов, и от этого только лучше:
+         *  - на машине с 4 ядрами 8 спинящих воркеров дрались бы за ядра, а спин при
+         *    переподписке — это чистая потеря (воркер жжёт такты, пока владелец его чанка
+         *    не получит квант);
+         *  - когда слотов больше, чем воркеров, динамическая раздача наконец начинает
+         *    работать по-настоящему: перегруженный слот берёт кто-то один, а его пустые
+         *    слоты разбирают остальные.
+         *
+         * Верхняя граница — число слотов: больше воркеров, чем слотов, всё равно нечем занять.
+         */
+        fun workerCount(): Int =
+            minOf(threadCount, Runtime.getRuntime().availableProcessors())
     }
 }

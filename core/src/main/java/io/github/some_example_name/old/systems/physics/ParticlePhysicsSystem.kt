@@ -36,19 +36,26 @@ class ParticlePhysicsSystem(
      * Ядро широкой фазы.
      *
      * Ключевые моменты по производительности:
-     *  - НЕТ аллокаций: частицы клетки читаются прямо из gridManager.grid по слотам,
+     *  - НЕТ аллокаций: частицы клетки читаются прямо из CSR-массива gridManager.particleIdx,
      *    без copyOfRange (раньше это было ~150k аллокаций массивов за тик).
+     *  - НЕТ разреженной сетки: частицы лежат подряд (34 КБ), а не в 256 КБ слотов по 4
+     *    на клетку, из которых заняты единицы. Меньше кэш-линий на тот же объём данных.
+     *  - НЕТ ветки на переполнение клетки и походов в хэш-мапу хвостов: путь всегда один.
+     *  - НЕТ повторного чтения границы клетки: правая граница предыдущей клетки — это
+     *    левая граница следующей, поэтому на клетку приходится одно чтение cellStart.
      *  - НЕТ целочисленного деления на клетку: x/y ведутся инкрементально
      *    (раньше было i % gridWidth и i / gridWidth = 2 idiv на каждую из 16k клеток).
+
      *  - НЕТ false sharing на счётчике чанка: позиция в стеке живёт в локальной
      *    переменной и пишется в oddCellCounter/evenCellCounter один раз в конце.
      *    Раньше counters[threadId] писался на КАЖДУЮ частицу, а все счётчики
      *    (IntArray(threadCount), 8 int = 32 байта) лежат в одной кэш-линии — то есть
      *    ~30k записей за тик гоняли одну линию между всеми ядрами по кругу
      *    (RFO + инвалидация в остальных L1, десятки-сотни циклов на запись).
-     *  - Ссылки на массивы подняты в локальные переменные: поля grid/particleCounts
+     *  - Ссылки на массивы подняты в локальные переменные: поля cellStart/particleIdx
      *    объявлены как var, поэтому JIT обязан перечитывать их после каждой записи в память.
      *
+
      * Прямой обход сетки безопасен, потому что в этой фазе сетка не мутирует:
      * repulse и onContact пишут только в vx/vy/energy/radius и в отложенные команды.
      */
@@ -59,10 +66,10 @@ class ParticlePhysicsSystem(
         isOdd: Boolean,
         distributeIndices: Boolean
     ) {
-        val grid = gridManager.grid
-        val counts = gridManager.particleCounts
-        val maxPerCell = gridManager.maxAmountOfParticles
+        val starts = gridManager.cellStart
+        val indices = gridManager.particleIdx
         val width = gridManager.gridWidth
+
 
         val stacks: Array<IntArray>? = if (!distributeIndices) null
         else if (isOdd) worldCommandsManager.oddCellChunkPositionStack
@@ -83,56 +90,47 @@ class ParticlePhysicsSystem(
         var y = start / width
         var x = start - y * width
 
+        // Левая граница первой клетки чанка. Дальше она не перечитывается: правая граница
+        // клетки — это левая граница следующей, а клетки внутри чанка идут подряд.
+        var from = starts[cellIndex]
+
         while (cellIndex < end) {
             // Конец текущего ряда сетки. Внутри ряда индексы клеток идут подряд, так что
-            // внутренний цикл — это линейный проход по particleCounts и по grid,
+            // внутренний цикл — это линейный проход по cellStart и по particleIdx,
             // идеальный для аппаратного префетчера.
             var rowEnd = (y + 1) * width
             if (rowEnd > end) rowEnd = end
 
             while (cellIndex < rowEnd) {
-                val count = counts[cellIndex]
+                val to = starts[cellIndex + 1]
 
-                if (count > 0) {
-                    if (count <= maxPerCell) {
-                        val base = cellIndex * maxPerCell
-
-                        // Пары внутри одной клетки сетки: каждая пара ровно один раз (i < j).
-                        for (i in 0 until count) {
-                            val particleA = grid[base + i]
-                            for (j in i + 1 until count) {
-                                collisionManager.repulse(particleA, grid[base + j], threadId)
-                            }
+                if (to > from) {
+                    // Пары внутри одной клетки сетки: каждая пара ровно один раз (i < j).
+                    // Частицы клетки лежат в particleIdx подряд, ограничения на их
+                    // количество больше нет.
+                    for (i in from until to) {
+                        val particleA = indices[i]
+                        for (j in i + 1 until to) {
+                            collisionManager.repulse(particleA, indices[j], threadId)
                         }
+                    }
 
-                        // Соседние клетки + раскладка по чанкам.
-                        for (i in 0 until count) {
-                            val particleIndex = grid[base + i]
-                            processNeighborsCellsCollision(particleIndex, x, y, threadId)
+                    // Соседние клетки + раскладка по чанкам.
+                    for (i in from until to) {
+                        val particleIndex = indices[i]
+                        processNeighborsCellsCollision(particleIndex, x, y, threadId)
 
-                            if (stack != null) {
-                                if (stackCount >= stack.size) {
-                                    stack = growChunkStack(stacks!!, threadId, stack)
-                                }
-                                stack[stackCount] = particleIndex
-                                stackCount++
+                        if (stack != null) {
+                            if (stackCount >= stack.size) {
+                                stack = growChunkStack(stacks!!, threadId, stack)
                             }
+                            stack[stackCount] = particleIndex
+                            stackCount++
                         }
-                    } else {
-                        // Редкий путь: клетка переполнена, часть частиц лежит в списке-хвосте.
-                        stackCount = processOverflowedGridCell(
-                            cellIndex = cellIndex,
-                            gridX = x,
-                            gridY = y,
-                            threadId = threadId,
-                            stacks = stacks,
-                            stackCount = stackCount
-                        )
-                        // Стек мог быть перевыделен внутри — перечитываем ссылку.
-                        stack = stacks?.get(threadId)
                     }
                 }
 
+                from = to
                 cellIndex++
                 x++
             }
@@ -140,6 +138,7 @@ class ParticlePhysicsSystem(
             x = 0
             y++
         }
+
 
 
         // Единственная запись в разделяемый счётчик за весь чанк.
@@ -150,58 +149,8 @@ class ParticlePhysicsSystem(
     }
 
     /**
-     * Холодный путь для переполненных клеток сетки (count > maxAmountOfParticles).
-     * Вынесен отдельно, чтобы не раздувать горячий цикл и не мешать его инлайнингу.
-     *
-     * Возвращает новую позицию в стеке чанка (счётчик не пишется в разделяемый массив).
-     */
-    private fun processOverflowedGridCell(
-        cellIndex: Int,
-        gridX: Int,
-        gridY: Int,
-        threadId: Int,
-        stacks: Array<IntArray>?,
-        stackCount: Int
-    ): Int {
-        val count = gridManager.particleCounts[cellIndex]
-        val maxPerCell = gridManager.maxAmountOfParticles
-        val base = cellIndex * maxPerCell
-        val grid = gridManager.grid
-
-        val extraList = gridManager.overflowListOrNull(cellIndex)
-            ?: throw IllegalStateException("Overflow list is null but particleCounts > maxAmountOfParticles")
-        val extra = extraList.elements()
-        val extraSize = extraList.size
-
-        for (i in 0 until count) {
-            val particleA = if (i < extraSize) extra[i] else grid[base + i - extraSize]
-            for (j in i + 1 until count) {
-                val particleB = if (j < extraSize) extra[j] else grid[base + j - extraSize]
-                collisionManager.repulse(particleA, particleB, threadId)
-            }
-        }
-
-        var position = stackCount
-        var stack = stacks?.get(threadId)
-
-        for (i in 0 until count) {
-            val particleIndex = if (i < extraSize) extra[i] else grid[base + i - extraSize]
-            processNeighborsCellsCollision(particleIndex, gridX, gridY, threadId)
-
-            if (stack != null) {
-                if (position >= stack.size) {
-                    stack = growChunkStack(stacks!!, threadId, stack)
-                }
-                stack[position] = particleIndex
-                position++
-            }
-        }
-
-        return position
-    }
-
-    /**
      * Растит стек чанка и публикует новую ссылку. Каждый поток трогает только свой слот,
+
      * поэтому синхронизация не нужна; путь редкий, из горячего цикла вынесен.
      */
     private fun growChunkStack(stacks: Array<IntArray>, threadId: Int, current: IntArray): IntArray {

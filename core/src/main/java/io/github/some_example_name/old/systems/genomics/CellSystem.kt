@@ -45,22 +45,17 @@ class CellSystem(
 
         val chunkSize = (size + threadCount - 1) / threadCount
 
-        for (threadId in 0 until threadCount) {
-            val start = threadId * chunkSize
+        // Слот здесь одновременно и номер блока клеток, и индекс буфера команд, поэтому
+        // блоков ровно threadCount. Раздаются они динамически: клетки разной сложности
+        // (нейронные, делящиеся, обычные), и блок с тяжёлыми клетками раньше задерживал
+        // всю стадию, пока остальные ядра стояли на барьере Future.get.
+        threadManager.runSlotStage(threadCount) { slot ->
+            val start = slot * chunkSize
             val end = minOf(start + chunkSize, size)
-
-            if (start >= end) break
-
-            val future = threadManager.executor.submit {
-                for (i in start until end) {
-                    val cellIndex = aliveList.getInt(i)
-                    processCell(cellIndex, threadId)
-                }
+            for (i in start until end) {
+                processCell(aliveList.getInt(i), slot)
             }
-            threadManager.futures.add(future)
         }
-        threadManager.futures.forEach { it.get() }
-        threadManager.futures.clear()
     }
 
     fun processCell(cellIndex: Int, threadId: Int = 0) = with(cellEntity) {

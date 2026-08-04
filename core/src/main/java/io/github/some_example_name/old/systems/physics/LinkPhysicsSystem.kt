@@ -32,21 +32,22 @@ class LinkPhysicsSystem(
         processPhase(worldCommandsManager.evenLinkLists)
     }
 
+    /**
+     * Связи заранее разложены по слотам (слот = пространственный чанк одной чётности),
+     * поэтому здесь остаётся только раздать слоты воркерам.
+     *
+     * Раздача динамическая: в одном слоте может быть несколько тысяч связей, в соседнем
+     * десяток, а стадия заканчивается по самому загруженному слоту — при статической
+     * привязке "слот i потоку i" остальные ядра просто стояли на барьере. Плюс сам барьер
+     * теперь спиновый: без submit, аллокации FutureTask и парковки потоков.
+     */
     private fun processPhase(lists: Array<IntArrayList>) {
-        threadManager.futures.clear()
-        for (t in 0 until diContext.threadCount) {
-            threadManager.futures.add(
-                threadManager.executor.submit {
-                    val list = lists[t]
-                    for (i in list.indices) {
-                        val linkIndex = list.getInt(i)
-                        processLink(linkIndex,t)
-                    }
-                }
-            )
+        threadManager.runSlotStage(lists.size) { slot ->
+            val list = lists[slot]
+            for (i in list.indices) {
+                processLink(list.getInt(i), slot)
+            }
         }
-        threadManager.futures.forEach { it.get() }
-        threadManager.futures.clear()
     }
 
     /**

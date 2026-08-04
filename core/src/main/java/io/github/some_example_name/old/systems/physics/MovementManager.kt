@@ -29,8 +29,8 @@ class MovementManager(
     fun moveParticle(particleIndex: Int, threadId: Int = 0) = with(entity) {
         val oldX = x[particleIndex].toInt()
         val oldY = y[particleIndex].toInt()
-        val gridCellIndex = gridId[particleIndex]
         vy[particleIndex] -= 0
+
 
         processCellFrictionOld(particleIndex)
 
@@ -49,9 +49,17 @@ class MovementManager(
             if (isPheromoneEmitter[particleIndex]) {
                 pheromonesManager.newGridCell(x, y, particleIndex, threadId)
             }
-            gridManager.removeParticle(gridCellIndex, particleIndex)
-            gridId[particleIndex] = gridManager.addParticle(newX, newY, particleIndex)
+            // Сетка больше не мутируется: сюда пишется только новый номер клетки этой
+            // частицы, а сама сетка пересобирается counting sort'ом один раз в конце тика.
+            //
+            // Раньше здесь было removeParticle + addParticle: линейный поиск частицы среди
+            // слотов старой клетки, запись двух счётчиков в разных концах массива
+            // particleCounts и на переполнении — поход в Int2ObjectOpenHashMap. Всё это
+            // случайный доступ, и всё это выполнялось для каждой частицы, сменившей клетку
+            // (а их за тик тысячи). Теперь это одна запись в свой же элемент массива.
+            gridId[particleIndex] = gridManager.cellIndexOfClamped(newX, newY)
         }
+
     }
 
     private fun seedBump(particleIndex: Int) = with(entity) {

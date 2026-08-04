@@ -43,7 +43,11 @@ class ParticleEntity(
     ): Int {
         val particleIndex = add()
 
-        gridId[particleIndex] = gridManager.addParticle(x.toInt(), y.toInt(), particleIndex)
+        // Сетка не мутируется: запоминаем клетку частицы и регистрируем её как новую.
+        // В самой сетке частица появится при ближайшей пересборке (в конце этого тика).
+        gridId[particleIndex] = gridManager.cellIndexOf(x.toInt(), y.toInt())
+        gridManager.registerParticle(particleIndex)
+
         this.x[particleIndex] = x
         this.y[particleIndex] = y
         this.vx[particleIndex] = vx
@@ -65,8 +69,10 @@ class ParticleEntity(
     fun deleteParticle(particleIndex: Int) {
         delete(particleIndex)
 
-        gridManager.removeParticle(gridId[particleIndex], particleIndex)
+        // Из сетки мёртвая частица уйдёт сама при пересборке: она пропускает всё,
+        // что помечено как !isAlive. Отдельная операция удаления не нужна.
         gridId[particleIndex] = -1
+
         x[particleIndex] = 0f
         y[particleIndex] = 0f
         vx[particleIndex] = 0f

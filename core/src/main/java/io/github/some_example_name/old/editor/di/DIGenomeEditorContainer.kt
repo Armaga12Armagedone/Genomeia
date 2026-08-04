@@ -287,6 +287,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         replays = replays,
         cellSystem = cellSystem,
         gridManager = gridManager,
+        particleEntity = particleEntity,
         zygote = zygote,
         entityList = entityList,
         userCommandManager = userCommandManager

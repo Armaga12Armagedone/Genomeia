@@ -8,6 +8,7 @@ import io.github.some_example_name.old.editor.entities.EditorReplay
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.Entity
 import io.github.some_example_name.old.entities.OrganEntity
+import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.OrganManager
 import io.github.some_example_name.old.systems.genomics.genome.Genome
@@ -27,6 +28,7 @@ class EditorSimulationSystem(
     val replays: List<EditorReplay>,
     val cellSystem: CellSystem,
     val gridManager: GridManager,
+    val particleEntity: ParticleEntity,
     val zygote: Zygote,
     val entityList: List<Entity>,
     val userCommandManager: UserCommandManager
@@ -117,6 +119,10 @@ class EditorSimulationSystem(
         worldCommandsManager.executingCommandsFromTheWorld()
         organManager.performOrgansNextStage()
         worldCommandsManager.executingLastCommandsFromTheWorld()
+
+        // Редактор не двигает частицы, но создаёт их командами, поэтому сетку нужно
+        // пересобрать: поиск клетки под курсором читает cellStart/particleIdx.
+        gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId)
 
         cellEntity.aliveList.forEach { cellIndex ->
             energy[cellIndex] = 5.0f

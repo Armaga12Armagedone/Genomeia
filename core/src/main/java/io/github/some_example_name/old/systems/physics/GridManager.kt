@@ -1,145 +1,307 @@
 package io.github.some_example_name.old.systems.physics
+
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.WorldResizable
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
-import it.unimi.dsi.fastutil.ints.IntArrayList
 
+/**
+ * Пространственная сетка в формате CSR (compressed sparse row), которая перестраивается
+ * counting sort'ом один раз за тик.
+ *
+ * ЧТО БЫЛО
+ * --------
+ * grid = IntArray(gridSize * maxAmountOfParticles) — по 4 фиксированных слота на клетку,
+ * particleCounts на счётчики и Int2ObjectOpenHashMap<IntArrayList> на переполнение.
+ * Проблемы:
+ *  - Размер: 16384 клетки * 4 слота * 4 байта = 256 КБ, из которых полезны ~34 КБ
+ *    (8500 частиц). Фаза коллизий проходит всю сетку, то есть тянет через кэш 256 КБ
+ *    ради 34 КБ данных. L2 на ядро — типично 512 КБ-2 МБ, и туда же должны влезать
+ *    x/y/vx/vy/radius; в итоге всё выпадает в L3, а L3 общий на все ядра, и потоки
+ *    начинают конкурировать за него.
+ *  - Лимит в 4 частицы на клетку и хэш-мапа на хвосты: лишняя ветка на каждой клетке,
+ *    а на переполненных — поход в хэш-таблицу (промах + разыменование объекта-списка).
+ *  - Мутация сетки в горячей фазе: removeParticle делал линейный поиск по слотам,
+ *    addParticle читал-писал счётчики. Обе операции — случайный доступ, и обе вызывались
+ *    для каждой частицы, сменившей клетку.
+ *
+ * ЧТО СТАЛО
+ * ---------
+ *  - cellStart[gridSize + 1] — границы клеток, particleIdx[particleCount] — индексы частиц,
+ *    сгруппированные по клеткам. Частицы клетки c лежат в particleIdx[cellStart[c] until
+ *    cellStart[c + 1]] строго подряд. Никаких лимитов, хэшей, списков и аллокаций.
+ *  - Фаза коллизий читает 64 КБ (cellStart) + 34 КБ (particleIdx) вместо 64 + 256 КБ,
+ *    и читает их ЛИНЕЙНО, то есть аппаратный префетчер успевает подтянуть следующие линии.
+ *  - Сетка не мутируется вообще. moveParticle только пишет новый номер клетки в gridId
+ *    своей частицы (одна запись вместо remove + add), а addParticle/deleteParticle
+ *    вообще не трогают сетку.
+ *
+ * ПОЧЕМУ ЭТО НЕ "СОРТИРОВКА С НУЛЯ КАЖДЫЙ ТИК"
+ * --------------------------------------------
+ * Counting sort стабильна, и оба её прохода идут по particleIdx С ПРЕДЫДУЩЕГО ТИКА,
+ * который уже отсортирован по клеткам. Частицы за тик почти не меняют клетку, поэтому
+ * последовательность номеров клеток, которую видит проход, почти монотонно возрастает.
+ * Отсюда:
+ *  - инкременты cursor[c] попадают в те же несколько кэш-линий (почти L1-локально),
+ *  - запись в particleIdxNext идёт почти строго по возрастанию адреса, то есть это
+ *    линейная запись, а не разбросанный scatter,
+ *  - порядок частиц внутри клетки сохраняется между тиками, значит фаза коллизий
+ *    каждый тик обходит их в одном и том же порядке.
+ * То есть это ровно "досортировка предыдущего массива", просто выраженная через counting
+ * sort: алгоритм O(n) с линейными обращениями вместо инкрементального обновления
+ * структуры со сдвигами и дырами.
+ *
+ * ПРО ПАРАЛЛЕЛЬНОСТЬ
+ * ------------------
+ * Перестройка сознательно оставлена однопоточной. Причина арифметическая: вся работа —
+ * это memset 64 КБ, два линейных прохода по n = 8500 элементов и префиксная сумма по
+ * gridSize = 16384, суммарно порядка 40-60 мкс при тике ~1000 мкс. Корректная
+ * параллельная схема требует трёх барьеров (гистограммы по полосам -> обмен "эмигрантами"
+ * между полосами -> скан сумм полос -> scatter), а один барьер на нынешнем
+ * executor.submit + Future.get стоит 10-30 мкс. То есть параллельная версия при текущем
+ * n съест ровно столько, сколько сэкономит.
+ *
+ * Схема на будущее (когда появится дешёвый spin-барьер или n вырастет в разы):
+ * полоса t — это непрерывный диапазон клеток [t * gridSize / T, (t + 1) * gridSize / T),
+ * а частицы полосы за прошлый тик — непрерывный срез particleIdx[cellStart[bandFirst]
+ * until cellStart[bandLast + 1]], потому что particleIdx отсортирован по клеткам. Значит
+ * каждый поток читает свой срез без пересечений; частицы, ушедшие в чужую полосу
+ * (их единицы — только те, что пересекли границу полосы), складываются в свой буфер
+ * эмигрантов, а после барьера каждый поток забирает адресованных ему. Дальше локальная
+ * префиксная сумма по своей полосе, скан сумм полос (T чисел) и scatter — каждый поток
+ * пишет в свой непрерывный отрезок particleIdxNext, поэтому гонок нет и синхронизация
+ * не нужна. Полосы под это нарезаются свои, независимо от чётных/нечётных чанков физики.
+ *
+ * КОГДА ВЫЗЫВАТЬ
+ * --------------
+ * Один раз за тик, после всех команд (создание/удаление частиц) и после фазы движения,
+ * то есть в самом конце тика. Тогда фазы 1-6 следующего тика видят полностью
+ * согласованную сетку. В окне между движением и перестройкой сетка отражает позиции
+ * до движения — этим пользуется только редактор (поиск клетки под курсором), которому
+ * промах на 1-2 клетки безразличен.
+ */
 class GridManager (
     var gridWidth: Int,
     var gridHeight: Int,
     val diContext: DIContext,
+    /**
+     * Осталось только как подсказка ёмкости для утилит, собирающих частицы в список
+     * (см. collectParticles). Жёсткого лимита частиц на клетку больше нет.
+     */
     val maxAmountOfParticles: Int
 ): WorldResizable {
     var gridSize = gridWidth * gridHeight
-    var grid = IntArray(gridSize * maxAmountOfParticles) { -1 }
-    var particleCounts = IntArray(gridSize)
-    var mapMoreThenMax = Array(diContext.totalChunks * 2) { Int2ObjectOpenHashMap<IntArrayList>() }
-
-    private var halfChunkSize = diContext.chunkSize / 2
 
     /**
-     * Сдвиг вместо деления, если halfChunkSize — степень двойки, иначе -1.
-     * idiv на x86 — это 20-40 циклов, он не пайплайнится и блокирует divider;
-     * сдвиг — 1 цикл. halfChunkSize = gridSize / (threadCount * 2) / 2 и степенью
-     * двойки быть не обязан (зависит от размеров мира), поэтому fallback сохранён.
+     * Границы клеток: частицы клетки c — это particleIdx[cellStart[c] until cellStart[c + 1]].
+     * Размер gridSize + 1, чтобы у последней клетки была правая граница без ветки.
      */
-    private var halfChunkShift = shiftOfPowerOfTwo(halfChunkSize)
+    var cellStart = IntArray(gridSize + 1)
 
-    private fun getHalfChunkId(gridIndex: Int): Int {
-        val shift = halfChunkShift
-        return if (shift >= 0) gridIndex ushr shift else gridIndex / halfChunkSize
-    }
+    /** Индексы частиц, сгруппированные по клеткам. Длина массива >= particleCount. */
+    var particleIdx = IntArray(INITIAL_PARTICLE_CAPACITY)
 
+    /** Сколько элементов particleIdx реально занято. */
+    var particleCount = 0
 
-    fun addParticle(x: Int, y: Int, value: Int): Int {
+    /**
+     * Второй буфер под particleIdx: counting sort читает предыдущий порядок и пишет новый,
+     * поэтому на месте это делать нельзя. Буферы меняются местами, аллокаций нет.
+     */
+    private var particleIdxNext = IntArray(INITIAL_PARTICLE_CAPACITY)
+
+    /**
+     * Сначала гистограмма (сколько частиц в клетке), потом — курсор записи для scatter.
+     * Одно и то же место переиспользуется, потому что после того как значение счётчика
+     * учтено в префиксной сумме, оно больше не нужно: вместо него ложится смещение.
+     * Так мы обходимся двумя массивами по 64 КБ вместо трёх.
+     */
+    private var cursor = IntArray(gridSize)
+
+    /** Частицы, созданные с момента прошлой перестройки: их ещё нет в particleIdx. */
+    private var pending = IntArray(256)
+    private var pendingCount = 0
+
+    /**
+     * Отметка "частица лежит в pending". Нужна на один вырожденный случай: индекс мёртвой
+     * частицы может быть переиспользован новой в том же тике (deadStack — LIFO), и тогда
+     * один и тот же индекс окажется и в старом particleIdx, и в pending — то есть попал бы
+     * в сетку дважды. Проверка стоит дёшево: BooleanArray на ~10k частиц это ~10 КБ,
+     * он целиком лежит в L1, обращение к нему 1-2 такта.
+     */
+    private var pendingFlag = BooleanArray(INITIAL_PARTICLE_CAPACITY)
+
+    // ===================================================================================
+    // РЕГИСТРАЦИЯ ЧАСТИЦ
+    // ===================================================================================
+
+    /** Индекс клетки сетки. Бросает исключение за границами — как старый addParticle. */
+    fun cellIndexOf(x: Int, y: Int): Int {
         if (x !in 0..<gridWidth || y < 0 || y >= gridHeight) {
             //TODO Запретить спавн клетки за границей сетки
             throw Exception("Out of grid bounds")
         }
-        val cellIndex = y * gridWidth + x
-        if (particleCounts[cellIndex] >= maxAmountOfParticles) {
-            val threadId = getHalfChunkId(cellIndex)
-            var list = mapMoreThenMax[threadId].get(cellIndex)
-            if (list == null) {
-                list = IntArrayList()
-                mapMoreThenMax[threadId].put(cellIndex, list)
-            }
-            list.add(value)
-        } else {
-            val gridIndex = cellIndex * maxAmountOfParticles + particleCounts[cellIndex]
-            grid[gridIndex] = value
-        }
-
-        particleCounts[cellIndex]++
-        return cellIndex
+        return y * gridWidth + x
     }
 
-    fun removeParticle(cellIndex: Int, value: Int): Boolean {
-        val start = cellIndex * maxAmountOfParticles
-        if (particleCounts[cellIndex] <= maxAmountOfParticles) {
-            val end = start + particleCounts[cellIndex] - 1
-            for (i in start..end) {
-                if (grid[i] == value) {
-                    grid[i] = grid[end]
-                    grid[end] = -1
-                    particleCounts[cellIndex]--
-                    return true
-                }
-            }
-        } else {
-            val end = start + maxAmountOfParticles - 1
-            val threadId = getHalfChunkId(cellIndex)
-            val list = mapMoreThenMax[threadId].get(cellIndex)
-            for (i in start..end) {
-                if (grid[i] == value) {
-                    grid[i] = list?.removeInt(list.size - 1) ?: throw Exception("List is null or empty but particleCounts > MAX_AMOUNT_OF_PARTICLES")
-                    if (list.isEmpty) {
-                        mapMoreThenMax[threadId].remove(cellIndex)
-                    }
-                    particleCounts[cellIndex]--
-                    return true
-                }
-            }
-            if (list?.rem(value) ?: false) {
-                particleCounts[cellIndex]--
-                if (list.isEmpty) {
-                    mapMoreThenMax[threadId].remove(cellIndex)//TODO swap remove without copy array
-                }
-            } else throw Exception("Couldn't delete list but particleCounts > MAX_AMOUNT_OF_PARTICLES")
-            return true
-        }
+    /** Индекс клетки с зажимом в границы сетки: для движения, где координата уже клампится. */
+    fun cellIndexOfClamped(x: Int, y: Int): Int {
+        val cx = if (x < 0) 0 else if (x >= gridWidth) gridWidth - 1 else x
+        val cy = if (y < 0) 0 else if (y >= gridHeight) gridHeight - 1 else y
+        return cy * gridWidth + cx
+    }
 
-        return false
+    /**
+     * Сообщить сетке о новой частице. В сетке она появится при следующей перестройке
+     * (то есть в конце этого же тика) — до тех пор её просто нет в particleIdx.
+     */
+    fun registerParticle(particleIndex: Int) {
+        if (particleIndex >= pendingFlag.size) {
+            pendingFlag = pendingFlag.copyOf(particleIndex + (particleIndex shr 1) + 1)
+        }
+        if (pendingFlag[particleIndex]) return
+
+        pendingFlag[particleIndex] = true
+        if (pendingCount >= pending.size) {
+            pending = pending.copyOf(pending.size * 2)
+        }
+        pending[pendingCount] = particleIndex
+        pendingCount++
     }
 
     // ===================================================================================
-    // БЕЗАЛЛОКАЦИОННОЕ ЧТЕНИЕ СЕТКИ
+    // ПЕРЕСТРОЙКА
+    // ===================================================================================
+
+    /**
+     * Counting sort по номеру клетки. Три линейных прохода:
+     *  1) гистограмма по предыдущему порядку (+ новые частицы),
+     *  2) префиксная сумма по клеткам — она же превращает гистограмму в курсоры,
+     *  3) раскладка частиц по местам.
+     *
+     * [isAlive] и [particleCell] — это particleEntity.isAlive и particleEntity.gridId.
+     * Массивы передаются параметрами, а не через ссылку на сущность, чтобы не заводить
+     * циклическую зависимость (ParticleEntity уже держит GridManager) и чтобы ссылки
+     * лежали в локальных переменных, а не перечитывались из полей на каждом обращении.
+     */
+    fun rebuild(isAlive: BooleanArray, particleCell: IntArray) {
+        val counts = cursor
+        // memset 64 КБ — это ~2 мкс, и это единственная "лишняя" работа, зависящая от
+        // размера сетки, а не от числа частиц.
+        counts.fill(0)
+
+        val prev = particleIdx
+        val prevCount = particleCount
+        val flags = pendingFlag
+        val pendingList = pending
+        val pendingSize = pendingCount
+
+        // --- Проход 1: гистограмма ---
+        // Идём по ПРОШЛОМУ порядку, поэтому номера клеток почти монотонно возрастают,
+        // и инкременты counts[c] держатся в нескольких кэш-линиях.
+        var total = 0
+        for (i in 0 until prevCount) {
+            val particleIndex = prev[i]
+            if (!isAlive[particleIndex]) continue
+            // Индекс мог быть переиспользован новой частицей в этом же тике: тогда за него
+            // отвечает запись в pending, а эту нужно пропустить, иначе будет дубль.
+            if (particleIndex < flags.size && flags[particleIndex]) continue
+            val cellIndex = particleCell[particleIndex]
+            if (cellIndex < 0) continue
+            counts[cellIndex]++
+            total++
+        }
+        for (i in 0 until pendingSize) {
+            val particleIndex = pendingList[i]
+            if (!isAlive[particleIndex]) continue
+            val cellIndex = particleCell[particleIndex]
+            if (cellIndex < 0) continue
+            counts[cellIndex]++
+            total++
+        }
+
+        if (particleIdxNext.size < total) {
+            val newCapacity = total + (total shr 2)
+            particleIdxNext = IntArray(newCapacity)
+        }
+
+        // --- Проход 2: префиксная сумма ---
+        // За один обход и заполняем границы клеток, и превращаем гистограмму в курсоры.
+        val starts = cellStart
+        val size = gridSize
+        var running = 0
+        for (cellIndex in 0 until size) {
+            val count = counts[cellIndex]
+            starts[cellIndex] = running
+            counts[cellIndex] = running
+            running += count
+        }
+        starts[size] = running
+
+        if (DEBUG_CHECKS && running != total) {
+            throw IllegalStateException("prefix sum mismatch: $running != $total")
+        }
+
+        // --- Проход 3: раскладка ---
+        // Запись в next почти строго по возрастанию адреса — это линейный поток записей,
+        // а не разбросанный scatter, потому что источник уже отсортирован по клеткам.
+        val next = particleIdxNext
+        for (i in 0 until prevCount) {
+            val particleIndex = prev[i]
+            if (!isAlive[particleIndex]) continue
+            if (particleIndex < flags.size && flags[particleIndex]) continue
+            val cellIndex = particleCell[particleIndex]
+            if (cellIndex < 0) continue
+            next[counts[cellIndex]] = particleIndex
+            counts[cellIndex]++
+        }
+        for (i in 0 until pendingSize) {
+            val particleIndex = pendingList[i]
+            if (!isAlive[particleIndex]) continue
+            val cellIndex = particleCell[particleIndex]
+            if (cellIndex < 0) continue
+            next[counts[cellIndex]] = particleIndex
+            counts[cellIndex]++
+        }
+
+        // Буферы меняются местами: то, что было прошлым порядком, станет next в следующий раз.
+        particleIdxNext = prev
+        particleIdx = next
+        particleCount = total
+
+        // Флаги гасим только по списку pending, а не fill'ом всего массива.
+        for (i in 0 until pendingSize) {
+            flags[pendingList[i]] = false
+        }
+        pendingCount = 0
+    }
+
+    // ===================================================================================
+    // ЧТЕНИЕ СЕТКИ (без аллокаций)
     //
-    // Раскладка: обычные частицы клетки лежат в grid[cellIndex * maxAmountOfParticles ..
-    // + min(count, maxAmountOfParticles)). Если count > maxAmountOfParticles, "хвост"
-    // (count - maxAmountOfParticles штук) лежит в mapMoreThenMax[halfChunk][cellIndex].
-    //
-    // ВАЖНО: прямой обход валиден только тогда, когда во время обхода сетка не мутирует
-    // (фаза коллизий этому условию удовлетворяет: repulse/onContact не вызывают
-    // addParticle/removeParticle, всё складывается в отложенные команды).
+    // ВАЖНО: обход валиден, пока сетку не перестраивают. Фазы коллизий, связей, клеток
+    // и движения этому условию удовлетворяют: они не вызывают rebuild и не меняют
+    // cellStart/particleIdx.
     // ===================================================================================
 
     /** Индекс клетки сетки или -1, если координаты вне сетки. */
     fun cellIndexAt(x: Int, y: Int): Int =
         if (x !in 0..<gridWidth || y < 0 || y >= gridHeight) -1 else y * gridWidth + x
 
-    /** Смещение первого слота клетки в массиве [grid]. */
-    fun cellSlotStart(cellIndex: Int): Int = cellIndex * maxAmountOfParticles
+    /** Первый индекс в [particleIdx], принадлежащий клетке. */
+    fun cellFrom(cellIndex: Int): Int = cellStart[cellIndex]
 
-    /** Есть ли у клетки "хвост" переполнения. */
-    fun hasOverflow(cellIndex: Int): Boolean = particleCounts[cellIndex] > maxAmountOfParticles
+    /** Граница за последним индексом клетки. */
+    fun cellTo(cellIndex: Int): Int = cellStart[cellIndex + 1]
 
-    /**
-     * Список переполнения клетки или null.
-     * Публичный, потому что им пользуются публичные inline-функции ниже.
-     */
-    fun overflowListOrNull(cellIndex: Int): IntArrayList? =
-        mapMoreThenMax[getHalfChunkId(cellIndex)].get(cellIndex)
+    /** Сколько частиц в клетке. */
+    fun countInCell(cellIndex: Int): Int = cellStart[cellIndex + 1] - cellStart[cellIndex]
 
-    /** Обход всех частиц клетки без копирования и аллокаций. */
+    /** Обход всех частиц клетки. Ветки на переполнение больше нет — путь всегда один. */
     inline fun forEachParticleInCellIndex(cellIndex: Int, action: (Int) -> Unit) {
-        val count = particleCounts[cellIndex]
-        if (count <= 0) return
-
-        val cells = grid
-        val start = cellIndex * maxAmountOfParticles
-
-        if (count <= maxAmountOfParticles) {
-            for (i in start until start + count) action(cells[i])
-            return
-        }
-
-        val extraList = overflowListOrNull(cellIndex)
-            ?: throw IllegalStateException("Overflow list is null but particleCounts > maxAmountOfParticles")
-        val extraElements = extraList.elements()
-        val extraSize = extraList.size
-        for (i in 0 until extraSize) action(extraElements[i])
-        for (i in start until start + maxAmountOfParticles) action(cells[i])
+        val starts = cellStart
+        val indices = particleIdx
+        val to = starts[cellIndex + 1]
+        for (i in starts[cellIndex] until to) action(indices[i])
     }
 
     /** Обход всех частиц клетки по координатам. Вне сетки — просто ничего не делает. */
@@ -151,38 +313,35 @@ class GridManager (
 
     /**
      * Обход частиц горизонтального отрезка одного ряда [xFrom-xTo] (границы клампятся).
-     * Дешевле, чем несколько вызовов forEachParticleAt: индекс клетки инкрементируется.
+     *
+     * У соседних клеток одного ряда индексы идут подряд, а в CSR это значит, что и их
+     * частицы лежат в particleIdx одним непрерывным куском: cellStart[from] .. cellStart[to+1].
+     * Поэтому весь отрезок читается одним линейным проходом, без обращения к cellStart
+     * на каждую клетку.
      */
     inline fun forEachParticleInRowSegment(y: Int, xFrom: Int, xTo: Int, action: (Int) -> Unit) {
         if (y !in 0..<gridHeight) return
         val from = if (xFrom < 0) 0 else xFrom
         val to = if (xTo >= gridWidth) gridWidth - 1 else xTo
         if (from > to) return
+
         val rowBase = y * gridWidth
-        for (cellIndex in rowBase + from..rowBase + to) {
-            forEachParticleInCellIndex(cellIndex, action)
-        }
+        val starts = cellStart
+        val indices = particleIdx
+        val last = starts[rowBase + to + 1]
+        for (i in starts[rowBase + from] until last) action(indices[i])
     }
 
     /**
      * Копирует частицы клетки в переиспользуемый буфер [dst], возвращает количество.
-     * Нужна там, где требуется случайный доступ (например, попарный перебор i<j).
+     * Нужна там, где требуется случайный доступ к списку.
      */
     fun copyParticlesInto(cellIndex: Int, dst: IntArray): Int {
-        val count = particleCounts[cellIndex]
+        val from = cellStart[cellIndex]
+        val count = cellStart[cellIndex + 1] - from
         if (count <= 0) return 0
         if (dst.size < count) throw IllegalArgumentException("dst is too small: ${dst.size} < $count")
-
-        val start = cellIndex * maxAmountOfParticles
-        if (count <= maxAmountOfParticles) {
-            System.arraycopy(grid, start, dst, 0, count)
-        } else {
-            val extraList = overflowListOrNull(cellIndex)
-                ?: throw IllegalStateException("Overflow list is null but particleCounts > maxAmountOfParticles")
-            val extraSize = extraList.size
-            if (extraSize > 0) System.arraycopy(extraList.elements(), 0, dst, 0, extraSize)
-            System.arraycopy(grid, start, dst, extraSize, maxAmountOfParticles)
-        }
+        System.arraycopy(particleIdx, from, dst, 0, count)
         return count
     }
 
@@ -198,36 +357,29 @@ class GridManager (
 
     /** АЛЛОЦИРУЕТ новый массив. См. комментарий к [getParticles]. */
     fun getParticlesIndex(cellIndex: Int): IntArray {
-        val count = particleCounts[cellIndex]
-        if (count <= 0) return EMPTY_PARTICLES
-
-        val start = cellIndex * maxAmountOfParticles
-        return if (count <= maxAmountOfParticles) {
-            grid.copyOfRange(start, start + count)
-        } else {
-            val extraList = overflowListOrNull(cellIndex) ?: throw Exception("List is null or empty but particleCounts > MAX_AMOUNT_OF_PARTICLES")
-            val extraSize = extraList.size
-            IntArray(count).apply {
-                if (extraSize > 0) System.arraycopy(extraList.elements(), 0, this, 0, extraSize)
-                System.arraycopy(grid, start, this, extraSize, maxAmountOfParticles)
-            }
-        }
+        val from = cellStart[cellIndex]
+        val to = cellStart[cellIndex + 1]
+        if (to <= from) return EMPTY_PARTICLES
+        return particleIdx.copyOfRange(from, to)
     }
 
     fun clearAll() {
-        particleCounts.fill(0)
-        mapMoreThenMax.forEach { it.clear() }
+        cellStart.fill(0)
+        cursor.fill(0)
+        particleCount = 0
+        for (i in 0 until pendingCount) pendingFlag[pending[i]] = false
+        pendingCount = 0
     }
 
     override fun resize() {
         gridWidth = diContext.gridWidth
         gridHeight = diContext.gridHeight
         gridSize = gridWidth * gridHeight
-        grid = IntArray(gridSize * maxAmountOfParticles) { -1 }
-        particleCounts = IntArray(gridSize)
-        halfChunkSize = diContext.chunkSize / 2
-        halfChunkShift = shiftOfPowerOfTwo(halfChunkSize)
-        mapMoreThenMax = Array(diContext.totalChunks * 2) { Int2ObjectOpenHashMap<IntArrayList>() }
+        cellStart = IntArray(gridSize + 1)
+        cursor = IntArray(gridSize)
+        particleCount = 0
+        pendingCount = 0
+        pendingFlag.fill(false)
     }
 
     companion object {
@@ -237,12 +389,7 @@ class GridManager (
          */
         @JvmField
         val EMPTY_PARTICLES = IntArray(0)
+
+        private const val INITIAL_PARTICLE_CAPACITY = 4096
     }
-
 }
-
-/** Номер бита, если value — степень двойки, иначе -1 (тогда деление не заменить сдвигом). */
-private fun shiftOfPowerOfTwo(value: Int): Int =
-    if (value > 0 && (value and (value - 1)) == 0) Integer.numberOfTrailingZeros(value) else -1
-
-

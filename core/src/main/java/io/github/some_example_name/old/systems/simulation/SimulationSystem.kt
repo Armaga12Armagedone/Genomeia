@@ -96,6 +96,14 @@ class SimulationSystem(
         measure("8. Organs") { organManager.performOrgansNextStage() }
         measure("9. User Commands") { userCommandManager.processingCommandsFromUser() }
         measure("10. Last World Cmds") { worldCommandsManager.executingLastCommandsFromTheWorld() }
+        // Единственное место, где меняется структура пространственной сетки. Стоит здесь,
+        // потому что к этому моменту уже применены все перемещения (фаза 6) и все
+        // создания/удаления частиц (фазы 7-10), то есть сетка собирается один раз по
+        // финальному состоянию тика. Фазы 1-6 следующего тика читают её только на чтение,
+        // поэтому многопоточным фазам не нужно ни блокировок, ни чётно-нечётных ограничений
+        // из-за мутации сетки.
+        measure("10.5 Grid Rebuild") { gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId) }
+
         measure("11. Render Buffer") { renderBufferManager.updateBuffer(perfText) }
 
         // Обновляем текст раз в 60 тиков
@@ -149,26 +157,33 @@ class SimulationSystem(
         }
     }
 
+    /**
+     * Интегрирование позиций. Работы здесь мало (позиция += скорость, ограничение
+     * по границам мира, пересчёт gridId), поэтому фаза почти целиком состояла из
+     * накладных расходов: два барьера на ExecutorService по ~8 submit + 8 Future.get
+     * каждый — это десятки микросекунд на десяток микросекунд полезной работы.
+     * Теперь барьер спиновый, а слоты раздаются динамически: в стеке одного чанка
+     * могут быть тысячи частиц, в соседнем — единицы.
+     *
+     * Две стадии (odd/even) пока сохранены, потому что буферы отложенных команд
+     * индексируются номером чанка, и слот odd-чанка совпал бы со слотом even-чанка.
+     * Само движение сетку больше не мутирует, так что после разведения буферов по
+     * чанкам обе стадии можно будет слить в одну.
+     */
     fun arrangementOfPositionsInTheGrid() {
-        for (chunk in 0..<threadCount) {
-            threadManager.futures.add(threadManager.executor.submit {
-                for (i in 0..<worldCommandsManager.oddCellCounter[chunk]) {
-                    movementManager.moveParticle(worldCommandsManager.oddCellChunkPositionStack[chunk][i], chunk)
-                }
-            })
+        threadManager.runSlotStage(threadCount) { chunk ->
+            val stack = worldCommandsManager.oddCellChunkPositionStack[chunk]
+            for (i in 0..<worldCommandsManager.oddCellCounter[chunk]) {
+                movementManager.moveParticle(stack[i], chunk)
+            }
         }
-        threadManager.futures.forEach { it.get() }
-        threadManager.futures.clear()
 
-        for (chunk in 0..<threadCount) {
-            threadManager.futures.add(threadManager.executor.submit {
-                for (i in 0..<worldCommandsManager.evenCellCounter[chunk]) {
-                    movementManager.moveParticle(worldCommandsManager.evenCellChunkPositionStack[chunk][i], chunk)
-                }
-            })
+        threadManager.runSlotStage(threadCount) { chunk ->
+            val stack = worldCommandsManager.evenCellChunkPositionStack[chunk]
+            for (i in 0..<worldCommandsManager.evenCellCounter[chunk]) {
+                movementManager.moveParticle(stack[i], chunk)
+            }
         }
-        threadManager.futures.forEach { it.get() }
-        threadManager.futures.clear()
 
         worldCommandsManager.oddCellCounter.fill(0)
         worldCommandsManager.evenCellCounter.fill(0)
@@ -185,8 +200,6 @@ class SimulationSystem(
                 e.printStackTrace()
             }
         }
-
-        threadManager.futures.clear()
     }
 
     fun dispose() {

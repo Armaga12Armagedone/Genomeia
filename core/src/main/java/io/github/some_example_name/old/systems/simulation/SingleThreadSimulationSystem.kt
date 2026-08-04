@@ -62,7 +62,11 @@ class SingleThreadSimulationSystem(
         userCommandManager.processingCommandsFromUser()
         worldCommandsManager.executingLastCommandsFromTheWorld()
 
+        // Пересборка сетки: после движения и всех команд, один раз за тик.
+        gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId)
+
         renderBufferManager.updateBuffer()
+
     }
 
     private fun processGridChunkPhysics() {
