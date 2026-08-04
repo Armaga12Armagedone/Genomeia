@@ -85,14 +85,23 @@ class CollisionManager(
         val isParticleAIsCell = isCellFlags[particleAId]
         val isParticleBIsCell = isCellFlags[particleBId]
         if (isParticleAIsCell && isParticleBIsCell) {
-            val linkIndex = linkEntity.linkIndexMap.get(
-                holderIndices[particleAId],
-                holderIndices[particleBId]
-            )
-            if (linkIndex != -1) {
+            // Связанные клетки не отталкиваются: их держит пружина из LinkPhysicsSystem.
+            //
+            // Раньше здесь был linkEntity.linkIndexMap.get(a, b) — Long2IntOpenHashMap
+            // на 100k записей (~1.5+ МБ). Ключ считался из пары индексов, то есть
+            // обращение было случайным по всей таблице: промах L3/RAM (~200 циклов) на
+            // каждую пару касающихся клеток, дороже, чем вся остальная математика метода.
+            // Теперь это скан инлайн-списка соседей клетки — 8 int'ов в одной кэш-линии
+            // (CellEntity.cellLinks), ~150-200 циклов экономии на пару.
+            if (cellEntity.areCellsLinked(
+                    holderIndices[particleAId],
+                    holderIndices[particleBId]
+                )
+            ) {
                 return
             }
         }
+
 
         val distance = sqrt(distanceSquared)
 

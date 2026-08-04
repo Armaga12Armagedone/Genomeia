@@ -75,6 +75,133 @@ class CellEntity(
     var neuralConnections = Int2ObjectOpenHashMap<IntArrayList>()
     @Transient val organToIdToIndex = OrderedIntPairMap(maxAmount)
 
+    /**
+     * Инлайн-список соседей по физическим связям: MAX_LINKS_PER_CELL слотов на клетку,
+     * подряд, начиная с cellIndex * MAX_LINKS_PER_CELL. Пустой слот = -1.
+     *
+     * Зачем это вообще нужно: проверка «связаны ли две клетки» делается в repulse на
+     * каждое касание клетка-клетка, то есть миллионы раз за тик. Раньше это был
+     * UnorderedIntPairMap поверх Long2IntOpenHashMap на 100k записей — таблица
+     * ~1.5+ МБ, то есть больше любого L2, а обращение к ней это случайный пробинг:
+     * почти гарантированный промах в L3/RAM (~200 циклов), плюс возможное линейное
+     * пробирование по нескольким кэш-линиям. Одна такая проверка стоила дороже, чем
+     * вся остальная математика касания.
+     *
+     * Слотов 16, но горячими являются только первые HOT_LINKS = 8: 8 int'ов это 32 байта,
+     * и такой блок почти всегда попадает в одну кэш-линию целиком. Полные 64 байта дали бы
+     * ровно размер линии, но не её выравнивание: данные массива в JVM начинаются после
+     * хедера объекта, сам объект выровнен по 8/16 байт, а не по 64 — то есть 64-байтный
+     * блок почти гарантированно лёг бы на границу и стоил двух промахов вместо одного.
+     * Поэтому вторая половина списка читается только у клеток, у которых связей реально
+     * больше восьми (см. areCellsLinked).
+     *
+     * Отсюда и ограничение симуляции: у клетки не может быть больше MAX_LINKS_PER_CELL
+     * физических связей. Список хранится плотно (все живые соседи идут подряд от начала),
+     * удаление делается swap-with-last — на плотность опирается и быстрый выход из скана,
+     * и canAddCellLink.
+     *
+     * Важно: linkAmount считает и физические, и нейронные связи (это игровой сенсор),
+     * поэтому он НЕ является длиной этого списка и не может использоваться как счётчик.
+     */
+    var cellLinks = IntArray(maxAmount * MAX_LINKS_PER_CELL) { -1 }
+
+    /**
+     * Горячая проверка из repulse.
+     *
+     * Первые HOT_LINKS слотов сканируются развёрнуто и без ранних выходов: они лежат в
+     * одной кэш-линии, поэтому лишние загрузки бесплатны, а вот выход по первому -1
+     * добавил бы плохо предсказуемую ветку (у клеток бывает и 2, и 6 связей) — промах
+     * предсказателя дороже семи чтений из уже загруженной линии. Результаты сравнений
+     * складываются через `or` без короткого замыкания, чтобы не появилось восемь
+     * условных переходов.
+     *
+     * Дальше стоит ровно одна ветка: список плотный, поэтому непустой слот HOT_LINKS - 1
+     * означает «связей девять или больше». У 99% клеток их 2-6, так что ветка
+     * предсказывается почти идеально, и вторая кэш-линия в типичном случае не трогается
+     * вообще — проверка стоит столько же, сколько при лимите в 8 связей.
+     *
+     * otherCellIndex всегда валидный индекс живой клетки (никогда -1), так что пустые
+     * слоты со -1 никогда не дадут ложного совпадения.
+     */
+    fun areCellsLinked(cellIndex: Int, otherCellIndex: Int): Boolean {
+        val links = cellLinks
+        val base = cellIndex shl LINKS_SHIFT
+
+        val foundInHotHalf = (links[base] == otherCellIndex) or
+            (links[base + 1] == otherCellIndex) or
+            (links[base + 2] == otherCellIndex) or
+            (links[base + 3] == otherCellIndex) or
+            (links[base + 4] == otherCellIndex) or
+            (links[base + 5] == otherCellIndex) or
+            (links[base + 6] == otherCellIndex) or
+            (links[base + 7] == otherCellIndex)
+
+        if (foundInHotHalf) return true
+
+        // Список плотный: пустой последний слот первой половины значит, что связей меньше
+        // девяти и вторая половина заведомо пустая. Не читаем её — экономим кэш-линию.
+        if (links[base + HOT_LINKS - 1] == -1) return false
+
+        return (links[base + 8] == otherCellIndex) or
+            (links[base + 9] == otherCellIndex) or
+            (links[base + 10] == otherCellIndex) or
+            (links[base + 11] == otherCellIndex) or
+            (links[base + 12] == otherCellIndex) or
+            (links[base + 13] == otherCellIndex) or
+            (links[base + 14] == otherCellIndex) or
+            (links[base + 15] == otherCellIndex)
+    }
+
+
+    /** Есть ли у клетки свободный слот под ещё одну физическую связь. */
+    fun canAddCellLink(cellIndex: Int) =
+        cellLinks[(cellIndex shl LINKS_SHIFT) + MAX_LINKS_PER_CELL - 1] == -1
+
+    /**
+     * Добавляет соседа в первый свободный слот. false — слотов больше нет.
+     * Вызывается только из однопоточной фазы применения команд.
+     */
+    fun addCellLink(cellIndex: Int, otherCellIndex: Int): Boolean {
+        val links = cellLinks
+        val base = cellIndex shl LINKS_SHIFT
+        for (i in base until base + MAX_LINKS_PER_CELL) {
+            if (links[i] == -1) {
+                links[i] = otherCellIndex
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Удаляет одно вхождение соседа, сохраняя плотность списка (swap with last).
+     * Если соседа нет — no-op (связь могла быть уже снята вместе со смертью клетки).
+     */
+    fun removeCellLink(cellIndex: Int, otherCellIndex: Int) {
+        val links = cellLinks
+        val base = cellIndex shl LINKS_SHIFT
+
+        var slot = -1
+        var last = -1
+        for (i in base until base + MAX_LINKS_PER_CELL) {
+            val neighbour = links[i]
+            if (neighbour == -1) break
+            if (neighbour == otherCellIndex && slot == -1) slot = i
+            last = i
+        }
+
+        if (slot == -1) return
+
+        links[slot] = links[last]
+        links[last] = -1
+    }
+
+    fun clearCellLinks(cellIndex: Int) {
+        val base = cellIndex shl LINKS_SHIFT
+        cellLinks.fill(-1, base, base + MAX_LINKS_PER_CELL)
+    }
+
+
     fun addNeuralConnection(cellIndex: Int, targetNeuralIndex: Int) {
         val list = neuralConnections[cellIndex] ?: IntArrayList(2).also {
             neuralConnections[cellIndex] = it
@@ -206,8 +333,12 @@ class CellEntity(
         this.degreeOfShortening[cellIndex] = 1f
         this.pheromoneType[cellIndex] = pheromoneType
         linkAmount[cellIndex] = 0
+        // Индексы переиспользуются через deadStack, поэтому слоты связей нужно
+        // обязательно вычистить: иначе новая клетка унаследует соседей мёртвой.
+        clearCellLinks(cellIndex)
         command[cellIndex] = -1
         val cell = cellList[cellType]
+
         if (cell.doesNeedNeuralConnections) {
             neuralConnections.put(cellIndex, IntArrayList(2))
         }
@@ -267,8 +398,13 @@ class CellEntity(
         this.degreeOfShortening[cellIndex] = 1f
         pheromoneType[cellIndex] = -1
         linkAmount[cellIndex] = 0
+        // Сами связи ещё живы (их снимет LinkPhysicsSystem, увидев мёртвую клетку и
+        // отправив DELETE_LINK), но список этой клетки уже не нужен, а слот индекса
+        // может быть переиспользован. Обратные ссылки у соседей уберёт deleteLink.
+        clearCellLinks(cellIndex)
         command[cellIndex] = -1
         neuralConnections.remove(cellIndex)
+
 
         deleteNeural(cellIndex = cellIndex)
 
@@ -311,10 +447,12 @@ class CellEntity(
         degreeOfShortening.clear(1f)
         pheromoneType.clear(-1)
         linkAmount.clear(0)
+        cellLinks.fill(-1, 0, bound shl LINKS_SHIFT)
         command.clear(-1)
         neuralConnections.clear()
         organToIdToIndex.clear()
     }
+
 
     override fun onResize(oldMax: Int) {
         particleIndexes = particleIndexes.resize(-1)
@@ -347,6 +485,34 @@ class CellEntity(
         degreeOfShortening = degreeOfShortening.resize(1f)
         pheromoneType = pheromoneType.resize(-1)
         linkAmount = linkAmount.resize(0)
+        // Массив связей растёт не как остальные: на клетку в нём MAX_LINKS_PER_CELL
+        // слотов, поэтому и размер, и копируемый диапазон умножаются на них же.
+        run {
+            val old = cellLinks
+            cellLinks = IntArray(maxAmount shl LINKS_SHIFT) { -1 }
+            System.arraycopy(old, 0, cellLinks, 0, oldMax shl LINKS_SHIFT)
+        }
         command = command.resize(-1)
     }
+
+    companion object {
+        /**
+         * Ограничение симуляции: столько физических связей максимум может быть у клетки.
+         * Менять только на степень двойки и синхронно с LINKS_SHIFT (плюс развёрнутый
+         * скан в areCellsLinked).
+         */
+        const val MAX_LINKS_PER_CELL = 16
+
+        /**
+         * Сколько первых слотов считаются горячими: 8 int'ов = 32 байта, такой блок почти
+         * всегда целиком лежит в одной кэш-линии. Остальные слоты — «холодный хвост» для
+         * редких клеток с более чем восемью связями.
+         */
+        const val HOT_LINKS = 8
+
+        /** log2(MAX_LINKS_PER_CELL): умножение на индекс базы делается сдвигом. */
+        const val LINKS_SHIFT = 4
+    }
+
 }
+

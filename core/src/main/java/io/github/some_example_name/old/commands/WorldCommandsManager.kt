@@ -97,8 +97,13 @@ class WorldCommandsManager(
                             otherCellIndex = ints[1],
                             linksLength = floats[0],
                         )
-                        linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                        // -1 значит, что у одной из клеток кончились слоты связей
+                        // (CellEntity.MAX_LINKS_PER_CELL) и связь не создалась.
+                        if (linkIndex != -1) {
+                            linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                        }
                     }
+
                     WorldCommandType.ADD_NEURAL_LINK -> {
                         val cellIndex = if (ints[0] == -1) {
                             lastAddedCellIndexBuffer[threadId]
@@ -207,8 +212,11 @@ class WorldCommandsManager(
                                                 otherCellIndex = it,
                                                 linksLength = sqrt(squareDist),
                                             )
-                                            linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                                            if (linkIndex != -1) {
+                                                linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                                            }
                                         }
+
                                 }
 
                             val genomeIndex = organEntity.genomeIndex[parentOrganIndex]
@@ -367,14 +375,19 @@ class WorldCommandsManager(
                         val cellIndex = organIndexCellIdMapIndex.get(organIndex, cellId)
                         val otherCellIndex = organIndexCellIdMapIndex.get(organIndex, otherCellId)
 
-                        if (cellIndex != -1 && otherCellIndex != -1 && linkEntity.linkIndexMap.get(cellIndex, otherCellIndex) == -1) {
+                        if (cellIndex != -1 && otherCellIndex != -1 &&
+                            !cellEntity.areCellsLinked(cellIndex, otherCellIndex)
+                        ) {
                             val linkIndex = linkEntity.addLink(
                                 cellIndex = cellIndex,
                                 otherCellIndex = otherCellIndex,
                                 linksLength = linksLength,
                             )
-                            linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                            if (linkIndex != -1) {
+                                linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                            }
                         }
+
                     }
 
                     WorldCommandType.ADD_NEURAL_LINK_BY_ID -> {

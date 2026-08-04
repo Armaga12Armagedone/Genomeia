@@ -1,8 +1,8 @@
 package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.core.DIContext
-import io.github.some_example_name.old.core.utils.UnorderedIntPairMap
 import io.github.some_example_name.old.systems.physics.GridManager
+
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import kotlin.math.sqrt
 
@@ -18,7 +18,7 @@ class LinkEntity(
     var linksGeneration1 = IntArray(maxAmount) { -1 }
     var linksGeneration2 = IntArray(maxAmount) { -1 }
     var linksNaturalLength = FloatArray(maxAmount) { -10f }
-    val linkIndexMap = UnorderedIntPairMap(100_000)
+
 
     var linkPhase = BooleanArray(maxAmount)
     var assignedThread = ByteArray(maxAmount) { -1 }
@@ -81,12 +81,28 @@ class LinkEntity(
         assignedThread[linkIndex] = -1
     }
 
+    /**
+     * Возвращает индекс новой связи или -1, если добавить её нельзя.
+     *
+     * -1 бывает только по одной причине: у одной из клеток закончились слоты в
+     * cellLinks (см. CellEntity.MAX_LINKS_PER_CELL). Это осознанное ограничение
+     * симуляции — плата за то, что проверка «связаны ли клетки» в repulse стала
+     * сканом одной кэш-линии вместо похода в хэш-таблицу на полтора мегабайта.
+     * Все вызывающие обязаны проверять результат перед registerNewLink.
+     */
     fun addLink(
         cellIndex: Int,
         otherCellIndex: Int,
         linksLength: Float,
     ): Int {
+        // Проверка до add(): связь либо создаётся целиком, либо не создаётся вовсе,
+        // иначе можно получить живую связь, которой нет в списке соседей одной из клеток.
+        if (!cellEntity.canAddCellLink(cellIndex) || !cellEntity.canAddCellLink(otherCellIndex)) {
+            return -1
+        }
+
         val addLinkIndex = add()
+
 
         links1[addLinkIndex] = cellIndex
         links2[addLinkIndex] = otherCellIndex
@@ -98,10 +114,12 @@ class LinkEntity(
         cellEntity.linkAmount[cellIndex] ++
         cellEntity.linkAmount[otherCellIndex] ++
 
-        linkIndexMap.put(cellIndex, otherCellIndex, addLinkIndex)
+        cellEntity.addCellLink(cellIndex, otherCellIndex)
+        cellEntity.addCellLink(otherCellIndex, cellIndex)
 
         return addLinkIndex
     }
+
 
     fun deleteLink(linkIndex: Int, linkGeneration: Int? = null) {
         if (isAlive[linkIndex] && (linkGeneration == null || getGeneration(linkIndex) == linkGeneration)) {
@@ -110,9 +128,11 @@ class LinkEntity(
             val cellA = links1[linkIndex]
             val cellB = links2[linkIndex]
 
-            linkIndexMap.remove(cellA, cellB)
+            cellEntity.removeCellLink(cellA, cellB)
+            cellEntity.removeCellLink(cellB, cellA)
 
             cellEntity.linkAmount[cellA] --
+
             cellEntity.linkAmount[cellB] --
 
             links1[linkIndex] = -1
@@ -167,8 +187,8 @@ class LinkEntity(
         linksGeneration1.clear(-1)
         linksGeneration2.clear(-1)
         linksNaturalLength.clear(-10f)
-        linkIndexMap.clear()
         linkPhase.clear(false)
+
         assignedThread.clear(-1)
         linkToListPosition.clear(-1)
     }
