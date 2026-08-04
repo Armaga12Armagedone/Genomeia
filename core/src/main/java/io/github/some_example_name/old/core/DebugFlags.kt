@@ -27,7 +27,7 @@ const val DEBUG_CHECKS = false
  * управляет только выводом: строка в лог раз в PROFILE_WINDOW_TICKS тиков плюс сбор
  * статистики занятости сетки в GridManager.rebuild.
  */
-const val PROFILE_LOG = true
+const val PROFILE_LOG = false
 
 /**
  * Счётчики объёма работы широкой фазы: пары-кандидаты, реальные пересечения, пропуски
@@ -44,7 +44,7 @@ const val PROFILE_LOG = true
  * но каждый инкремент это одна запись в кэш-линию, которой владеет только этот поток,
  * то есть 1-2 такта против ~100 тактов стоимости вызова.
  */
-const val PROFILE_COUNTERS = true
+const val PROFILE_COUNTERS = false
 
 /**
  * Замер занятости воркеров внутри параллельной стадии.
@@ -55,7 +55,7 @@ const val PROFILE_COUNTERS = true
  * КПД распараллеливания. Стоимость: два nanoTime на воркера на стадию, то есть порядка
  * сотни вызовов за тик — микросекунды при тике в единицы миллисекунд.
  */
-const val PROFILE_UTILIZATION = true
+const val PROFILE_UTILIZATION = false
 
 /** Длина окна усреднения профиля в тиках. При ~145 UPS это примерно одна строка в секунду. */
 const val PROFILE_WINDOW_TICKS = 120

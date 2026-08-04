@@ -96,9 +96,13 @@ class WorldCommandsManager(
                             cellIndex = cellIndex,
                             otherCellIndex = ints[1],
                             linksLength = floats[0],
+                            cellGeneration = ints[2],
+                            otherCellGeneration = ints[3],
                         )
-                        // -1 значит, что у одной из клеток кончились слоты связей
-                        // (CellEntity.MAX_LINKS_PER_CELL) и связь не создалась.
+                        // -1 значит, что связь не создалась: либо у одной из клеток кончились
+                        // слоты (CellEntity.MAX_LINKS_PER_CELL), либо одна из них умерла
+                        // (или её индекс переиспользовала другая клетка) раньше, чем команда
+                        // дошла до применения.
                         if (linkIndex != -1) {
                             linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
                         }

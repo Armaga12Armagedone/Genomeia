@@ -105,6 +105,9 @@ class LinkPhysicsSystem(
             }
         }
 
+        // Денормализовать индексы частиц в саму связь пробовали — стало медленнее,
+        // подробности в комментарии к LinkEntity.links1. Эти два обращения случайные,
+        // но particleIndexes всего ~780 КБ и живёт в L2/L3, так что они дёшевы.
         val linkParticleA = cellEntity.getParticleIndex(linkCellA)
         val linkParticleB = cellEntity.getParticleIndex(linkCellB)
 

@@ -75,8 +75,6 @@ object DIGameGlobalContainer {
 
     val substrateSettings = SubstrateSettings()
 
-    val simMaxSpeed = 16f / 56.25f
-
     var roundStyle: VisTextButton.VisTextButtonStyle
     var roundStyleToggle: VisTextButton.VisTextButtonStyle
 

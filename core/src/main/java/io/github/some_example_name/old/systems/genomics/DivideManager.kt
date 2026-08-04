@@ -6,6 +6,7 @@ import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.entities.CellEntity
+import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
@@ -141,11 +142,26 @@ class DivideManager(
                         val linkColor = (linkData.color ?: if (linkData.isNeuronal) Color.CYAN else Color.RED).toIntBits()
 
                         if (otherCellIndex != -1) {
+                            // Поколение соседа снимается ЗДЕСЬ, в момент постановки команды:
+                            // между этим тиком и её применением клетка может умереть, а её
+                            // индекс — достаться новой клетке. По поколению addLink отличит
+                            // "та же самая клетка" от "другая клетка на том же индексе".
+                            //
+                            // Для cellIndex поколения нет и быть не может: он равен -1, то
+                            // есть означает "клетка, созданная этой же фазой применения",
+                            // и на данный момент ещё не существует.
+                            val otherCellGeneration = getGeneration(otherCellIndex)
+
                             if (!isNeuronLink) {
                                 worldCommandsManager.worldCommandBuffer[threadId].push(
                                     type = WorldCommandType.ADD_LINK,
                                     floats = floatArrayOf(linksLength),
-                                    ints = intArrayOf(cellIndex, otherCellIndex)
+                                    ints = intArrayOf(
+                                        cellIndex,
+                                        otherCellIndex,
+                                        LinkEntity.NO_GENERATION_CHECK,
+                                        otherCellGeneration
+                                    )
                                 )
                             } else {
                                 worldCommandsManager.worldCommandBuffer[threadId].push(
@@ -157,7 +173,12 @@ class DivideManager(
                                     worldCommandsManager.worldCommandBuffer[threadId].push(
                                         type = WorldCommandType.ADD_LINK,
                                         floats = floatArrayOf(linksLength),
-                                        ints = intArrayOf(cellIndex, otherCellIndex)
+                                        ints = intArrayOf(
+                                            cellIndex,
+                                            otherCellIndex,
+                                            LinkEntity.NO_GENERATION_CHECK,
+                                            otherCellGeneration
+                                        )
                                     )
                                 }
                             }

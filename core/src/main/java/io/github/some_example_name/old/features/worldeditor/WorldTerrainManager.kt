@@ -50,15 +50,15 @@ class WorldTerrainManager(
                         }
 
                     } else {
-                        if (random.nextInt(60) == 1) {
-                            substancesEntity.addSubstance(
-                                x = scaleX,
-                                y = scaleY,
-                                color = Color.RED.toIntBits(),
-                                radius = 0.25f,
-                                subType = 0.toByte(),
-                            )
-                        }
+//                        if (random.nextInt(60) == 1) {
+//                            substancesEntity.addSubstance(
+//                                x = scaleX,
+//                                y = scaleY,
+//                                color = Color.RED.toIntBits(),
+//                                radius = 0.25f,
+//                                subType = 0.toByte(),
+//                            )
+//                        }
                     }
                 }
             }

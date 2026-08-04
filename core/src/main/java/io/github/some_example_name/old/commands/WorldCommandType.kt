@@ -10,8 +10,8 @@ enum class WorldCommandType(
         floatParamsCount = 11,
         booleanParamsCount = 2
     ),
-    ADD_LINK(
-        intParamsCount = 2,
+    ADD_LINK( // cellIndex, otherCellIndex, cellGeneration, otherCellGeneration
+        intParamsCount = 4,
         floatParamsCount = 1,
         booleanParamsCount = 0
     ),

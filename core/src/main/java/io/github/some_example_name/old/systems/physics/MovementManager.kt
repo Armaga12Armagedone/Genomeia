@@ -2,7 +2,6 @@ package io.github.some_example_name.old.systems.physics
 
 import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.commands.WorldCommandsManager
-import io.github.some_example_name.old.core.DIGameGlobalContainer.simMaxSpeed
 import io.github.some_example_name.old.core.DISimulationContainer.HALF_CHUNK_HEIGHT
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.utils.invSqrt
@@ -36,8 +35,8 @@ class MovementManager(
 
         seedBump(particleIndex)
 
-        x[particleIndex] += vx[particleIndex] * 7.5f
-        y[particleIndex] += vy[particleIndex] * 7.5f
+        x[particleIndex] += vx[particleIndex] * SIM_STEP
+        y[particleIndex] += vy[particleIndex] * SIM_STEP
 
         processWorldBorders(particleIndex)
         val x = x[particleIndex]
@@ -62,15 +61,30 @@ class MovementManager(
 
     }
 
+    /**
+     * Ограничение скорости частицы.
+     *
+     * Порог и присваиваемое значение обязаны быть выражены в одних единицах, а единицы
+     * задаёт SIM_STEP: за тик частица смещается на |v| * SIM_STEP, и это смещение не должно
+     * превышать HALF_CHUNK_HEIGHT — иначе частица уходит за пределы чанка, которым владеет
+     * её поток. Отсюда предел именно по скорости: MAX_SPEED = HALF_CHUNK_HEIGHT / SIM_STEP.
+     *
+     * Раньше порог был отмасштабирован (16/56.25 это (4/7.5)^2), а присваивание нет: вектор
+     * скорости нормировался на HALF_CHUNK_HEIGHT, то есть |v| становилось 4 вместо 0.53.
+     * Получалось не ограничение, а разгон в 7.5 раз, причём самоподдерживающийся — 4 всегда
+     * больше порога, поэтому следующий тик снова возвращал ровно 4, затирая трение.
+     * Частица улетала на 30 единиц за тик и рвала все свои связи по linkMaxLength2.
+     */
     private fun seedBump(particleIndex: Int) = with(entity) {
         val vxv = vx[particleIndex]
         val vyv = vy[particleIndex]
 
         val speed2 = vxv * vxv + vyv * vyv
-        if (speed2 > simMaxSpeed) {
-            val invLen = HALF_CHUNK_HEIGHT * invSqrt(speed2)
-            vx[particleIndex] *= invLen
-            vy[particleIndex] *= invLen
+        if (speed2 > MAX_SPEED_2) {
+            // MAX_SPEED / |v| — множитель строго меньше единицы, скорость только падает.
+            val scale = MAX_SPEED * invSqrt(speed2)
+            vx[particleIndex] = vxv * scale
+            vy[particleIndex] = vyv * scale
         }
     }
 
@@ -107,5 +121,16 @@ class MovementManager(
             vx[particleIndex] *= 1f - dragCoefficient[particleIndex]
             vy[particleIndex] *= 1f - dragCoefficient[particleIndex]
         }
+    }
+
+    companion object {
+        /** Во сколько раз позиция продвигается за тик относительно скорости. */
+        const val SIM_STEP = 7.5f
+
+        /** Предел скорости: за тик частица не должна уходить дальше HALF_CHUNK_HEIGHT. */
+        const val MAX_SPEED = HALF_CHUNK_HEIGHT / SIM_STEP
+
+        /** Он же в квадрате — чтобы сравнивать со speed2 без корня. */
+        const val MAX_SPEED_2 = MAX_SPEED * MAX_SPEED
     }
 }
