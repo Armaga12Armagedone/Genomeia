@@ -69,9 +69,17 @@ class RenderSystem(
     }
 
     fun render() {
-        val cellBuf = renderBufferManager.getCurrentCellBuffer()
+        // Индекс кадра читается ОДИН раз, и оба буфера берутся по нему.
+        //
+        // Буфер связей хранит позиции внутри буфера клеток, поэтому они обязаны быть из
+        // одной сборки. Два отдельных геттера этого не гарантировали: симуляция успевала
+        // переключить буферы между вызовами, и связи рисовались по позициям от другого
+        // кадра — на экране это линии между чужими организмами и уходящие в ноль.
+        val frameIndex = renderBufferManager.frontFrameIndex()
+        val cellBuf = renderBufferManager.cellBuffer(frameIndex)
+        val linkBuf = renderBufferManager.linkBuffer(frameIndex)
+
         val pheromoneBuf = renderBufferManager.getCurrentPheromoneBuffer()
-        val linkBuf = renderBufferManager.getCurrentLinkBuffer()
         val spec = renderBufferManager.getCurrentSpecificBufferData()
         if (zoom != camera.zoom || cameraX != camera.position.x || cameraY != camera.position.y) {
             if (!spec.isCellSelected) {

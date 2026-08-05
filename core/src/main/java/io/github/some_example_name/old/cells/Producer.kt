@@ -72,7 +72,10 @@ class Producer(cellTypeId: Int): Cell(
                 colorDifferentiation,
                 activationFuncType,
                 pheromoneType,
-                -1 //mod data
+                -1, //mod data
+                // Родителя нет (parentIndex = -1), поэтому и поколения нет —
+                // обработчик ADD_CELL в этом случае проверку пропускает.
+                -1
             )
         )
 

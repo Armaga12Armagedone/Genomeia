@@ -95,6 +95,13 @@ class ParallelExecutor(val workerCount: Int) {
     private var running = true
 
     /**
+     * Ошибка, вылетевшая в воркере. Пробрасывается на поток симуляции в конце стадии,
+     * чтобы падение выглядело как падение, а не как зависший барьер.
+     */
+    @Volatile
+    private var workerFailure: Throwable? = null
+
+    /**
      * Задание и число чанков — обычные поля: их видимость обеспечивает volatile-запись
      * в epoch, которая идёт строго после них.
      */
@@ -195,6 +202,15 @@ class ParallelExecutor(val workerCount: Int) {
         if (PROFILE_UTILIZATION && stageId in 0 until MAX_STAGES) {
             stageWallNanos[stageId] += System.nanoTime() - stageStart
         }
+
+        // Ошибку воркера пробрасываем только здесь, когда все уже прошли барьер: иначе
+        // выход из runChunks оставил бы работающих воркеров, а следующая стадия начала бы
+        // переписывать курсор и счётчик у них под руками.
+        val failure = workerFailure
+        if (failure != null) {
+            workerFailure = null
+            throw IllegalStateException("воркер упал в стадии $stageId", failure)
+        }
     }
 
     /**
@@ -289,8 +305,19 @@ class ParallelExecutor(val workerCount: Int) {
             }
 
             seen = epoch
-            drainTimed(workerId)
-            control.getAndDecrement(PENDING)
+            // try/finally обязателен: без него исключение из job уносит воркера из цикла,
+            // PENDING остаётся ненулевым, и главный поток спинит на барьере вечно —
+            // вместо падения получается зависание. Именно так вели себя все проверки
+            // под DEBUG_CHECKS внутри параллельных фаз.
+            try {
+                drainTimed(workerId)
+            } catch (t: Throwable) {
+                // Первая ошибка выигрывает: остальные воркеры почти наверняка упадут
+                // на том же самом, и перетирать исходную причину незачем.
+                if (workerFailure == null) workerFailure = t
+            } finally {
+                control.getAndDecrement(PENDING)
+            }
         }
     }
 

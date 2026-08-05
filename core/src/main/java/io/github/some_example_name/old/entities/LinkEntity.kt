@@ -1,7 +1,9 @@
 package io.github.some_example_name.old.entities
 
 import com.badlogic.gdx.graphics.Color
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DIContext
+import io.github.some_example_name.old.core.DISimulationContainer.linkMaxLength2
 import io.github.some_example_name.old.systems.physics.GridManager
 
 import it.unimi.dsi.fastutil.ints.IntArrayList
@@ -53,8 +55,34 @@ class LinkEntity(
         oddLinkLists: Array<IntArrayList>
     ) {
         val cellIndex = links1[linkIndex]
-        //TODO тут есть проблема которая при особых условиях приведет к состоянию гонки
-        val chunk = cellEntity.getGridId(cellIndex) / diContext.chunkSize
+
+        // Чанк считается по ЯКОРЮ ОРГАНИЗМА — точке, где появилась его зигота.
+        //
+        // Так все связи одного организма гарантированно попадают в один слот, а значит
+        // два воркера никогда не пишут в vx/vy одной частицы: общие клетки бывают только
+        // внутри организма. Никаких допущений про геометрию тела при этом не требуется.
+        //
+        // Через что мы к этому пришли:
+        //  - приписка по РЕАЛЬНОЙ позиции устаревала, как только организм уплывал в соседний
+        //    чанк — гонка возвращалась молча, без падения;
+        //  - переназначать приписку на лету нельзя: это перемешивает порядок связей в
+        //    списках, а он стоит двукратной разницы во времени фазы (замерено);
+        //  - приписка по staticY САМОЙ КЛЕТКИ держалась на том, что связанные клетки близки
+        //    по карте тела. Замер это опроверг: тело деформируется по мере роста, разброс
+        //    доходил до 5.6 при допустимых 4.
+        //
+        // Якорь не меняется никогда и одинаков у всего тела, поэтому приписка делается один
+        // раз и остаётся верной при любой деформации, любом размере организма и даже когда
+        // от него отрывают куски — кусок сохраняет тот же якорь.
+        //
+        // Достаточно только Y: чанк это gridId / (gridWidth * chunkHeight), а gridId =
+        // y * gridWidth + x при x < gridWidth, то есть чанк равен y / chunkHeight.
+        // X берётся нулевым, а cellIndexOfClamped заодно зажимает координату в границы
+        // мира — от неё нужна только принадлежность к чанку, а не физический смысл.
+        val staticGridId =
+            gridManager.cellIndexOfClamped(0, cellEntity.bodyAnchorY[cellIndex].toInt())
+
+        val chunk = staticGridId / diContext.chunkSize
         val phase = chunk % 2
         val threadId = (chunk - phase) / 2
 
@@ -105,6 +133,43 @@ class LinkEntity(
     }
 
     /**
+     * Отладочная проверка: у клетки есть живая частица с осмысленной позицией.
+     *
+     * Ловит связи, создаваемые к клетке, которой фактически нет. Проверяются три вещи:
+     *  - particleIndexes != -1: deleteCell обнуляет его, значит клетка уже мертва, хотя
+     *    isAlive могла успеть стать true заново при переиспользовании индекса;
+     *  - частица жива: клетка и её частица должны умирать вместе, расхождение означает
+     *    испорченную связку;
+     *  - позиция не строго (0, 0): ParticleEntity.deleteParticle обнуляет x и y, а живая
+     *    частица туда попасть не может — processWorldBorders зажимает координаты в
+     *    [radius, gridSize - radius] при ненулевом радиусе. То есть ровный ноль означает
+     *    именно удалённую частицу, это точный признак, а не эвристика.
+     */
+    private fun checkCellHasValidParticle(cellIndex: Int, side: String, otherCellIndex: Int) {
+        val particleIndex = cellEntity.particleIndexes[cellIndex]
+        if (particleIndex == -1) {
+            throw IllegalStateException(
+                "связь к клетке $side=$cellIndex без частицы (particleIndexes = -1), " +
+                    "вторая клетка $otherCellIndex"
+            )
+        }
+        if (!particleEntity.isAlive[particleIndex]) {
+            throw IllegalStateException(
+                "связь к клетке $side=$cellIndex с МЁРТВОЙ частицей $particleIndex, " +
+                    "вторая клетка $otherCellIndex"
+            )
+        }
+        val x = particleEntity.x[particleIndex]
+        val y = particleEntity.y[particleIndex]
+        if (x == 0f && y == 0f) {
+            throw IllegalStateException(
+                "связь к клетке $side=$cellIndex в нулевой координате " +
+                    "(частица $particleIndex), вторая клетка $otherCellIndex"
+            )
+        }
+    }
+
+    /**
      * Пригодна ли клетка для создания связи: жива и того же поколения, что ожидал
      * поставщик команды.
      *
@@ -128,7 +193,8 @@ class LinkEntity(
      *  - у одной из клеток закончились слоты в cellLinks (см. CellEntity.MAX_LINKS_PER_CELL).
      *    Это осознанное ограничение симуляции — плата за то, что проверка «связаны ли клетки»
      *    в repulse стала сканом одной кэш-линии вместо похода в хэш-таблицу на полтора мегабайта;
-     *  - одна из клеток уже мертва (см. ниже).
+     *  - одна из клеток уже мертва (см. ниже);
+     *  - клетки слишком далеко друг от друга (см. ниже).
      * Все вызывающие обязаны проверять результат перед registerNewLink.
      */
     fun addLink(
@@ -154,6 +220,54 @@ class LinkEntity(
         if (!isCellUsable(cellIndex, cellGeneration) ||
             !isCellUsable(otherCellIndex, otherCellGeneration)
         ) {
+            return -1
+        }
+
+        // Обе клетки обязаны иметь живую частицу с осмысленной позицией.
+        //
+        // Проверка стоит именно здесь, а не в processLink: связь ловится в момент рождения,
+        // и стектрейс сразу показывает, какой путь её создал — обычное деление, морфогенез
+        // или ADD_LINK_BY_ID. В processLink она всплыла бы тиком позже и уже без контекста.
+        if (DEBUG_CHECKS) {
+            checkCellHasValidParticle(cellIndex, "A", otherCellIndex)
+            checkCellHasValidParticle(otherCellIndex, "B", cellIndex)
+        }
+
+        // Клетки обязаны принадлежать одному организму.
+        //
+        // Это не игровое правило, а условие корректности: слот связи выбирается по якорю
+        // организма, поэтому связь между разными организмами попала бы в слот только одной
+        // из них, и её вторая клетка оказалась бы чужой для этого воркера — гонка на vx/vy.
+        //
+        // Проверка расстояния такое НЕ ловит: два разных организма могут соприкасаться
+        // физически, и тогда расстояние в норме, а якоря разнесены на пол-карты
+        // (наблюдалось 150.4 против 32.7).
+        //
+        // Все пути создания связей ищут вторую клетку внутри одного organIndex, так что
+        // сюда такая пара приходить не должна. Но приходит: где-то поиск по organIndex
+        // возвращает чужую клетку — скорее всего из-за общего пространства ключей у клеток
+        // с organIndex == -1 в organToIdToIndex (там все такие клетки лежат вперемешку,
+        // независимо от организма). Пока источник не найден, барьер стоит здесь: связь
+        // просто не создаётся, вместо того чтобы молча портить физику.
+        if (cellEntity.bodyAnchorY[cellIndex] != cellEntity.bodyAnchorY[otherCellIndex]) {
+            return -1
+        }
+
+        // Клетки должны быть физически рядом.
+        //
+        // Связи по чертежу генома резолвятся через organToIdToIndex, то есть по геномному
+        // id внутри организма. Оторванный от организма кусок сохраняет тот же organIndex,
+        // поэтому делящаяся клетка находит «соседа по чертежу», который физически уже
+        // улетел на другой конец мира. Связь при этом создавалась и умирала в том же тике
+        // по linkMaxLength2 — но успевала попасть в список слота и посчитаться как
+        // нормальная, с записью в vx/vy обеих частиц.
+        //
+        // Порог тот же, по которому связь рвётся в processLink: если она не переживёт
+        // ближайшую же проверку, создавать её незачем. Заодно это восстанавливает
+        // допущение, на котором держится приписка к чанкам, — что связанные клетки близки.
+        val dx = cellEntity.getX(cellIndex) - cellEntity.getX(otherCellIndex)
+        val dy = cellEntity.getY(cellIndex) - cellEntity.getY(otherCellIndex)
+        if (dx * dx + dy * dy > linkMaxLength2) {
             return -1
         }
 

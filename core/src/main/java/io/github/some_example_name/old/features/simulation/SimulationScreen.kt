@@ -17,6 +17,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import io.github.some_example_name.old.commands.PlayerCommand
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.ui.CameraControl
@@ -142,6 +143,21 @@ class SimulationScreen(
                 simulationSystem.simulationData.controllerKeyTouched[i] =
                     Gdx.input.isKeyPressed(keyCodes[i])
             }
+        }
+
+        // Отладочный стресс-тест жизненного цикла клеток: A убивает случайные клетки,
+        // D разгоняет их до предела, чтобы они улетали и рвали свои связи. Пока клавиша
+        // зажата — каждый тик. Нужен, чтобы гонки и битые ссылки в связях воспроизводились
+        // сами, а не руками.
+        //
+        // A и D заняты управлением организмом (controllerKeyTouched), но в обычной сборке
+        // этот блок вырезается компилятором целиком, так что конфликт живёт только в
+        // отладочной.
+        if (DEBUG_CHECKS) {
+            simulationSystem.simulationData.debugKillCells =
+                Gdx.input.isKeyPressed(Input.Keys.A)
+            simulationSystem.simulationData.debugFlingCells =
+                Gdx.input.isKeyPressed(Input.Keys.D)
         }
 
         if (doesUsePostProcess) {

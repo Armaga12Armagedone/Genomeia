@@ -88,9 +88,17 @@ class WorldCommandsManager(
 //                        )
                     }
                     WorldCommandType.ADD_LINK -> {
+                        // ints[0] == -1 означает "клетка, созданная предыдущей командой
+                        // этого же буфера". Но ADD_CELL мог отказаться её создавать
+                        // (морфогенез, если место уже занято), и тогда привязываться не
+                        // к чему: раньше здесь подхватывался ОСТАТОК от прошлого деления,
+                        // возможно вообще из другого тика, и связь уходила к посторонней
+                        // клетке. См. сброс lastAddedCellIndexBuffer в ADD_CELL.
                         val cellIndex = if (ints[0] == -1) {
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
+
+                        if (cellIndex == -1) return@consume
 
                         val linkIndex = linkEntity.addLink(
                             cellIndex = cellIndex,
@@ -109,9 +117,12 @@ class WorldCommandsManager(
                     }
 
                     WorldCommandType.ADD_NEURAL_LINK -> {
+                        // Та же ловушка, что и в ADD_LINK: клетки могло не быть создано.
                         val cellIndex = if (ints[0] == -1) {
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
+
+                        if (cellIndex == -1) return@consume
 
                         neuralLinkEntity.addNeuralLink(
                             cellIndex = cellIndex,
@@ -150,7 +161,33 @@ class WorldCommandsManager(
                         var isDivide = true
                         var closestCells: IntArray? = null
 
-                        if (isMorphogenesis) {
+                        // Родитель мог умереть, пока команда ждала применения.
+                        //
+                        // ADD_CELL формируется в параллельной фазе, а применяется позже и по
+                        // буферам подряд: DELETE_CELL из буфера 1 выполнится раньше, чем
+                        // ADD_CELL из буфера 3. Делить уже нечего — контекст деления исчез.
+                        //
+                        // Если всё-таки создать клетку, она возьмёт свой якорь вместо
+                        // родительского (см. CellEntity.bodyAnchorY) и окажется новой системой
+                        // отсчёта посреди чужого организма. Все её связи с телом отвергнет
+                        // барьер в LinkEntity.addLink, и клетка молча повиснет отдельно.
+                        //
+                        // Одного isAlive мало: индексы клеток переиспользуются через deadStack,
+                        // поэтому умерший и заново занятый слот снова "жив", но это уже другая
+                        // клетка. Тогда потомок унаследовал бы ЧУЖУЮ карту тела и чужой якорь —
+                        // и присоединился бы не к тому организму, причём совершенно молча.
+                        // Отличает их поколение, снятое в момент постановки команды.
+                        //
+                        // Проверка стоит до морфогенеза: она заодно экономит collectParticles.
+                        val parentCellIndex = ints[4]
+                        val parentGeneration = ints[9]
+                        if (parentCellIndex != -1 &&
+                            !cellEntity.isAliveAndSameGen(parentCellIndex, parentGeneration)
+                        ) {
+                            isDivide = false
+                        }
+
+                        if (isDivide && isMorphogenesis) {
                             closestCells = gridManager.collectParticles(
                                 gridX = x.toInt(),
                                 gridY = y.toInt(),
@@ -214,7 +251,15 @@ class WorldCommandsManager(
                             //TODO сделать без алокаций
                             closestCells?.filter { particleEntity.isCell[it] }
                                 ?.map { particleEntity.holderEntityIndex[it] }
-//                                ?.filter { cellEntity.organIndex[it] == cellEntity.organIndex[cellIndex] }
+                                // Связываться можно только со своим организмом.
+                                //
+                                // Это не косметика: слот связи назначается по СТАТИЧЕСКИМ
+                                // координатам (см. CellEntity.staticX), а они осмысленно
+                                // сравнимы лишь внутри одного организма — у разных начала
+                                // отсчёта не связаны. Связь между организмами дала бы
+                                // произвольное статическое расстояние между её клетками,
+                                // а с ним вернулась бы гонка на vx/vy в фазе связей.
+                                ?.filter { cellEntity.organIndex[it] == cellEntity.organIndex[cellIndex] }
                                 ?.forEach {
                                         val dx = cellEntity.getX(it) - x
                                         val dy = cellEntity.getY(it) - y
@@ -242,6 +287,22 @@ class WorldCommandsManager(
 
                             lastAddedCellIndexBuffer[threadId] = cellIndex
                             organIndexCellIdMapIndex.put(parentOrganIndex, cellGenomeId, cellIndex)
+                        } else {
+                            // Клетка не создана — значит и «последней созданной» для
+                            // следующих команд этого буфера нет.
+                            //
+                            // Без этого сброса ADD_LINK и ADD_NEURAL_LINK, идущие следом
+                            // и ссылающиеся на неё через -1, подхватывали ОСТАТОК от
+                            // прошлого деления: индекс живой, но совершенно посторонней
+                            // клетки, возможно из другого тика и другого места мира.
+                            // Связь при этом создавалась настоящая, считалась физикой и
+                            // писала в vx/vy чужих частиц.
+                            //
+                            // Ловилось это проверкой статических координат: посторонняя
+                            // клетка часто оказывалась из того же организма и физически
+                            // рядом (то есть проходила проверку расстояния в addLink),
+                            // но по карте тела стояла в другом месте.
+                            lastAddedCellIndexBuffer[threadId] = -1
                         }
                     }
                     WorldCommandType.DECREMENT_DIVIDE_COUNTER -> {

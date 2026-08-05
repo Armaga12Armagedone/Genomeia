@@ -210,7 +210,10 @@ class Stem(cellTypeId: Int): Cell(
                     colorDifferentiation,
                     activationFuncType,
                     pheromoneType,
-                    -1 //mod data
+                    -1, //mod data
+                    // Поколение родителя на момент постановки команды: до применения он
+                    // может умереть, а его индекс — достаться другой клетке.
+                    getGeneration(parentIndex)
                 )
             )
 

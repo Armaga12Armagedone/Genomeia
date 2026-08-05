@@ -2,6 +2,11 @@ package io.github.some_example_name.old.systems.simulation
 
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.UserCommandManager
+import io.github.some_example_name.old.commands.WorldCommandType
+import io.github.some_example_name.old.core.DEBUG_CHECKS
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.SubstrateSettings
@@ -72,6 +77,9 @@ class SimulationSystem(
     private val profiler = PhaseProfiler()
     private val worldStats = WorldStats()
 
+    /** Только для отладочного стресс-теста, см. applyDebugStress. */
+    private val debugRandom = java.util.Random()
+
     fun updateTick() {
         val tickStart = System.nanoTime()
 
@@ -86,6 +94,8 @@ class SimulationSystem(
 
         simulationData.tickCounter++
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
+
+        if (DEBUG_CHECKS) applyDebugStress()
 
         // --- Измерения ---
         profiler.measure(Phase.LINKS) { linkPhysicsSystem.iterateLinksInParallel() }
@@ -117,6 +127,59 @@ class SimulationSystem(
             fillWorldStats()
             profiler.flush(worldStats)
         }
+    }
+
+    /**
+     * Отладочный стресс-тест жизненного цикла клеток.
+     *
+     * Пока зажата A — несколько случайных клеток за тик умирают; пока зажата D — несколько
+     * получают предельную скорость в случайном направлении и улетают, разрывая свои связи.
+     *
+     * Смысл в том, чтобы гонки и битые ссылки в связях воспроизводились сами: они всплывают
+     * именно при активной смерти клеток и разрыве связей, а руками такой сценарий держать
+     * долго и ненадёжно.
+     *
+     * Стоит в самом начале тика, до всех фаз: команда DELETE_CELL попадёт в буфер и будет
+     * применена этим же тиком в фазе 7, а запись скорости идёт в однопоточном участке,
+     * пока ни один воркер не запущен.
+     */
+    private fun applyDebugStress() {
+        if (simulationData.debugKillCells) {
+            repeat(DEBUG_STRESS_CELLS_PER_TICK) { killRandomCell() }
+        }
+        if (simulationData.debugFlingCells) {
+            repeat(DEBUG_STRESS_CELLS_PER_TICK) { flingRandomCell() }
+        }
+    }
+
+    private fun killRandomCell() {
+        val alive = cellEntity.aliveList
+        if (alive.isEmpty()) return
+
+        val cellIndex = alive.getInt(debugRandom.nextInt(alive.size))
+        // Через обычную команду, а не напрямую: удаление клетки тянет за собой снятие
+        // связей, освобождение частицы и органа, и всё это должно пройти штатным путём.
+        worldCommandsManager.worldCommandBuffer[0].push(
+            WorldCommandType.DELETE_CELL,
+            cellIndex,
+            cellEntity.getGeneration(cellIndex)
+        )
+    }
+
+    private fun flingRandomCell() {
+        val alive = cellEntity.aliveList
+        if (alive.isEmpty()) return
+
+        val cellIndex = alive.getInt(debugRandom.nextInt(alive.size))
+        val particleIndex = cellEntity.getParticleIndex(cellIndex)
+        if (particleIndex == -1) return
+
+        // Ровно предел скорости: больше ставить бессмысленно, seedBump всё равно зажмёт.
+        // При MAX_SPEED смещение за тик равно HALF_CHUNK_HEIGHT, то есть связи длиной до
+        // sqrt(linkMaxLength2) рвутся за пару тиков.
+        val angle = debugRandom.nextFloat() * 2f * PI.toFloat()
+        particleEntity.vx[particleIndex] = cos(angle) * MovementManager.MAX_SPEED
+        particleEntity.vy[particleIndex] = sin(angle) * MovementManager.MAX_SPEED
     }
 
     /**
@@ -247,5 +310,8 @@ class SimulationSystem(
 
     companion object {
         const val DELTA_SIM_TICK_TIME = 0.016666666f
+
+        /** Сколько клеток за тик убивает / разгоняет отладочный стресс-тест. */
+        private const val DEBUG_STRESS_CELLS_PER_TICK = 55
     }
 }

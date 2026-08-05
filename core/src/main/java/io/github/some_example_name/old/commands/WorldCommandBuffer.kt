@@ -71,7 +71,7 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
      * в свежую (холодную) кэш-линию eden'а.
      *
      * Здесь значения пишутся прямо в слот буфера: ни аллокации, ни arraycopy, ни мусора.
-     * Слот всегда вмещает 3 int'а, потому что MAX_INT_PARAMS = 9.
+     * Слот всегда вмещает 3 int'а: MAX_INT_PARAMS заведомо больше.
      */
     fun push(type: WorldCommandType, int0: Int) {
         if (size >= commandTypes.size) resize()

@@ -120,8 +120,13 @@ class DivideManager(
                         colorDifferentiation,
                         activationFuncType,
                         pheromoneType,
-                        -1
+                        -1,
 //                        specialModDataIndex
+                        // Поколение родителя на момент постановки команды. Между этим
+                        // моментом и применением родитель может умереть, а его индекс —
+                        // достаться новой клетке: тогда isAlive снова true, но это уже
+                        // другая клетка, и потомок унаследовал бы чужую карту тела.
+                        getGeneration(parentIndex)
                     )
                 )
 

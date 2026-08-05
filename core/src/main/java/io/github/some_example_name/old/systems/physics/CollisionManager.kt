@@ -114,14 +114,46 @@ class CollisionManager(
         }
 
 
-        val distance = sqrt(distanceSquared)
-
-        // Одна обратная длина на всё касание: нормализация обеих компонент — это
-        // умножения, и 1/distanceSquared тоже получается умножением
-        // (invDistance * invDistance), без второго деления.
-        val invDistance = 1f / distance
-        val dirX = dx * invDistance
-        val dirY = dy * invDistance
+        // Две частицы могут совпасть ТОЧНО, и это не теоретическая возможность.
+        //
+        // processWorldBorders зажимает координату ровно в radius, поэтому все частицы,
+        // прилетевшие в один угол мира, получают буквально одинаковые x и y. Тогда
+        // distance == 0, invDistance == Infinity, направление становится 0 * Infinity = NaN,
+        // и NaN расползается в vx/vy, а оттуда в позицию.
+        //
+        // Дальше начинается самое неприятное: x.toInt() для NaN даёт 0, поэтому все
+        // испорченные частицы сваливаются в клетку сетки номер 0 и остаются там навсегда —
+        // NaN самовоспроизводится. Наблюдалось 627 частиц в одной клетке, а это ~196 тысяч
+        // пар внутри неё; клетка неделима и достаётся одному воркеру, поэтому фаза коллизий
+        // сериализуется: util_collide падал с 0.70 до 0.175 при семикратном росте времени.
+        //
+        // Порог, а не проверка на строгий ноль: около нуля 1/distance уже даёт огромные
+        // силы, то есть взрыв вместо разведения. Направление при совпадении берётся
+        // детерминированное и зависящее от индексов, чтобы разные пары расходились в разные
+        // стороны, а не выстраивались в линию.
+        val distance: Float
+        val invDistance: Float
+        val dirX: Float
+        val dirY: Float
+        if (distanceSquared > MIN_SEPARATION_SQUARED) {
+            distance = sqrt(distanceSquared)
+            // Одна обратная длина на всё касание: нормализация обеих компонент — это
+            // умножения, и 1/distanceSquared тоже получается умножением
+            // (invDistance * invDistance), без второго деления.
+            invDistance = 1f / distance
+            dirX = dx * invDistance
+            dirY = dy * invDistance
+        } else {
+            distance = MIN_SEPARATION
+            invDistance = 1f / MIN_SEPARATION
+            if ((particleAId + particleBId) and 1 == 0) {
+                dirX = 1f
+                dirY = 0f
+            } else {
+                dirX = 0f
+                dirY = 1f
+            }
+        }
 
         val effectOnContact = entity.effectOnContact
 
@@ -262,6 +294,17 @@ class CollisionManager(
     companion object {
         const val PARTICLE_MAX_RADIUS = 0.5f
         const val PARTICLE_MAX_RADIUS_SQUARED = 0.25f
+
+        /**
+         * Минимальное расстояние, на котором ещё считается направление отталкивания.
+         *
+         * Ниже него нормализация вырождается: 1/distance уходит в бесконечность, а при
+         * ровном нуле направление становится NaN. Значение выбрано так, чтобы быть на
+         * порядки меньше любого физически осмысленного расстояния (радиусы 0.1..0.5),
+         * но заметно больше нуля для float.
+         */
+        const val MIN_SEPARATION = 1e-4f
+        const val MIN_SEPARATION_SQUARED = MIN_SEPARATION * MIN_SEPARATION
 
         /**
          * Квадрат предельного расстояния, на котором пересечение ещё возможно: сумма двух

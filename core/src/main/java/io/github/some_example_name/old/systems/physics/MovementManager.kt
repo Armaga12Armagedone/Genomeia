@@ -2,6 +2,7 @@ package io.github.some_example_name.old.systems.physics
 
 import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.commands.WorldCommandsManager
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DISimulationContainer.HALF_CHUNK_HEIGHT
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.utils.invSqrt
@@ -41,6 +42,21 @@ class MovementManager(
         processWorldBorders(particleIndex)
         val x = x[particleIndex]
         val y = y[particleIndex]
+
+        // NaN в позиции — это не «немного неточно», а необратимая потеря частицы.
+        //
+        // x.toInt() для NaN даёт 0, поэтому такая частица навсегда уезжает в клетку сетки
+        // номер 0 и там остаётся: NaN самовоспроизводится через все дальнейшие вычисления.
+        // Сотни частиц в одной клетке — это O(n²) пар внутри неё, а клетка неделима и
+        // достаётся одному воркеру, то есть фаза коллизий сериализуется целиком.
+        //
+        // Источник — деление на ноль в repulse, когда две частицы совпали точно.
+        if (DEBUG_CHECKS && (x.isNaN() || y.isNaN())) {
+            throw IllegalStateException(
+                "частица $particleIndex получила NaN-позицию: x=$x y=$y " +
+                    "vx=${vx[particleIndex]} vy=${vy[particleIndex]}"
+            )
+        }
 
         val newX = x.toInt()
         val newY = y.toInt()

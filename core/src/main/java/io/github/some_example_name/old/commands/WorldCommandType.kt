@@ -5,8 +5,8 @@ enum class WorldCommandType(
     val floatParamsCount: Int,
     val booleanParamsCount: Int
 ) {
-    ADD_CELL(
-        intParamsCount = 9,
+    ADD_CELL( // ..., parentIndex(4), ..., specialModDataIndex(8), parentGeneration(9)
+        intParamsCount = 10,
         floatParamsCount = 11,
         booleanParamsCount = 2
     ),
@@ -186,7 +186,10 @@ enum class WorldCommandType(
     );
 
     companion object {
-        const val MAX_INT_PARAMS = 9 // Максимум int на команду (покрывает все)
+        // Максимум int на команду: задаёт шаг в intParams всех буферов, поэтому увеличение
+        // стоит памяти во всех буферах сразу, а не только у самой длинной команды.
+        // Держать равным максимальному intParamsCount среди всех типов (сейчас ADD_CELL).
+        const val MAX_INT_PARAMS = 10
         const val MAX_FLOAT_PARAMS = 11 // Максимум float
         const val MAX_BOOLEAN_PARAMS = 3 // Максимум boolean
     }

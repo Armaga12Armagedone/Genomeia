@@ -43,23 +43,52 @@ class RenderBufferManager(
     private val specificBuffer0 = RenderSpecificBufferData()
     private val specificBuffer1 = RenderSpecificBufferData()
 
-    private val cellFrontIndex = AtomicInteger(0)
+    /**
+     * ОДИН индекс на буферы клеток и связей — они обязаны переключаться вместе.
+     *
+     * Буфер связей хранит не индексы клеток, а positionInAlive, то есть позиции внутри
+     * БУФЕРА ЧАСТИЦ. Эти позиции осмысленны только для того буфера частиц, который собран
+     * в том же вызове updateBuffer.
+     *
+     * Раньше индексы были отдельные и переключались в разных местах: клетки сразу после
+     * своей сборки, связи — в конце, уже после сборки феромонов. В это окно поток рендера
+     * успевал взять НОВЫЙ буфер клеток и СТАРЫЙ буфер связей. Порядок aliveList меняется
+     * каждый тик (удаление делает swap-with-last), поэтому старые позиции указывали на
+     * произвольные другие частицы — на экране это связи между чужими организмами, а при
+     * уменьшении числа клеток позиция уезжала за границу и линия уходила в ноль.
+     *
+     * Феромоны и specific самодостаточны: они не ссылаются на чужие буферы, поэтому у них
+     * свои индексы и своё время переключения.
+     */
+    private val frameFrontIndex = AtomicInteger(0)
     private val pheromoneFrontIndex = AtomicInteger(0)
-    private val linkFrontIndex = AtomicInteger(0)
     private val specificFrontIndex = AtomicInteger(0)
 
-    fun getCurrentCellBuffer(): RenderCellBufferData = cellBuffers[cellFrontIndex.get()]
+    /**
+     * Индекс согласованной пары буферов «клетки + связи».
+     *
+     * Поток рендера обязан прочитать его ОДИН раз за кадр и дальше брать оба буфера по нему.
+     * Если читать через два отдельных геттера, симуляция успеет переключиться между ними —
+     * и получится ровно тот же рассинхрон, от которого мы здесь избавляемся.
+     */
+    fun frontFrameIndex(): Int = frameFrontIndex.get()
+
+    fun cellBuffer(frameIndex: Int): RenderCellBufferData = cellBuffers[frameIndex]
+    fun linkBuffer(frameIndex: Int): RenderLinkBufferData = linkBuffers[frameIndex]
+
     fun getCurrentPheromoneBuffer(): PheromoneBufferData = pheromoneBuffers[pheromoneFrontIndex.get()]
-    fun getCurrentLinkBuffer(): RenderLinkBufferData = linkBuffers[linkFrontIndex.get()]
     fun getCurrentSpecificBufferData(): RenderSpecificBufferData =
         if (specificFrontIndex.get() == 0) specificBuffer0 else specificBuffer1
 
     fun updateBuffer(performanceInfo: String = "") {
+        // Общий back-индекс на клетки и связи: оба буфера собираются в него и публикуются
+        // одним переключением в конце, чтобы рендер не увидел их вразнобой.
+        val frameBackIndex = 1 - frameFrontIndex.get()
+
         // ==================== CELL ====================
         with(particleEntity) {
             val needed = aliveList.size
-            val backIndex = 1 - cellFrontIndex.get()
-            val back = cellBuffers[backIndex]
+            val back = cellBuffers[frameBackIndex]
 
             back.ensureCapacity(needed)
 
@@ -111,7 +140,7 @@ class RenderBufferManager(
             }
             back.renderCellBufferSize = aliveList.size
         }
-        cellFrontIndex.set(1 - cellFrontIndex.get())   // swap
+        // Переключения тут больше нет: клетки публикуются вместе со связями, в самом конце.
 
         // ==================== PHEROMONE ===============
         val backPheromoneIndex = 1 - pheromoneFrontIndex.get()
@@ -135,10 +164,10 @@ class RenderBufferManager(
         pheromoneFrontIndex.set(backPheromoneIndex)
 
         // ==================== LINK ====================
+        val linkBack = linkBuffers[frameBackIndex]
         if (!doesUsePostProcess) {
             val needed = linkEntity.aliveList.size + neuralLinkEntity.aliveList.size
-            val backIndex = 1 - linkFrontIndex.get()
-            val back = linkBuffers[backIndex]
+            val back = linkBack
 
             back.ensureCapacity(needed)
 
@@ -157,8 +186,16 @@ class RenderBufferManager(
                     val particleAIndex = cellEntity.getParticleIndex(linkCellA)
                     val particleBIndex = cellEntity.getParticleIndex(linkCellB)
 
-                    back.cellA[writeIndex] = particleEntity.positionInAlive[particleAIndex]
-                    back.cellB[writeIndex] = particleEntity.positionInAlive[particleBIndex]
+                    // Позиция -1 означает, что частицы нет в aliveList, то есть её в буфере
+                    // клеток тоже не будет. Рисовать по такому индексу нельзя: линия уйдёт
+                    // в нулевую координату. Проверка защитная — при живых клетках такого
+                    // быть не должно.
+                    val positionA = particleEntity.positionInAlive[particleAIndex]
+                    val positionB = particleEntity.positionInAlive[particleBIndex]
+                    if (positionA == -1 || positionB == -1) continue
+
+                    back.cellA[writeIndex] = positionA
+                    back.cellB[writeIndex] = positionB
 
                     // длинные нейролинки всегда neural-directed
                     back.isNeuralDirected[writeIndex] = if (isLink1NeuralDirected[i]) 1 else 0
@@ -180,8 +217,16 @@ class RenderBufferManager(
                     val particleAIndex = cellEntity.getParticleIndex(linkCellA)
                     val particleBIndex = cellEntity.getParticleIndex(linkCellB)
 
-                    back.cellA[writeIndex] = particleEntity.positionInAlive[particleAIndex]
-                    back.cellB[writeIndex] = particleEntity.positionInAlive[particleBIndex]
+                    // Позиция -1 означает, что частицы нет в aliveList, то есть её в буфере
+                    // клеток тоже не будет. Рисовать по такому индексу нельзя: линия уйдёт
+                    // в нулевую координату. Проверка защитная — при живых клетках такого
+                    // быть не должно.
+                    val positionA = particleEntity.positionInAlive[particleAIndex]
+                    val positionB = particleEntity.positionInAlive[particleBIndex]
+                    if (positionA == -1 || positionB == -1) continue
+
+                    back.cellA[writeIndex] = positionA
+                    back.cellB[writeIndex] = positionB
 
                     back.isNeuralDirected[writeIndex] = -1
 
@@ -190,8 +235,14 @@ class RenderBufferManager(
             }
 
             back.renderLinkAmount = writeIndex
-            linkFrontIndex.set(backIndex)
+        } else {
+            // Связи не рисуются, но буфер публикуется вместе с клетками — обнуляем, чтобы
+            // в нём не осталось позиций от позапрошлого кадра.
+            linkBack.renderLinkAmount = 0
         }
+
+        // Единственная публикация пары «клетки + связи».
+        frameFrontIndex.set(frameBackIndex)
 
         // ==================== SPECIFIC ====================
         val specificBackIndex = 1 - specificFrontIndex.get()

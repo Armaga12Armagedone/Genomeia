@@ -17,7 +17,6 @@ import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.simulation.Phase
 import io.github.some_example_name.old.systems.simulation.SimCounters
 import io.github.some_example_name.old.systems.simulation.SimulationData
-import it.unimi.dsi.fastutil.ints.IntArrayList
 
 class LinkPhysicsSystem(
     val linkEntity: LinkEntity,
@@ -30,25 +29,54 @@ class LinkPhysicsSystem(
     val simulationData: SimulationData
 ) {
 
-    fun iterateLinksInParallel() {
-        processPhase(worldCommandsManager.oddLinkLists)
-        processPhase(worldCommandsManager.evenLinkLists)
-    }
-
     /**
-     * Связи заранее разложены по слотам (слот = пространственный чанк одной чётности),
-     * поэтому здесь остаётся только раздать слоты воркерам.
+     * Одна стадия на все связи: слот обрабатывает оба своих списка, нечётный и чётный.
      *
-     * Раздача динамическая: в одном слоте может быть несколько тысяч связей, в соседнем
-     * десяток, а стадия заканчивается по самому загруженному слоту — при статической
-     * привязке "слот i потоку i" остальные ядра просто стояли на барьере. Плюс сам барьер
-     * теперь спиновый: без submit, аллокации FutureTask и парковки потоков.
+     * ПОЧЕМУ ЧЁТНОСТЬ БОЛЬШЕ НЕ НУЖНА
+     * -------------------------------
+     * Две стадии существовали ради корректности: слот задавался пространственной полосой,
+     * связь дотягивалась на длину пружины за её границу, поэтому соседние полосы нельзя
+     * было считать одновременно — их разводили по чётности.
+     *
+     * Теперь слот задаётся якорем организма (CellEntity.bodyAnchorY), и все связи одного
+     * тела лежат в одном слоте. Конфликтовать могут только линки с ОБЩЕЙ КЛЕТКОЙ, а общие
+     * клетки бывают исключительно внутри организма — значит любые два слота независимы,
+     * и разводить их по стадиям незачем.
+     *
+     * ПОЧЕМУ ЭТО ЕЩЁ И БЫСТРЕЕ
+     * -----------------------
+     * Стадия заканчивается по самому загруженному слоту. Двумя стадиями цена была
+     * max(нечётные) + max(чётные), одной стала max(нечётный + чётный) — а это никогда не
+     * больше, потому что max(a + b) <= max(a) + max(b). Слот, тяжёлый по одной чётности,
+     * обычно лёгкий по другой, и суммы выравниваются.
+     *
+     * Это лечит просадку балансировки, которая появилась вместе с якорной раскладкой:
+     * организм теперь попадает в слот целиком, а размеры организмов разные, поэтому
+     * util_links упал с 0.93 до 0.82.
+     *
+     * Плюс один барьер вместо двух.
+     *
+     * Число слотов при этом осталось прежним намеренно: slot уходит в processLink как
+     * threadId и служит индексом в worldCommandBuffer, размер которого равен threadCount.
+     * Удвоение слотов потребовало бы расширять все per-thread структуры, иначе два
+     * одновременных слота начали бы писать в один буфер команд — новая гонка.
+     *
+     * Раздача слотов динамическая: в одном может быть несколько тысяч связей, в соседнем
+     * десяток, и освободившийся воркер берёт следующий сам.
      */
-    private fun processPhase(lists: Array<IntArrayList>) {
-        threadManager.runSlotStage(lists.size, Phase.LINKS) { slot ->
-            val list = lists[slot]
-            for (i in list.indices) {
-                processLink(list.getInt(i), slot)
+    fun iterateLinksInParallel() {
+        val oddLists = worldCommandsManager.oddLinkLists
+        val evenLists = worldCommandsManager.evenLinkLists
+
+        threadManager.runSlotStage(oddLists.size, Phase.LINKS) { slot ->
+            val oddList = oddLists[slot]
+            for (i in oddList.indices) {
+                processLink(oddList.getInt(i), slot)
+            }
+
+            val evenList = evenLists[slot]
+            for (i in evenList.indices) {
+                processLink(evenList.getInt(i), slot)
             }
         }
     }
@@ -103,6 +131,49 @@ class LinkPhysicsSystem(
                         "A=$linkCellA B=$linkCellB — detachAllLinks не был вызван"
                 )
             }
+
+            // Обе клетки связи обязаны принадлежать ОДНОМУ организму.
+            //
+            // Это и есть точное условие отсутствия гонки, без всяких допущений о геометрии.
+            // Слот связи выбирается по якорю организма (CellEntity.bodyAnchorY), значит все
+            // связи одного тела лежат в одном слоте и обрабатываются одним воркером
+            // последовательно. Конфликтовать могут только линки с общей клеткой, а общие
+            // клетки бывают исключительно внутри организма — следовательно, пока обе клетки
+            // связи в одной системе отсчёта, гонка невозможна в принципе.
+            //
+            // Единственный способ это сломать — связать клетки разных организмов. Все пути
+            // создания связей резолвят вторую клетку внутри одного organIndex, а морфогенез
+            // вдобавок фильтрует по нему явно; проверка ловит любой путь, который это обошёл.
+            //
+            // Предыдущая версия сравнивала статические Y самих клеток с порогом
+            // HALF_CHUNK_HEIGHT и ложно срабатывала на деформированных телах: карта тела
+            // отражает форму на момент роста, а реальное тело со временем расходится с ней.
+            if (cellEntity.bodyAnchorY[linkCellA] != cellEntity.bodyAnchorY[linkCellB]) {
+                throw IllegalStateException(
+                    "связь $linkIndex соединяет клетки разных организмов (по якорю): " +
+                        "A=$linkCellA anchor=${cellEntity.bodyAnchorY[linkCellA]} " +
+                        "organIndex=${cellEntity.organIndex[linkCellA]}, " +
+                        "B=$linkCellB anchor=${cellEntity.bodyAnchorY[linkCellB]} " +
+                        "organIndex=${cellEntity.organIndex[linkCellB]} " +
+                        "— их связи попадут в разные слоты, возможна гонка на vx/vy"
+                )
+            }
+
+            // Отдельно по organIndex. Якорь и organIndex — независимые признаки организма:
+            // якорь ставится в addCell и наследуется от родителя, organIndex приходит из
+            // команды и у зиготы какое-то время равен -1. Расхождение между ними само по
+            // себе означает испорченную принадлежность клетки, даже если по якорю всё сошлось
+            // (два разных организма могут случайно совпасть якорем — они спавнились на одной
+            // высоте).
+            if (cellEntity.organIndex[linkCellA] != cellEntity.organIndex[linkCellB]) {
+                throw IllegalStateException(
+                    "связь $linkIndex соединяет клетки разных организмов (по organIndex): " +
+                        "A=$linkCellA organIndex=${cellEntity.organIndex[linkCellA]} " +
+                        "anchor=${cellEntity.bodyAnchorY[linkCellA]}, " +
+                        "B=$linkCellB organIndex=${cellEntity.organIndex[linkCellB]} " +
+                        "anchor=${cellEntity.bodyAnchorY[linkCellB]}"
+                )
+            }
         }
 
         // Денормализовать индексы частиц в саму связь пробовали — стало медленнее,
@@ -110,6 +181,40 @@ class LinkPhysicsSystem(
         // но particleIndexes всего ~780 КБ и живёт в L2/L3, так что они дёшевы.
         val linkParticleA = cellEntity.getParticleIndex(linkCellA)
         val linkParticleB = cellEntity.getParticleIndex(linkCellB)
+
+        // Дубль проверки из LinkEntity.addLink, но уже по факту расчёта: ловит связи,
+        // испортившиеся ПОСЛЕ создания.
+        //
+        // Ровно (0, 0) — точный признак удалённой частицы: ParticleEntity.deleteParticle
+        // обнуляет x и y, а живая частица туда попасть не может, processWorldBorders
+        // зажимает координаты в [radius, gridSize - radius] при ненулевом радиусе.
+        if (DEBUG_CHECKS) {
+            val particles = particleEntity
+            if (linkParticleA == -1 || linkParticleB == -1) {
+                throw IllegalStateException(
+                    "связь $linkIndex ссылается на клетку без частицы: " +
+                        "A=$linkCellA particle=$linkParticleA, B=$linkCellB particle=$linkParticleB"
+                )
+            }
+            if (!particles.isAlive[linkParticleA] || !particles.isAlive[linkParticleB]) {
+                throw IllegalStateException(
+                    "связь $linkIndex ссылается на мёртвую частицу: " +
+                        "A=$linkCellA particle=$linkParticleA alive=${particles.isAlive[linkParticleA]}, " +
+                        "B=$linkCellB particle=$linkParticleB alive=${particles.isAlive[linkParticleB]}"
+                )
+            }
+            if ((particles.x[linkParticleA] == 0f && particles.y[linkParticleA] == 0f) ||
+                (particles.x[linkParticleB] == 0f && particles.y[linkParticleB] == 0f)
+            ) {
+                throw IllegalStateException(
+                    "связь $linkIndex ссылается на частицу в нулевой координате: " +
+                        "A=$linkCellA particle=$linkParticleA " +
+                        "pos=(${particles.x[linkParticleA]}, ${particles.y[linkParticleA]}), " +
+                        "B=$linkCellB particle=$linkParticleB " +
+                        "pos=(${particles.x[linkParticleB]}, ${particles.y[linkParticleB]})"
+                )
+            }
+        }
 
         val positionsX = particleEntity.x
         val positionsY = particleEntity.y
