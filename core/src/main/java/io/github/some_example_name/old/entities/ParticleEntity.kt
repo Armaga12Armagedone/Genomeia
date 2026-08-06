@@ -2,6 +2,7 @@ package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
+import it.unimi.dsi.fastutil.ints.IntArrayList
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.protobuf.ProtoNumber
@@ -122,6 +123,52 @@ class ParticleEntity(
 
     override fun onCopy() {}
     override fun onPaste() {}
+
+    fun copyFrom(other: ParticleEntity) {
+        this.maxAmount = other.maxAmount
+        this.lastId = other.lastId
+
+        // Вспомогательная функция для безопасного копирования БЕЗ замены ссылок
+        fun safeCopy(src: IntArray, dst: IntArray) {
+            System.arraycopy(src, 0, dst, 0, src.size.coerceAtMost(dst.size))
+        }
+        fun safeCopy(src: FloatArray, dst: FloatArray) {
+            System.arraycopy(src, 0, dst, 0, src.size.coerceAtMost(dst.size))
+        }
+        fun safeCopy(src: BooleanArray, dst: BooleanArray) {
+            System.arraycopy(src, 0, dst, 0, src.size.coerceAtMost(dst.size))
+        }
+
+        // 1. Копируем базовые данные Entity в существующие массивы
+        safeCopy(other.generation, this.generation)
+        safeCopy(other.isAlive, this.isAlive)
+        safeCopy(other.positionInAlive, this.positionInAlive)
+
+        // Для fastutil коллекций очищаем и добавляем, а не заменяем ссылку
+        this.aliveList.clear()
+        this.aliveList.addAll(other.aliveList)
+
+        this.deadStack.clear()
+        this.deadStack.addAll(other.deadStack)
+
+        // 2. Копируем специфичные данные ParticleEntity в существующие массивы
+        safeCopy(other.gridId, this.gridId)
+        safeCopy(other.x, this.x)
+        safeCopy(other.y, this.y)
+        safeCopy(other.vx, this.vx)
+        safeCopy(other.vy, this.vy)
+        safeCopy(other.radius, this.radius)
+        safeCopy(other.mass, this.mass)
+        safeCopy(other.color, this.color)
+        safeCopy(other.dragCoefficient, this.dragCoefficient)
+        safeCopy(other.effectOnContact, this.effectOnContact)
+        safeCopy(other.isCollidable, this.isCollidable)
+        safeCopy(other.cellStiffness, this.cellStiffness)
+        safeCopy(other.isCell, this.isCell)
+        safeCopy(other.isSub, this.isSub)
+        safeCopy(other.holderEntityIndex, this.holderEntityIndex)
+        safeCopy(other.isPheromoneEmitter, this.isPheromoneEmitter)
+    }
 
     override fun onClear(bound: Int) {
         gridId.clear(-1)

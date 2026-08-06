@@ -132,55 +132,74 @@ class MapSelect(
                     override fun clicked(event: InputEvent?, x: Float, y: Float) {
                         val mapName = string
                         val map = getMap(mapName)
+                        val old = DIGameGlobalContainer.game.screen
+                        old.dispose()
 
                         // 1. Загружаем данные сущностей (без привязок)
+                        //DISimulationContainer.gridManager.clearAll()
+                        DISimulationContainer.cellEntity.clear()
+                        DISimulationContainer.specialEntity.clear()
+                        DISimulationContainer.substancesEntity.clear()
+                        DISimulationContainer.specialModDataEntity.clear()
+                        DISimulationContainer.tailEntity.clear()
+                        DISimulationContainer.eyeEntity.clear()
+                        DISimulationContainer.linkEntity.clear()
+                        DISimulationContainer.neuralEntity.clear()
+                        DISimulationContainer.organEntity.clear()
+                        DISimulationContainer.particleEntity.clear()
+                        DISimulationContainer.pheromoneEntity.clear()
+                        DISimulationContainer.pheromoneEntity.clear()
+                        DISimulationContainer.producerEntity.clear()
+                        DISimulationContainer.pheromoneEmitterEntity.clear()
                         getEntities(mapName)
 
                         // 2. Привязываем зависимости, которые НЕ зависят от GridManager
-                        DISimulationContainer.cellEntity.loadEntity(
-                            particleEntity = DISimulationContainer.particleEntity,
-                            simulationData = DISimulationContainer.simulationData,
-                            substrateSettings = DIGameGlobalContainer.substrateSettings,
-                            neuralEntity = DISimulationContainer.neuralEntity,
-                            specialEntity = DISimulationContainer.specialEntity,
-                            cellList = DISimulationContainer.cellList
-                        )
-                        DISimulationContainer.specialEntity.loadEntity(
-                            eyeEntity = DISimulationContainer.eyeEntity,
-                            tailEntity = DISimulationContainer.tailEntity,
-                            specialModDataEntity = DISimulationContainer.specialModDataEntity,
-                            producerEntity = DISimulationContainer.producerEntity,
-                            pheromoneEmitterEntity = DISimulationContainer.pheromoneEmitterEntity
-                        )
-                        DISimulationContainer.substancesEntity.loadEntity(
-                            particleEntity = DISimulationContainer.particleEntity,
-                            substrateSettings = DIGameGlobalContainer.substrateSettings
-                        )
-                        DISimulationContainer.neuralEntity.loadEntity(DISimulationContainer.cellList)
+//                        DISimulationContainer.cellEntity.loadEntity(
+//                            particleEntity = DISimulationContainer.particleEntity,
+//                            simulationData = DISimulationContainer.simulationData,
+//                            substrateSettings = DIGameGlobalContainer.substrateSettings,
+//                            neuralEntity = DISimulationContainer.neuralEntity,
+//                            specialEntity = DISimulationContainer.specialEntity,
+//                            cellList = DISimulationContainer.cellList
+//                        )
+//                        DISimulationContainer.specialEntity.loadEntity(
+//                            eyeEntity = DISimulationContainer.eyeEntity,
+//                            tailEntity = DISimulationContainer.tailEntity,
+//                            specialModDataEntity = DISimulationContainer.specialModDataEntity,
+//                            producerEntity = DISimulationContainer.producerEntity,
+//                            pheromoneEmitterEntity = DISimulationContainer.pheromoneEmitterEntity
+//                        )
+//                        DISimulationContainer.substancesEntity.loadEntity(
+//                            particleEntity = DISimulationContainer.particleEntity,
+//                            substrateSettings = DIGameGlobalContainer.substrateSettings
+//                        )
+//                        DISimulationContainer.neuralEntity.loadEntity(DISimulationContainer.cellList)
                         // Остальные сущности без transient-зависимостей (OrganEntity, TailEntity, EyeEntity и т.д.)
                         // можно не привязывать, если они не имеют методов loadEntity с параметрами.
 
                         // 3. Пересоздаём GridManager и все системы (теперь они увидят уже инициализированные сущности)
-                        DISimulationContainer.reInit()
+                        //DISimulationContainer.reInit()
 
                         // 4. Привязываем GridManager-зависимые сущности к НОВОМУ GridManager
-                        DISimulationContainer.particleEntity.loadEntity(DISimulationContainer.gridManager)
+                        //DISimulationContainer.particleEntity.loadEntity(DISimulationContainer.gridManager)
                         DISimulationContainer.particleEntity.restoreGridManager()   // восстановление индексов в сетке
-                        DISimulationContainer.linkEntity.loadEntity(
-                            cellEntity = DISimulationContainer.cellEntity,
-                            gridManager = DISimulationContainer.gridManager,
-                            particleEntity = DISimulationContainer.particleEntity,
-                            diContext = DISimulationContainer
-                        )
-                        DISimulationContainer.pheromoneEntity.loadEntity(DISimulationContainer.gridManager)
+                        println(DISimulationContainer.particleEntity.x.size)
+
+//                        DISimulationContainer.linkEntity.loadEntity(
+//                            cellEntity = DISimulationContainer.cellEntity,
+//                            gridManager = DISimulationContainer.gridManager,
+//                            particleEntity = DISimulationContainer.particleEntity,
+//                            diContext = DISimulationContainer
+//                        )
+//                        DISimulationContainer.pheromoneEntity.loadEntity(DISimulationContainer.gridManager)
 
                         // 5. Устанавливаем индекс карты
-                        DISimulationContainer.mapSave.currentMap = mapName.substringBefore('.').toInt()
+                        //DISimulationContainer.mapSave.currentMap = mapName.substringBefore('.').toInt()
 
                         // 6. Открываем экран симуляции
-                        val old = DIGameGlobalContainer.game.screen
-                        DIGameGlobalContainer.game.screen = SimulationScreen(null, null)   // <-- передаём карту!
-                        old.dispose()
+                        close()
+                        DIGameGlobalContainer.game.screen = SimulationScreen(null, null)   // <-- map=null сделан специально, не обращать внимания!
+
                     }
                 })
             }
@@ -205,6 +224,7 @@ class MapSelect(
 
             it.addListener( object: ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                    hide()
                     val old = game.screen
                     game.screen = WorldEditorScreen()
                     old.dispose()
@@ -280,7 +300,7 @@ class MapSelect(
 //                        specialEntity = DISimulationContainer.specialEntity,
 //                        cellList = DISimulationContainer.cellList)
 
-                    DISimulationContainer.cellEntity = data
+                    //DISimulationContainer.cellEntity = data
                 }
                 if (entry.name == "SpecialEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -297,7 +317,7 @@ class MapSelect(
 //                        pheromoneEmitterEntity = DISimulationContainer.pheromoneEmitterEntity
 //                    )
 
-                    DISimulationContainer.specialEntity = data
+                    //DISimulationContainer.specialEntity = data
                 }
                 if (entry.name == "SubstanceEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -311,7 +331,7 @@ class MapSelect(
 //                        substrateSettings = DIGameGlobalContainer.substrateSettings
 //                    )
 
-                    DISimulationContainer.substancesEntity = data
+                    //DISimulationContainer.substancesEntity = data
                 }
                 if (entry.name == "SpecialModDataEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -320,7 +340,7 @@ class MapSelect(
 
                     data.loadSerialize()
 
-                    DISimulationContainer.specialModDataEntity = data
+                    //DISimulationContainer.specialModDataEntity = data
                 }
                 if (entry.name == "TailEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -329,7 +349,7 @@ class MapSelect(
 
                     data.loadSerializedEntity()
 
-                    DISimulationContainer.tailEntity = data
+                    //DISimulationContainer.tailEntity = data
                 }
                 if (entry.name == "EyeEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -338,7 +358,7 @@ class MapSelect(
 
                     data.loadSerializedEntity()
 
-                    DISimulationContainer.eyeEntity = data
+                    //DISimulationContainer.eyeEntity = data
                 }
                 if (entry.name == "LinkEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -348,7 +368,7 @@ class MapSelect(
                     data.loadSerializedEntity()
                     // data.loadEntity(cellEntity = DISimulationContainer.cellEntity, gridManager = DISimulationContainer.gridManager, particleEntity = DISimulationContainer.particleEntity, diContext = DISimulationContainer)
 
-                    DISimulationContainer.linkEntity = data
+                    //DISimulationContainer.linkEntity = data
                 }
                 if (entry.name == "NeuralEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -358,7 +378,7 @@ class MapSelect(
                     data.loadSerializedEntity()
                     //data.loadEntity(DISimulationContainer.cellList)
 
-                    DISimulationContainer.neuralEntity = data
+                    //DISimulationContainer.neuralEntity = data
                 }
                 if (entry.name == "OrganEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -367,19 +387,32 @@ class MapSelect(
 
                     data.loadSerializedEntity()
 
-                    DISimulationContainer.organEntity = data
+                    //DISimulationContainer.organEntity = data
                 }
                 if (entry.name == "ParticleEntity.bin") {
                     val bytes = zipIn.readBytes()
-
                     var data = ProtoBuf.decodeFromByteArray(ParticleEntity.serializer(), bytes)
-
                     data.loadSerializedEntity()
-//                    data.loadEntity(DISimulationContainer.gridManager)
-                    println("Size x: ${data.x.size}, 0 index: ${data.x[0]}")
-//                    data.restoreGridManager()
 
-                    DISimulationContainer.particleEntity = data
+                    println("=== LOADED DATA ===")
+                    println("data.lastId = ${data.lastId}")
+                    println("data.maxAmount = ${data.maxAmount}")
+                    println("data.aliveList.size = ${data.aliveList.size}")
+                    println("data.x.size = ${data.x.size}")
+                    if (data.aliveList.size > 0) {
+                        val firstIdx = data.aliveList.getInt(0)
+                        println("first alive: idx=$firstIdx, x=${data.x[firstIdx]}, y=${data.y[firstIdx]}, isAlive=${data.isAlive[firstIdx]}")
+                    }
+
+                    DISimulationContainer.particleEntity.copyFrom(data)
+
+                    println("=== AFTER COPY ===")
+                    println("container.lastId = ${DISimulationContainer.particleEntity.lastId}")
+                    println("container.aliveList.size = ${DISimulationContainer.particleEntity.aliveList.size}")
+                    if (DISimulationContainer.particleEntity.aliveList.size > 0) {
+                        val firstIdx = DISimulationContainer.particleEntity.aliveList.getInt(0)
+                        println("first alive: idx=$firstIdx, x=${DISimulationContainer.particleEntity.x[firstIdx]}, isAlive=${DISimulationContainer.particleEntity.isAlive[firstIdx]}")
+                    }
                 }
                 if (entry.name == "PheromoneEmitterEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -388,7 +421,7 @@ class MapSelect(
 
                     data.loadSerializedEntity()
 
-                    DISimulationContainer.pheromoneEmitterEntity = data
+                    //DISimulationContainer.pheromoneEmitterEntity = data
                 }
                 if (entry.name == "PheromoneEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -398,7 +431,7 @@ class MapSelect(
                     data.loadSerializedEntity()
                     //data.loadEntity(DISimulationContainer.gridManager)
 
-                    DISimulationContainer.pheromoneEntity = data
+                    //DISimulationContainer.pheromoneEntity = data
                 }
                 if (entry.name == "ProducerEntity.bin") {
                     val bytes = zipIn.readBytes()
@@ -407,7 +440,7 @@ class MapSelect(
 
                     data.loadSerializedEntity()
 
-                    DISimulationContainer.producerEntity = data
+                    //DISimulationContainer.producerEntity = data
                 }
                 entry = zipIn.nextEntry
             }

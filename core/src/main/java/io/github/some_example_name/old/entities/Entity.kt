@@ -40,7 +40,7 @@ abstract class Entity(
     var isAlive = BooleanArray(maxAmount)
 
     @Transient
-    private var generation = IntArray(maxAmount)
+    var generation = IntArray(maxAmount)
 
     @Transient
     var aliveList = IntArrayList(startMaxAmount)

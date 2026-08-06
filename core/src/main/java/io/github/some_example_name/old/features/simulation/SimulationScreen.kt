@@ -124,8 +124,13 @@ class SimulationScreen(
             camera = camera
         )
 
-        DISimulationContainer.worldTerrainManager.map = map
-        simulationSystem.initMap()
+        if (map != null) {
+            println("map")
+            DISimulationContainer.worldTerrainManager.map = map
+            simulationSystem.initMap()
+        }
+
+        println("Size x after: ${DISimulationContainer.particleEntity.x.size}, 0 index: ${DISimulationContainer.particleEntity.x[0]}")
     }
 
     val keyCodes = intArrayOf(
