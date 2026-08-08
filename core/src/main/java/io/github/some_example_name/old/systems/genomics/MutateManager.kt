@@ -74,20 +74,6 @@ class MutateManager(
                         booleans = booleanArrayOf(isSum)
                     )
                 }
-                if (lastCell.doesNeedNeuralConnections && !newCell.doesNeedNeuralConnections) {
-                    neuralConnections.remove(index)
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.DELETE_NEURAL_CONNECTIONS,
-                        ints = intArrayOf(index)
-                    )
-                }
-                if (!lastCell.doesNeedNeuralConnections && newCell.doesNeedNeuralConnections) {
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.ADD_NEURAL_CONNECTIONS_EMPTY_LIST,
-                        ints = intArrayOf(index)
-                    )
-                    command[index] = 0
-                }
                 if (lastCell is Eye && newCell !is Eye) {
                     worldCommandsManager.worldCommandBuffer[threadId].push(
                         type = WorldCommandType.DELETE_EYE,
@@ -220,7 +206,13 @@ class MutateManager(
                                 worldCommandsManager.worldCommandBuffer[threadId].push(
                                     type = WorldCommandType.ADD_NEURAL_LINK,
                                     booleans = booleanArrayOf(isLink1NeuralDirected),
-                                    ints = intArrayOf(cellIndex, otherCellIndex, linkColor)
+                                    ints = intArrayOf(
+                                        cellIndex,
+                                        otherCellIndex,
+                                        linkColor,
+                                        getGeneration(cellIndex),
+                                        getGeneration(otherCellIndex)
+                                    )
                                 )
                             } else {
                                 neuralLinkEntity.isLink1NeuralDirected[neuralLinkIndex] = isLink1NeuralDirected

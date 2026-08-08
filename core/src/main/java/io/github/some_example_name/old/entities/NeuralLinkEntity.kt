@@ -21,8 +21,16 @@ class NeuralLinkEntity(
         cellIndex: Int,
         otherCellIndex: Int,
         isLink1NeuralDirected: Boolean,
-        color: Int
+        color: Int,
+        cellGeneration: Int = LinkEntity.NO_GENERATION_CHECK,
+        otherCellGeneration: Int = LinkEntity.NO_GENERATION_CHECK,
     ): Int {
+        if (!isCellUsable(cellIndex, cellGeneration) ||
+            !isCellUsable(otherCellIndex, otherCellGeneration)
+        ) {
+            return -1
+        }
+
         val addLinkIndex = add()
 
         links1[addLinkIndex] = cellIndex
@@ -32,22 +40,11 @@ class NeuralLinkEntity(
         this.isLink1NeuralDirected[addLinkIndex] = isLink1NeuralDirected
         this.color[addLinkIndex] = color
 
-        cellEntity.linkAmount[cellIndex] ++
-        cellEntity.linkAmount[otherCellIndex] ++
-
         linkIndexMap.put(cellIndex, otherCellIndex, addLinkIndex)
         linkEditorIndexMap.put(cellIndex, otherCellIndex, addLinkIndex)
 
-        with(cellEntity) {
-            val cellA = cellList[cellType[cellIndex].toInt()]
-            val cellB = cellList[cellType[otherCellIndex].toInt()]
-            if (cellA.doesNeedNeuralConnections) {
-                addNeuralConnection(cellIndex, addLinkIndex)
-            }
-            if (cellB.doesNeedNeuralConnections) {
-                addNeuralConnection(otherCellIndex, addLinkIndex)
-            }
-        }
+        cellEntity.addNeuralConnection(cellIndex, addLinkIndex)
+        cellEntity.addNeuralConnection(otherCellIndex, addLinkIndex)
 
         return addLinkIndex
     }
@@ -64,16 +61,37 @@ class NeuralLinkEntity(
                 linkEditorIndexMap.remove(cellA, cellB)
             }
 
+            cellEntity.removeNeuralConnection(cellA, linkIndex)
+            cellEntity.removeNeuralConnection(cellB, linkIndex)
+
             links1[linkIndex] = -1
             links2[linkIndex] = -1
             linksGeneration1[linkIndex] = -1
             linksGeneration2[linkIndex] = -1
             isLink1NeuralDirected[linkIndex] = false
             color[linkIndex] = 0
-
-            cellEntity.removeNeuralConnection(cellA, linkIndex)
-            cellEntity.removeNeuralConnection(cellB, linkIndex)
         }
+    }
+
+    fun detachAllNeuralLinks(cellIndex: Int) {
+        val links = cellEntity.neuralConnections.get(cellIndex) ?: return
+
+        while (!links.isEmpty) {
+            val linkIndex = links.getInt(0)
+
+            if (!isAlive[linkIndex]) {
+                cellEntity.removeNeuralConnection(cellIndex, linkIndex)
+                continue
+            }
+
+            deleteNeuralLink(linkIndex)
+        }
+    }
+
+    private fun isCellUsable(cellIndex: Int, expectedGeneration: Int): Boolean {
+        if (cellIndex < 0 || !cellEntity.isAlive[cellIndex]) return false
+        if (expectedGeneration == LinkEntity.NO_GENERATION_CHECK) return true
+        return cellEntity.getGeneration(cellIndex) == expectedGeneration
     }
 
     override fun onCopy() {

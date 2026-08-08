@@ -143,9 +143,8 @@ class CellEntity(
     var degreeOfShortening = FloatArray(maxAmount) { 1f }
     var pheromoneType = IntArray(maxAmount) { -1 }
     var linkAmount = IntArray(maxAmount) { 0 }
-    var command = ByteArray(maxAmount) { -1 }
-    var neuralConnections = Int2ObjectOpenHashMap<IntArrayList>()
     @Transient val organToIdToIndex = OrderedIntPairMap(maxAmount)
+    var neuralConnections = Int2ObjectOpenHashMap<IntArrayList>()
 
     /**
      * Инлайн-список соседей по физическим связям: MAX_LINKS_PER_CELL слотов на клетку,
@@ -172,8 +171,8 @@ class CellEntity(
      * удаление делается swap-with-last — на плотность опирается и быстрый выход из скана,
      * и canAddCellLink.
      *
-     * Важно: linkAmount считает и физические, и нейронные связи (это игровой сенсор),
-     * поэтому он НЕ является длиной этого списка и не может использоваться как счётчик.
+     * [linkAmount] ведётся параллельно этому списку и считает ТОЛЬКО физические связи:
+     * инкремент в LinkEntity.addLink, декремент в LinkEntity.deleteLink.
      */
     var cellLinks = IntArray(maxAmount * MAX_LINKS_PER_CELL) { -1 }
 
@@ -302,20 +301,19 @@ class CellEntity(
         cellLinkIds.fill(-1, base, base + MAX_LINKS_PER_CELL)
     }
 
-
-    fun addNeuralConnection(cellIndex: Int, targetNeuralIndex: Int) {
-        val list = neuralConnections[cellIndex] ?: IntArrayList(2).also {
-            neuralConnections[cellIndex] = it
+    fun addNeuralConnection(cellIndex: Int, linkIndex: Int) {
+        val list = neuralConnections.get(cellIndex) ?: IntArrayList(2).also {
+            neuralConnections.put(cellIndex, it)
         }
 
-        if (!list.contains(targetNeuralIndex)) {
-            list.add(targetNeuralIndex)
+        if (!list.contains(linkIndex)) {
+            list.add(linkIndex)
         }
     }
 
-    fun removeNeuralConnection(cellIndex: Int, targetNeuralIndex: Int) {
+    fun removeNeuralConnection(cellIndex: Int, linkIndex: Int) {
         val list = neuralConnections.get(cellIndex) ?: return
-        list.rem(targetNeuralIndex)
+        list.rem(linkIndex)
     }
 
     //Neural entity
@@ -489,12 +487,8 @@ class CellEntity(
         // Индексы переиспользуются через deadStack, поэтому слоты связей нужно
         // обязательно вычистить: иначе новая клетка унаследует соседей мёртвой.
         clearCellLinks(cellIndex)
-        command[cellIndex] = -1
+        neuralConnections.remove(cellIndex)
         val cell = cellList[cellType]
-
-        if (cell.doesNeedNeuralConnections) {
-            neuralConnections.put(cellIndex, IntArrayList(2))
-        }
 
         if (cell.isNeural) {
             addNeural(cellIndex, cellType, a, b, c, isSum, activationFuncType)
@@ -576,14 +570,8 @@ class CellEntity(
         this.degreeOfShortening[cellIndex] = 1f
         pheromoneType[cellIndex] = -1
         linkAmount[cellIndex] = 0
-        // К этому моменту связей быть уже не должно: их снимает LinkEntity.detachAllLinks,
-        // которую DELETE_CELL вызывает ДО deleteCell. Здесь остаётся страховка на случай
-        // пути смерти, который detachAllLinks не позвал: индексы клеток переиспользуются
-        // через deadStack, и остаточный сосед достался бы новой клетке.
         clearCellLinks(cellIndex)
-        command[cellIndex] = -1
         neuralConnections.remove(cellIndex)
-
 
         deleteNeural(cellIndex = cellIndex)
 
@@ -631,7 +619,6 @@ class CellEntity(
         linkAmount.clear(0)
         cellLinks.fill(-1, 0, bound shl LINKS_SHIFT)
         cellLinkIds.fill(-1, 0, bound shl LINKS_SHIFT)
-        command.clear(-1)
         neuralConnections.clear()
         organToIdToIndex.clear()
     }
@@ -683,7 +670,6 @@ class CellEntity(
             cellLinkIds = IntArray(maxAmount shl LINKS_SHIFT) { -1 }
             System.arraycopy(old, 0, cellLinkIds, 0, oldMax shl LINKS_SHIFT)
         }
-        command = command.resize(-1)
     }
 
     companion object {

@@ -14,8 +14,7 @@ class Synapse(cellTypeId: Int): Cell(
     defaultColor = skyBlueColors.last(),
     cellTypeId = cellTypeId,
     isNeural = true,
-    isNeuronTransportable = false,
-    doesNeedNeuralConnections = true
+    isNeuronTransportable = false
 ) {
 
     override fun onStart(cellIndex: Int, threadId: Int, genomeIndex: Int) {
@@ -32,9 +31,9 @@ class Synapse(cellTypeId: Int): Cell(
 
         var weight = getWeight(cellIndex)
 
-        val neuralLinks = getNeuralLinks(cellIndex)
+        val neuralLinks = neuralConnections.get(cellIndex)
 
-        if (neuralLinks.size != 2) {
+        if (neuralLinks == null || neuralLinks.size != 2) {
             neuronImpulseOutput[cellIndex] = 0f
             return
         }

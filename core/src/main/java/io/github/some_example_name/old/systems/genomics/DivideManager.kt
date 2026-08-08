@@ -172,7 +172,13 @@ class DivideManager(
                                 worldCommandsManager.worldCommandBuffer[threadId].push(
                                     type = WorldCommandType.ADD_NEURAL_LINK,
                                     booleans = booleanArrayOf(isLink1NeuralDirected),
-                                    ints = intArrayOf(cellIndex, otherCellIndex, linkColor)
+                                    ints = intArrayOf(
+                                        cellIndex,
+                                        otherCellIndex,
+                                        linkColor,
+                                        LinkEntity.NO_GENERATION_CHECK,
+                                        otherCellGeneration
+                                    )
                                 )
                                 if (linksLength > 0) {
                                     worldCommandsManager.worldCommandBuffer[threadId].push(

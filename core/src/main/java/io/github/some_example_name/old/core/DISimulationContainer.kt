@@ -304,7 +304,6 @@ object DISimulationContainer : DIContext, Disposable {
 
     val neuralLinkManager = NeuralLinkManager(
         neuralLinkEntity = neuralLinkEntity,
-        worldCommandsManager = worldCommandsManager,
         cellEntity = cellEntity
     )
 

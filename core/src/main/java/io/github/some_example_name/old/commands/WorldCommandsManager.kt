@@ -128,7 +128,9 @@ class WorldCommandsManager(
                             cellIndex = cellIndex,
                             otherCellIndex = ints[1],
                             isLink1NeuralDirected = booleans[0],
-                            color = ints[2]
+                            color = ints[2],
+                            cellGeneration = ints[3],
+                            otherCellGeneration = ints[4]
                         )
                     }
                     WorldCommandType.DELETE_NEURAL_LINK -> {
@@ -337,6 +339,7 @@ class WorldCommandsManager(
                             // выжившие соседи получают isOnEdge и сброс parentIndex —
                             // раньше это делал processLink, увидев мёртвую клетку.
                             linkEntity.detachAllLinks(cellIndex, evenLinkLists, oddLinkLists)
+                            neuralLinkEntity.detachAllNeuralLinks(cellIndex)
                             cellEntity.deleteCell(cellIndex)
                             cellList[cellEntity.cellType[cellIndex].toInt()].onDie(cellIndex)
                         }
@@ -415,21 +418,6 @@ class WorldCommandsManager(
                     }
                     WorldCommandType.ADD_PHEROMONE_EMITTER -> {
                         specialEntity.addPheromoneEmitter(index = ints[0])
-                    }
-                    WorldCommandType.DELETE_NEURAL_CONNECTIONS -> {
-                        cellEntity.neuralConnections.remove(ints[0])
-                    }
-                    WorldCommandType.ADD_NEURAL_CONNECTION -> {
-                        val cellIndex = ints[0]
-                        cellEntity.addNeuralConnection(
-                            cellIndex = cellIndex,
-                            targetNeuralIndex = ints[1],
-                        )
-                        //Обнуление команды
-                        cellEntity.command[cellIndex] = -1
-                    }
-                    WorldCommandType.ADD_NEURAL_CONNECTIONS_EMPTY_LIST -> {
-                        cellEntity.neuralConnections.put(ints[0], IntArrayList(2))
                     }
                     WorldCommandType.MUTATE_ON_START -> {
                         val index = ints[0]

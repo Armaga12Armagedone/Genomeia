@@ -225,6 +225,7 @@ class LinkPhysicsSystem(
 
         cellSystem.transportEnergy(linkCellA, linkCellB)
 
+        //TODO можно попробовать сделать отдельную сущность под углы, там будут только пары родитель - потомок
         val parentIndices = cellEntity.parentIndex
         val parentCellA = parentIndices[linkCellA]
         val parentCellB = parentIndices[linkCellB]

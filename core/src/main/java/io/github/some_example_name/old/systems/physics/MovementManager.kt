@@ -31,10 +31,9 @@ class MovementManager(
         val oldY = y[particleIndex].toInt()
         vy[particleIndex] -= 0
 
+        seedBump(particleIndex)
 
         processCellFrictionOld(particleIndex)
-
-        seedBump(particleIndex)
 
         x[particleIndex] += vx[particleIndex] * SIM_STEP
         y[particleIndex] += vy[particleIndex] * SIM_STEP
@@ -130,7 +129,8 @@ class MovementManager(
             val x2 = x * x
             val x4 = x2 * x2
 
-            val friction = (1f / (x4 + 1f)) * dragCoefficient[particleIndex]
+            val shielding = (1f / (x4 + 1f)).coerceAtLeast(MIN_DRAG_SHARE)
+            val friction = shielding * dragCoefficient[particleIndex]
             vx[particleIndex] *= 1f - friction
             vy[particleIndex] *= 1f - friction
         } else {
@@ -148,5 +148,7 @@ class MovementManager(
 
         /** Он же в квадрате — чтобы сравнивать со speed2 без корня. */
         const val MAX_SPEED_2 = MAX_SPEED * MAX_SPEED
+
+        const val MIN_DRAG_SHARE = 0.1f
     }
 }

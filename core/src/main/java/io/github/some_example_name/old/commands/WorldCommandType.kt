@@ -25,8 +25,8 @@ enum class WorldCommandType(
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
-    ADD_NEURAL_LINK(
-        intParamsCount = 3,
+    ADD_NEURAL_LINK( // cellIndex, otherCellIndex, color, cellGeneration, otherCellGeneration
+        intParamsCount = 5,
         floatParamsCount = 0,
         booleanParamsCount = 1
     ),
@@ -160,21 +160,6 @@ enum class WorldCommandType(
         booleanParamsCount = 0
     ),
     ADD_PHEROMONE_EMITTER(
-        intParamsCount = 1,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
-    DELETE_NEURAL_CONNECTIONS(
-        intParamsCount = 1,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
-    ADD_NEURAL_CONNECTION(
-        intParamsCount = 2,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
-    ADD_NEURAL_CONNECTIONS_EMPTY_LIST(
         intParamsCount = 1,
         floatParamsCount = 0,
         booleanParamsCount = 0
