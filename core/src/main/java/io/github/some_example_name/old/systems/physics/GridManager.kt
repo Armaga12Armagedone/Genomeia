@@ -303,6 +303,91 @@ class GridManager (
         pendingCount = 0
     }
 
+    /**
+     * Проверка инвариантов сетки. Вызывать сразу после [rebuild], под DEBUG_CHECKS.
+     *
+     * ЗАЧЕМ
+     * -----
+     * «Частицу видно, но она ни с чем не сталкивается и не берётся курсором» — это ровно
+     * то, как выглядит частица, которой нет в particleIdx либо которая лежит в сетке не в
+     * той клетке. Рисуется она из aliveList по x/y, а вот столкновения и попадание курсором
+     * идут через сетку, поэтому расхождение между этими двумя источниками невидимо до тех
+     * пор, пока его не проверить явно.
+     *
+     * После rebuild инвариант должен выполняться ТОЧНО: gridId обновляется в moveParticle
+     * при каждой смене целочисленной клетки, а частицы, созданные позже фазы движения,
+     * получают gridId прямо в addParticle и до конца тика не двигаются.
+     *
+     * Проверка однопоточная и стоит O(maxAmount + particleCount), то есть в релизе её нет
+     * вообще (DEBUG_CHECKS — const val), а в отладке это доли миллисекунды на тик.
+     *
+     * ЧТО ОЗНАЧАЕТ КАЖДОЕ ПАДЕНИЕ
+     * ---------------------------
+     *  - "нет в сетке" — частица жива, но не попала ни в particleIdx, ни в pending. Значит
+     *    её потеряли при регистрации или при перестройке: искать в registerParticle и в
+     *    том, кто её создал.
+     *  - "лежит в чужой клетке" — gridId разошёлся с позицией. Значит для неё не отработал
+     *    moveParticle: искать в раскладке по стекам чанков (кто-то не попал в стек) либо
+     *    в самой фазе движения.
+     *  - "дубль" / "не та клетка в CSR" — испорчен сам counting sort.
+     */
+    fun verifyIntegrity(
+        isAlive: BooleanArray,
+        particleCell: IntArray,
+        px: FloatArray,
+        py: FloatArray
+    ) {
+        val seen = BooleanArray(isAlive.size)
+
+        for (slot in 0 until particleCount) {
+            val particleIndex = particleIdx[slot]
+
+            if (particleIndex !in isAlive.indices) {
+                throw IllegalStateException("сетка: мусорный индекс $particleIndex в позиции $slot")
+            }
+            if (!isAlive[particleIndex]) {
+                throw IllegalStateException("сетка: мёртвая частица $particleIndex в позиции $slot")
+            }
+            if (seen[particleIndex]) {
+                throw IllegalStateException("сетка: дубль частицы $particleIndex в позиции $slot")
+            }
+            seen[particleIndex] = true
+
+            // Клетка, в чей диапазон CSR попала эта позиция, обязана совпасть с gridId.
+            val declared = particleCell[particleIndex]
+            if (declared < 0 || declared >= gridSize ||
+                slot < cellStart[declared] || slot >= cellStart[declared + 1]
+            ) {
+                throw IllegalStateException(
+                    "сетка: частица $particleIndex лежит в позиции $slot, а её gridId=$declared " +
+                        "занимает [${if (declared in 0 until gridSize) cellStart[declared] else -1}, " +
+                        "${if (declared in 0 until gridSize) cellStart[declared + 1] else -1})"
+                )
+            }
+        }
+
+        for (particleIndex in isAlive.indices) {
+            if (!isAlive[particleIndex]) continue
+
+            if (!seen[particleIndex]) {
+                throw IllegalStateException(
+                    "сетка: живой частицы $particleIndex нет в сетке; " +
+                        "x=${px[particleIndex]} y=${py[particleIndex]} " +
+                        "gridId=${particleCell[particleIndex]} (строка ${py[particleIndex].toInt()})"
+                )
+            }
+
+            val actual = cellIndexOfClamped(px[particleIndex].toInt(), py[particleIndex].toInt())
+            if (particleCell[particleIndex] != actual) {
+                throw IllegalStateException(
+                    "сетка: частица $particleIndex лежит в чужой клетке; " +
+                        "gridId=${particleCell[particleIndex]} а по позиции должна быть $actual; " +
+                        "x=${px[particleIndex]} y=${py[particleIndex]} (строка ${py[particleIndex].toInt()})"
+                )
+            }
+        }
+    }
+
     // ===================================================================================
     // ЧТЕНИЕ СЕТКИ (без аллокаций)
     //

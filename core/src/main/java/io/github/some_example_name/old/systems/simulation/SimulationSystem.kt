@@ -4,6 +4,7 @@ import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.DEBUG_CHECKS
+import io.github.some_example_name.old.core.PlatformTuning
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -59,9 +60,16 @@ class SimulationSystem(
 
     fun startThread() {
         if (!threadManager.isRunning) {
+            threadManager.ensureStarted()
             threadManager.isRunning = true
 
-            simulationThread = Thread { threadManager.runUpdateLoop { updateTick() } }.apply {
+            // Поток симуляции — это воркер 0, он разбирает чанки наравне с остальными,
+            // поэтому получает ровно тот же приоритет. Разъехавшиеся приоритеты на
+            // спин-барьере дороже, чем низкий приоритет у всех сразу.
+            simulationThread = Thread {
+                PlatformTuning.onWorkerThreadStart(0)
+                threadManager.runUpdateLoop { updateTick() }
+            }.apply {
                 isDaemon = true
                 name = "Simulation-Main-Thread"
             }
@@ -115,6 +123,19 @@ class SimulationSystem(
         // поэтому многопоточным фазам не нужно ни блокировок, ни чётно-нечётных ограничений
         // из-за мутации сетки.
         profiler.measure(Phase.REBUILD) { gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId) }
+
+        // Ловит расхождение «частица есть в aliveList, но её нет в сетке или она лежит не
+        // в своей клетке» — то самое состояние, в котором частица рисуется, но не
+        // сталкивается и не берётся курсором. Стоит здесь, потому что сразу после
+        // перестройки инвариант обязан выполняться точно.
+        if (DEBUG_CHECKS) {
+            gridManager.verifyIntegrity(
+                isAlive = particleEntity.isAlive,
+                particleCell = particleEntity.gridId,
+                px = particleEntity.x,
+                py = particleEntity.y
+            )
+        }
 
         profiler.measure(Phase.RENDER) { renderBufferManager.updateBuffer(profiler.text) }
 

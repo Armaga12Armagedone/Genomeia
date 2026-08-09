@@ -90,10 +90,15 @@ class RenderSystem(
             }
         }
 
-        ensureCellBufferCapacityForWrite(particleEntity.aliveList.size)
+        // Ёмкость считается по СНИМКУ, который сейчас будет записан, а не по живому
+        // aliveList: список принадлежит потоку симуляции и меняется прямо во время кадра.
+        // Если в снимке частиц больше, чем в списке на момент чтения (а так бывает при
+        // массовой гибели — снимок старше), putFloat уходил за границу буфера и кадр падал
+        // с BufferOverflowException.
+        ensureCellBufferCapacityForWrite(cellBuf.renderCellBufferSize)
         drawCellShader(cellBuf)
 
-        ensurePheromoneBufferCapacityForWrite(pheromoneEntity.aliveList.size)
+        ensurePheromoneBufferCapacityForWrite(pheromoneBuf.pheromoneBufferSize)
         if (doesUsePostProcess) {
             drawPheromoneShader(pheromoneBuf)
         }

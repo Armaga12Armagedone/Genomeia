@@ -25,6 +25,7 @@ import androidx.core.content.FileProvider
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import games.spooky.gdx.nativefilechooser.android.AndroidFileChooser
+import io.github.some_example_name.old.core.PlatformTuning
 import io.github.some_example_name.old.game.KeyBoardListener
 import io.github.some_example_name.old.game.MyGame
 import java.io.File
@@ -60,6 +61,9 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         Thread.setDefaultUncaughtExceptionHandler(CrashHandler(this))
 
         super.onCreate(savedInstanceState)
+
+        configureSimulationThreads()
+
         val config = AndroidApplicationConfiguration().apply {
             useGyroscope = true
             useImmersiveMode = true
@@ -122,6 +126,27 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
             val screenHeight = rootLayout.rootView.height
             val keypadHeight = screenHeight - r.bottom
             inputLayout.translationY = if (keypadHeight > screenHeight * 0.15) -keypadHeight.toFloat() else 0f
+        }
+    }
+
+    /**
+     * Настройка пула воркеров симуляции под конкретное устройство. Обязана отработать до
+     * initializeForView: контейнер симуляции читает эти значения при создании пула.
+     *
+     * Одно ядро сознательно оставляется свободным: воркер 0 — это поток симуляции, но
+     * рядом крутится GL-поток, и если занять спином все ядра, планировщик начнёт вытеснять
+     * поток симуляции посреди стадии, пока остальные ждут его на барьере. На спин-барьере
+     * такая ситуация стоит дороже, чем потерянное ядро.
+     *
+     * Приоритет: THREAD_PRIORITY_URGENT_DISPLAY (-8) — тот же класс, в котором работает
+     * поток рендера. Здесь важна не сама величина, а то, что у потока симуляции и у всех
+     * воркеров она одинаковая: разъехавшиеся приоритеты дают инверсию на барьере, когда
+     * ждущий поток отбирает такты у того, кого ждёт.
+     */
+    private fun configureSimulationThreads() {
+        PlatformTuning.performanceCoreCount = maxOf(2, AndroidCpu.performanceCoreCount() - 1)
+        PlatformTuning.onWorkerThreadStart = {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
         }
     }
 

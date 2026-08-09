@@ -116,7 +116,7 @@ class MyGame(
         }
 
         // Button font — generated at 2x size so scaling down in buttons stays sharp
-        val desiredButtonSize = (28 * fontDensity).toInt()
+        val desiredButtonSize = (22 * fontDensity).toInt()
         parameter.size = max(MIN_GEN_SIZE, desiredButtonSize)
         parameter.borderWidth = 1.2f
         parameter.borderColor = Color.WHITE

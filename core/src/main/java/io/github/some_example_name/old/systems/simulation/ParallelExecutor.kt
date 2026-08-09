@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.systems.simulation
 
 import io.github.some_example_name.old.core.PROFILE_UTILIZATION
+import io.github.some_example_name.old.core.PlatformTuning
 import java.util.concurrent.atomic.AtomicIntegerArray
 import java.util.concurrent.locks.LockSupport
 
@@ -67,15 +68,20 @@ import java.util.concurrent.locks.LockSupport
  * ------------------
  * Бесконечный спин недопустим: симуляция может стоять на паузе или быть ограничена
  * targetUPS, и тогда воркеры жгли бы ядра впустую. Поэтому спин ограничен
- * [WORKER_SPIN_LIMIT] итерациями (десятки микросекунд — с запасом покрывает промежуток
+ * [workerSpinLimit] итерациями (десятки микросекунд — с запасом покрывает промежуток
  * между стадиями внутри тика), после чего воркер парковывается с растущим таймаутом.
  * Перед парковкой он выставляет свой флаг, и главный поток делает unpark только тем,
  * кто действительно уснул: в горячем режиме unpark не вызывается ни разу.
  *
- * Thread.onSpinWait компилируется в PAUSE (x86) / YIELD (ARM): подсказка процессору, что
+ * Все пороги спина берутся из PlatformTuning и на мобильных примерно в двадцать раз
+ * короче. Там к рассуждению «спин дешевле парковки» добавляется второй член: спинящее
+ * ядро — это ватты в корпусе без вентилятора, и через пару минут игры термальный
+ * троттлинг срезает частоту CPU и GPU сильнее, чем спин экономит на барьере.
+ *
+ * [spinPause] компилируется в PAUSE (x86) / YIELD (ARM): подсказка процессору, что
  * это spin-loop. Она освобождает ресурсы SMT-соседа и, главное, снимает штраф за
  * memory order violation при выходе из цикла (иначе выход из спина стоит десятки циклов
- * на сброс конвейера).
+ * на сброс конвейера). На Android ниже API 33 самого интринсика нет — см. SpinHint.
  */
 class ParallelExecutor(val workerCount: Int) {
 
@@ -87,12 +93,36 @@ class ParallelExecutor(val workerCount: Int) {
         fun run(chunkIndex: Int, workerId: Int)
     }
 
+    /**
+     * Пороги спина и парковки. Не const val, потому что зависят от платформы (см.
+     * PlatformTuning): на телефоне длинный спин греет SoC и через пару минут отзывается
+     * термальным троттлингом, который стоит дороже сэкономленного на барьере.
+     *
+     * Читаются один раз в конструкторе в final-поля: и JIT, и ART выносят такие чтения из
+     * цикла ровно так же, как константы, поэтому горячий путь ничего не теряет.
+     */
+    private val workerSpinLimit = PlatformTuning.workerSpinLimit
+    private val mainSpinLimit = PlatformTuning.mainSpinLimit
+    private val mainParkNanos = PlatformTuning.mainParkNanos
+    private val parkNanosMax = PlatformTuning.parkNanosMax
+    private val backgroundParkNanos = PlatformTuning.backgroundParkNanos
+
     /** Номер текущего задания. \Volatile-запись здесь — это и есть публикация стадии. */
     @Volatile
     private var epoch = 0L
 
     @Volatile
     private var running = true
+
+    /**
+     * Приложение свёрнуто: воркерам разрешено спать на порядок дольше.
+     *
+     * Отдельно от isPlay в SimulationData: пауза внутри игры — это всё ещё передний план,
+     * пользователь в любой момент нажмёт «играть», и лишние десятки миллисекунд задержки
+     * там не нужны. А в фоне будить ядро 500 раз в секунду незачем совсем.
+     */
+    @Volatile
+    private var background = false
 
     /**
      * Ошибка, вылетевшая в воркере. Пробрасывается на поток симуляции в конце стадии,
@@ -140,10 +170,30 @@ class ParallelExecutor(val workerCount: Int) {
         // Ждём, пока все воркеры войдут в свой цикл. Без этого возможен дедлок: поток,
         // стартовавший уже после публикации стадии, инициализировал бы свой seen текущим
         // epoch, не увидел бы задание и не уменьшил PENDING, а главный ждал бы нуля вечно.
+        //
+        // Здесь спин обязан уступать ядро: на мобильном SoC потоки стартуют не мгновенно,
+        // и на устройстве с малым числом ядер мы иначе спиним против потока, старта
+        // которого и ждём.
+        var spins = 0
         while (control.get(READY) < workerCount - 1) {
-            //TODO на старых андроидах не будет работать
-            Thread.onSpinWait()
+            spinPause()
+            if (++spins >= START_SPIN_LIMIT) {
+                Thread.yield()
+                spins = 0
+            }
         }
+    }
+
+    /** Останавливать и перезапускать пул умеет ThreadManager; см. [shutdown]. */
+    val isShutdown: Boolean
+        get() = !running
+
+    /**
+     * Переключает режим сна воркеров. Вызывать из Screen.pause()/resume(), то есть при
+     * реальном сворачивании приложения.
+     */
+    fun setBackground(value: Boolean) {
+        background = value
     }
 
     /**
@@ -187,13 +237,17 @@ class ParallelExecutor(val workerCount: Int) {
 
         var spins = 0
         while (control.get(PENDING) != 0) {
-            //TODO на старых андроидах не будет работать
-            Thread.onSpinWait()
+            spinPause()
             // Страховка от ситуации "воркеров больше, чем свободных ядер": если ждём
             // подозрительно долго, уступаем квант, вместо того чтобы отбирать ядро
             // у потока, которого мы же и ждём.
-            if (++spins >= MAIN_SPIN_LIMIT) {
-                Thread.yield()
+            //
+            // На мобильных вместо yield короткая парковка: sched_yield под CFS на
+            // загруженном устройстве часто возвращается немедленно, если в очереди нет
+            // потока с не меньшим приоритетом, и «уступка» вырождается в тот же спин.
+            // parkNanos снимает поток с ядра гарантированно.
+            if (++spins >= mainSpinLimit) {
+                if (mainParkNanos > 0L) LockSupport.parkNanos(mainParkNanos) else Thread.yield()
                 spins = 0
             }
         }
@@ -276,6 +330,11 @@ class ParallelExecutor(val workerCount: Int) {
     }
 
     private fun workerLoop(workerId: Int) {
+        // Приоритет потока выставляет платформа: на Android воркер обязан идти вровень с
+        // потоком симуляции, иначе главный спинит на барьере, отбирая такты у воркера,
+        // которого ждёт. Хук зовётся до READY, чтобы приоритет действовал с первой стадии.
+        PlatformTuning.onWorkerThreadStart(workerId)
+
         // seen = 0, а первая стадия получит epoch = 1, поэтому даже поток, стартовавший
         // с задержкой, не пропустит задание.
         var seen = 0L
@@ -289,9 +348,8 @@ class ParallelExecutor(val workerCount: Int) {
             while (epoch == seen) {
                 if (!running) return
 
-                if (spins < WORKER_SPIN_LIMIT) {
-                    //TODO на старых андроидах не будет работать
-                    Thread.onSpinWait()
+                if (spins < workerSpinLimit) {
+                    spinPause()
                     spins++
                 } else {
                     // Флаг ставится ДО повторной проверки epoch: иначе главный поток мог
@@ -300,7 +358,10 @@ class ParallelExecutor(val workerCount: Int) {
                     parkFlags.set(parkSlot, 1)
                     if (epoch == seen && running) LockSupport.parkNanos(parkNanos)
                     parkFlags.set(parkSlot, 0)
-                    if (parkNanos < PARK_NANOS_MAX) parkNanos *= 2
+                    // Потолок читается на каждой итерации, а не один раз: приложение может
+                    // свернуться, пока воркер уже крутится в этом цикле.
+                    val cap = if (background) backgroundParkNanos else parkNanosMax
+                    parkNanos = minOf(parkNanos * 2, cap)
                 }
             }
 
@@ -346,17 +407,13 @@ class ParallelExecutor(val workerCount: Int) {
         private const val READY = PADDING * 2
         private const val CONTROL_SIZE = PADDING * 3
 
-        /**
-         * ~20k итераций PAUSE — это десятки микросекунд. Промежуток между стадиями внутри
-         * тика на порядок меньше, так что в рабочем режиме воркер не паркуется вообще.
-         */
-        private const val WORKER_SPIN_LIMIT = 20_000
-
         private const val PARK_NANOS_START = 100_000L
-        private const val PARK_NANOS_MAX = 2_000_000L
 
-        /** Главный поток спинит агрессивнее: он ждёт заведомо короткий хвост стадии. */
-        private const val MAIN_SPIN_LIMIT = 200_000
+        /**
+         * Ожидание старта воркеров — холодный путь, выполняется один раз за жизнь пула,
+         * поэтому уступать ядро здесь можно часто и дёшево.
+         */
+        private const val START_SPIN_LIMIT = 1_000
 
         /** Буферы профайлера индексируются номером фазы, поэтому размер берётся оттуда же. */
         private const val MAX_STAGES = Phase.COUNT

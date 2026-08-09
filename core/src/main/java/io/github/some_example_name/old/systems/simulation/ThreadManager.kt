@@ -4,6 +4,7 @@ import io.github.some_example_name.old.core.DISimulationContainer.chunkSize
 import io.github.some_example_name.old.core.DISimulationContainer.gridSize
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.DISimulationContainer.totalChunks
+import io.github.some_example_name.old.core.PlatformTuning
 import io.github.some_example_name.old.core.WORKER_COUNT_OVERRIDE
 import io.github.some_example_name.old.core.WorldResizable
 
@@ -25,6 +26,21 @@ class ThreadManager(
     fun dispose() {
         isRunning = false
         executor.shutdown()
+    }
+
+    /**
+     * Поднимает пул, если он был остановлен через [dispose]. Вызывать при входе в экран
+     * симуляции, до старта потока обновления.
+     *
+     * Нужно потому, что ThreadManager — синглтон контейнера, а SimulationScreen создаётся
+     * и уничтожается при каждом заходе в симуляцию. На десктопе оставленный после выхода
+     * пул умирал вместе с JVM (потоки daemon), на Android процесс переживает Activity, и
+     * воркеры продолжали бы спать-просыпаться до самой смерти процесса.
+     */
+    fun ensureStarted() {
+        if (executor.isShutdown) {
+            executor = ParallelExecutor(workerCount())
+        }
     }
 
     fun stopSimulationLoop() {
@@ -181,11 +197,19 @@ class ThreadManager(
          * ядре делят L1/L2 и отнимают такты друг у друга в спин-петле. Определить число
          * физических ядер из JVM переносимо нельзя, поэтому оно задаётся константой
          * WORKER_COUNT_OVERRIDE (0 — прежнее поведение).
+         *
+         * На мобильных та же проблема выглядит иначе: там availableProcessors() возвращает
+         * все ядра всех кластеров, включая little, которые вдвое-втрое медленнее. Значение
+         * туда приходит от лаунчера через PlatformTuning.performanceCoreCount и имеет
+         * приоритет над WORKER_COUNT_OVERRIDE: константа подобрана под конкретный десктоп
+         * разработчика и на телефоне заведомо не имеет смысла.
          */
         fun workerCount(): Int {
-            val hardware =
-                if (WORKER_COUNT_OVERRIDE > 0) WORKER_COUNT_OVERRIDE
-                else Runtime.getRuntime().availableProcessors()
+            val hardware = when {
+                PlatformTuning.performanceCoreCount > 0 -> PlatformTuning.performanceCoreCount
+                WORKER_COUNT_OVERRIDE > 0 && !PlatformTuning.isMobile -> WORKER_COUNT_OVERRIDE
+                else -> Runtime.getRuntime().availableProcessors()
+            }
             return minOf(threadCount, hardware)
         }
     }

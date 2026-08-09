@@ -105,12 +105,23 @@ class SimulationScreen(
         font.data.setScale(Gdx.graphics.density)
         DISimulationContainer.resizeWorld()
 
-        simulationSystem.startThread()
         root = Table()
         root.setFillParent(true)
         stage.addActor(root)
 
-        genomeNames = DISimulationContainer.genomeManager.genomes.map { it.name }
+        // Здесь именно имена ФАЙЛОВ, а не Genome.name.
+        //
+        // Индекс в этом списке используется как индекс в genomeManager.genomes, а тот
+        // наполняется в loadGenomes ровно обходом getGenomeFileNamesFromFolder. Внутреннее
+        // имя генома с именем файла совпадать не обязано: файл может быть переименован,
+        // а при импорте на Android имя файла вообще приходило с префиксом (см.
+        // AndroidFileProvider.sanitizeGenomeFileName). Диалог выбора отдаёт обратно именно
+        // имя файла, поэтому и искать индекс надо в списке имён файлов.
+        genomeNames = if (genomeName == null) {
+            DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder()
+        } else {
+            listOf(genomeName)
+        }
 
         rebuildMenu()
         currentScreenWidth = Gdx.graphics.width
@@ -126,6 +137,29 @@ class SimulationScreen(
 
         DISimulationContainer.worldTerrainManager.map = map
         simulationSystem.initMap()
+
+        // Поток симуляции стартует ТОЛЬКО после того, как мир создан.
+        //
+        // Раньше startThread() стоял выше по show(), а initMap() — здесь, и оба вызова
+        // идут с GL-потока. То есть initWorld создавал десятки тысяч частиц, пока поток
+        // симуляции уже крутил тики: addParticle мутирует aliveList/lastId/deadStack
+        // сущности и pending/pendingCount в GridManager, а тик в это же время читает их
+        // и в конце rebuild делает pendingCount = 0.
+        //
+        // Частица, зарегистрированная между захватом pendingSize в rebuild и обнулением
+        // счётчика, теряется безвозвратно: в particleIdx она не попала, а из pending её
+        // стёрло. Дальше она жива, имеет корректный gridId, рисуется из aliveList — но
+        // в сетке её нет, поэтому по ней не считаются столкновения и её не берёт курсор.
+        //
+        // На экране это горизонтальные полосы, потому что initWorld заполняет карту
+        // построчно, а rebuild случается раз в тик: каждый тик терялась очередная пачка
+        // подряд идущих строк. Шаг полос — сколько строк GL-поток успевал создать за один
+        // тик, и он лишь по случайности похож на высоту чанка.
+        //
+        // На десктопе заполнение карты укладывалось в пару тиков, поэтому эффект был почти
+        // невидим; на Android те же десятки тысяч addParticle идут в разы дольше, и окно
+        // гонки растягивалось на десятки тиков.
+        simulationSystem.startThread()
     }
 
     val keyCodes = intArrayOf(
@@ -212,10 +246,15 @@ class SimulationScreen(
 
     override fun pause() {
         simEntity.isPlay = false
+        // Приложение свёрнуто: воркерам разрешаем спать долго. Без этого каждый из них
+        // просыпается по таймауту парковки сотни раз в секунду всё время, что игра висит
+        // в фоне, — на телефоне это заметный расход батареи впустую.
+        DISimulationContainer.threadManager.executor.setBackground(true)
     }
 
     override fun resume() {
         simEntity.isPlay = true
+        DISimulationContainer.threadManager.executor.setBackground(false)
     }
 
     override fun hide() { }
@@ -224,6 +263,12 @@ class SimulationScreen(
         renderSystem.dispose()
         simulationSystem.simulationData.isFinish = true
         simulationSystem.stopUpdateThread()
+        // Пул воркеров живёт в синглтоне контейнера и раньше не останавливался никогда.
+        // На десктопе это сходило с рук: потоки daemon, и они умирали вместе с JVM. На
+        // Android процесс переживает Activity, поэтому после выхода в меню пул продолжал
+        // бы просыпаться по таймауту до самой смерти процесса. Порядок важен: сначала
+        // останавливается поток симуляции, только потом пул, которым он пользуется.
+        DISimulationContainer.threadManager.dispose()
         stage.dispose()
         spriteBatch.dispose()
         font.dispose()
@@ -649,17 +694,28 @@ class SimulationScreen(
                         DIGameGlobalContainer.game.screen.dispose()
                         DIGameGlobalContainer.game.screen = GenomeEditorScreen(genomeName = null)
                     },
-                    onNext = { genomeName ->
-                        println("onNext $genomeName ${genomeNames.indexOf(genomeName)}")
-                        println(genomeNames)
-                        simulationSystem.simulationData.currentGenomeIndex =
-                            genomeNames.indexOf(genomeName)
+                    onNext = { selectedFileName ->
+                        val index = genomeNames.indexOf(selectedFileName)
+                        if (index >= 0) {
+                            simulationSystem.simulationData.currentGenomeIndex = index
+                        } else {
+                            // Раньше -1 молча уезжал в currentGenomeIndex, а падало уже
+                            // потом и в другом месте — на genomes[-1] в момент постановки
+                            // клетки, то есть в потоке симуляции.
+                            Gdx.app.error(
+                                "Genome",
+                                "геном '$selectedFileName' не найден среди $genomeNames"
+                            )
+                        }
                     },
                     onRestart = {
-                        val reader = simulationSystem.genomeManager.genomeJsonReader
-                        val assetsGenomes = reader.getGenomeFileNamesFromAssetsFolder("genomes")
-                        val userGenomes = reader.getGenomeFileNamesFromFolder()
-                        genomeNames = assetsGenomes + userGenomes
+                        // Импортированный геном должен появиться и в genomeManager.genomes,
+                        // и в списке имён — иначе индексы разъедутся. Раньше сюда
+                        // подмешивались ещё и json-геномы из ассетов, которых в genomes нет
+                        // вообще, что сдвигало индексы всех остальных.
+                        DISimulationContainer.genomeManager.loadGenomes()
+                        genomeNames = DIGameGlobalContainer.genomeJsonReader
+                            .getGenomeFileNamesFromFolder()
                     },
                     game = DIGameGlobalContainer.game,
                     onResize = { handler ->
