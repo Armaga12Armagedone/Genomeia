@@ -32,31 +32,40 @@ class MenuViewModel(
     private val damping = 0.92f // затухание (чтобы возвращалось в центр)
 
     fun startMenuSimulation() {
-        val map = worldGenerator.generateWorld(
-            width = DISingleThreadSimulationContainer.gridWidth,
-            height = DISingleThreadSimulationContainer.gridHeight,
-            seed = Random.nextLong()
-        )
-        worldTerrainManager.map = map
-        worldTerrainManager.initWorld(
-            gridWith = DISingleThreadSimulationContainer.gridWidth,
-            gridHeight = DISingleThreadSimulationContainer.gridHeight,
-        )
+//        val map = worldGenerator.generateWorld(
+//            width = DISingleThreadSimulationContainer.gridWidth,
+//            height = DISingleThreadSimulationContainer.gridHeight,
+//            seed = Random.nextLong()
+//        )
+//        worldTerrainManager.map = map
+//        worldTerrainManager.initWorld(
+//            gridWith = DISingleThreadSimulationContainer.gridWidth,
+//            gridHeight = DISingleThreadSimulationContainer.gridHeight,
+//        )
 
         genomeManager.loadGenomes()
 
-        repeat(5) {
-            genomeManager.genomes.forEachIndexed { index, _ ->
-                userCommandManager.push(
-                    cmd = PlayerCommand.Tap(
-                        x = Random.nextFloat() * DISingleThreadSimulationContainer.gridWidth,
-                        y = Random.nextFloat() * DISingleThreadSimulationContainer.gridHeight,
-                        isLeftButton = true,
-                        genomeIndex = index
-                    )
-                )
-            }
-        }
+//        repeat(5) {
+//            genomeManager.genomes.forEachIndexed { index, _ ->
+//                userCommandManager.push(
+//                    cmd = PlayerCommand.Tap(
+//                        x = Random.nextFloat() * DISingleThreadSimulationContainer.gridWidth,
+//                        y = Random.nextFloat() * DISingleThreadSimulationContainer.gridHeight,
+//                        isLeftButton = true,
+//                        genomeIndex = index
+//                    )
+//                )
+//            }
+//        }
+
+        userCommandManager.push(
+            cmd = PlayerCommand.Tap(
+                x = Random.nextFloat() * DISingleThreadSimulationContainer.gridWidth,
+                y = Random.nextFloat() * DISingleThreadSimulationContainer.gridHeight,
+                isLeftButton = true,
+                genomeIndex = 0
+            )
+        )
     }
 
     fun updateFrame() {

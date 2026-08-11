@@ -14,7 +14,9 @@ class LinkEntity(
     val cellEntity: CellEntity,
     val gridManager: GridManager,
     val particleEntity: ParticleEntity,
-    val diContext: DIContext
+    val diContext: DIContext,
+    /** Источник арен: связи организма лежат в массивах подряд. См. OrganEntity. */
+    private val organEntity: OrganEntity
 ) : Entity(linksStartMaxAmount) {
     /**
      * Клетки на концах связи, по массиву на конец.
@@ -277,7 +279,24 @@ class LinkEntity(
             return -1
         }
 
-        val addLinkIndex = add()
+        // Слот из арены связей организма. Обе клетки заведомо принадлежат одному телу —
+        // это уже обеспечено барьером по якорю выше, — поэтому организм берётся у любой.
+        // У зиготы, ещё не получившей ADD_ORGAN, organIndex равен -1: тогда арены нет и
+        // связь идёт общим путём.
+        val organIndex = cellEntity.organIndex[cellIndex]
+        val arenaLinkSlot = if (organEntity.hasArena(organIndex)) {
+            val slot = organEntity.takeLinkSlot(organIndex)
+            if (slot == -1) {
+                throw IllegalStateException(
+                    "арена связей организма $organIndex исчерпана " +
+                        "(ёмкость ${organEntity.linkArenaCapacity[organIndex]}) — " +
+                        "поднимите OrganEntity.DEFAULT_MAX_LINKS или ARENA_HEADROOM_PERCENT"
+                )
+            }
+            slot
+        } else -1
+
+        val addLinkIndex = if (arenaLinkSlot == -1) add() else addAt(arenaLinkSlot)
 
         links1[addLinkIndex] = cellIndex
         links2[addLinkIndex] = otherCellIndex

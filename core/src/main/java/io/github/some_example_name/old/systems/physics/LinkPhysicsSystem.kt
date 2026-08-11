@@ -103,6 +103,7 @@ class LinkPhysicsSystem(
         val linkCellA = linkEntity.links1[linkIndex]
         val linkCellB = linkEntity.links2[linkIndex]
 
+
         // Проверки "жива ли клетка на конце связи" здесь больше нет.
         //
         // Она стоила шесть чтений из шести разных массивов (isAlive дважды, generation
@@ -181,6 +182,7 @@ class LinkPhysicsSystem(
         // но particleIndexes всего ~780 КБ и живёт в L2/L3, так что они дёшевы.
         val linkParticleA = cellEntity.getParticleIndex(linkCellA)
         val linkParticleB = cellEntity.getParticleIndex(linkCellB)
+//        println("linkIndex: $linkIndex: cell1: $linkCellA cell2: $linkCellB particle1: $linkParticleA particle2: $linkParticleB")
 
         // Дубль проверки из LinkEntity.addLink, но уже по факту расчёта: ловит связи,
         // испортившиеся ПОСЛЕ создания.
@@ -280,11 +282,9 @@ class LinkPhysicsSystem(
         val degreeOfShorteningA = degreeOfShorteningArray[linkCellA]
         val degreeOfShorteningB = degreeOfShorteningArray[linkCellB]
         val degreeOfShortening = if (degreeOfShorteningA == degreeOfShorteningB) degreeOfShorteningA
-        else 2f * degreeOfShorteningA * degreeOfShorteningB /
-            (degreeOfShorteningA + degreeOfShorteningB)
+        else 2f * degreeOfShorteningA * degreeOfShorteningB / (degreeOfShorteningA + degreeOfShorteningB)
 
-        val force =
-            (dist - linkEntity.linksNaturalLength[linkIndex] * degreeOfShortening) * stiffness
+        val force = (dist - linkEntity.linksNaturalLength[linkIndex] * degreeOfShortening) * stiffness
 
         // Spring dampening
         val velocitiesX = particleEntity.vx
@@ -305,8 +305,9 @@ class LinkPhysicsSystem(
         velocitiesX[linkParticleA] -= fx
         velocitiesY[linkParticleA] -= fy
 
-        // Элементы читаются заново (а не берутся из parentCellA/B): reinitParentIndex
-        // мог только что записать сюда значение.
+        //TODO сделать инкрементально
+        //Элементы читаются заново (а не берутся из parentCellA/B): reinitParentIndex
+        //мог только что записать сюда значение.
         if (parentIndices[linkCellA] == -1) linkEntity.reinitParentIndex(linkCellA, linkCellB)
         if (parentIndices[linkCellB] == -1) linkEntity.reinitParentIndex(linkCellB, linkCellA)
 

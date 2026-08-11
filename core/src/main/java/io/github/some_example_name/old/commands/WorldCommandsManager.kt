@@ -6,6 +6,7 @@ import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.cells.SpecialModData
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.core.DIContext
+import io.github.some_example_name.old.core.SELF_REPRODUCTION_ENABLED
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.WorldResizable
 import io.github.some_example_name.old.core.utils.OrderedIntPairMap
@@ -490,13 +491,30 @@ class WorldCommandsManager(
             when (type) {
                 WorldCommandType.ADD_ORGAN -> {
                     if (!isEditor) {
+                        // Сюда попадают только самозародившиеся организмы: ручной спавн
+                        // заводит организм напрямую в UserCommandManager, до первой клетки.
+                        //
+                        // Аренами этот путь пока не поддержан, и это осознанно: зигота
+                        // создаётся раньше своего организма, поэтому физически не может
+                        // оказаться в его арене (см. SELF_REPRODUCTION_ENABLED). Падаем
+                        // явно, а не заводим организм, у которого часть тела вне арены —
+                        // такое не упало бы вовсе, а просто выключило бы обход по диапазону.
+                        if (!SELF_REPRODUCTION_ENABLED) {
+                            throw IllegalStateException(
+                                "ADD_ORGAN при выключенном SELF_REPRODUCTION_ENABLED: " +
+                                    "кто-то создаёт организм в обход UserCommandManager"
+                            )
+                        }
+
                         val organStartCellOrganIndex = ints[0]
-                        cellEntity.organIndex[organStartCellOrganIndex] = organEntity.addOrgan(
+                        val newOrganIndex = organEntity.addOrgan(
                             genomeIndex = ints[1],
                             genomeSize = ints[2],
                             dividedTimes = ints[3],
                             mutatedTimes = ints[4]
                         )
+                        cellEntity.organIndex[organStartCellOrganIndex] = newOrganIndex
+                        organEntity.allocateArenas(organIndex = newOrganIndex)
                     }
                 }
 

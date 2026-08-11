@@ -105,6 +105,7 @@ class CellSystem(
         genomicTransformations(cellIndex, threadId)
     }
 
+    //TODO лишний раз считает sqrt и читает данные getX getY
     fun processCellAngle(cellIndex: Int, parentCellIndex: Int) = with(cellEntity) {
         val dx = getX(cellIndex) - getX(parentCellIndex)
         val dy = getY(cellIndex) - getY(parentCellIndex)

@@ -18,7 +18,15 @@ class CellEntity(
     val substrateSettings: SubstrateSettings,
     val cellList: List<Cell>,
     private val neuralEntity: NeuralEntity,
-    val specialEntity: SpecialEntity
+    val specialEntity: SpecialEntity,
+    /**
+     * Источник арен. Клетка берёт слот из диапазона своего организма, а не из общего
+     * deadStack, чтобы всё тело лежало в массивах подряд — см. OrganEntity.
+     *
+     * Клетки без организма (organIndex == -1) и режим редактора идут прежним путём:
+     * hasArena вернёт false, и выдачей займётся обычный add().
+     */
+    private val organEntity: OrganEntity
 ) : Entity(cellsStartMaxAmount) {
     /**
      * Координаты клетки в системе отсчёта её организма — «карта тела», какой она была бы,
@@ -396,9 +404,36 @@ class CellEntity(
         pheromoneType: Int = -1,
         specialModData: SpecialModData? = null
     ): Int {
-        val cellIndex = add()
+        // Слот берётся из арены организма, если она у него есть.
+        //
+        // Исчерпание арены — это ошибка конфигурации, а не штатный режим: ёмкость
+        // рассчитана на взрослое тело плюс запас (OrganEntity.ARENA_HEADROOM_PERCENT).
+        // Молча уйти в общий аллокатор нельзя — часть тела оказалась бы вне диапазона,
+        // и обход организма по арене её просто не увидел бы.
+        val arenaCellSlot = if (organEntity.hasArena(organIndex)) {
+            val slot = organEntity.takeCellSlot(organIndex)
+            if (slot == -1) {
+                throw IllegalStateException(
+                    "арена клеток организма $organIndex исчерпана " +
+                        "(ёмкость ${organEntity.cellArenaCapacity[organIndex]}): " +
+                        "тело выросло больше, чем под него зарезервировали — " +
+                        "поднимите OrganEntity.DEFAULT_MAX_CELLS или ARENA_HEADROOM_PERCENT"
+                )
+            }
+            slot
+        } else -1
 
-        particleIndexes[cellIndex] = particleEntity.addParticle(
+        val cellIndex = if (arenaCellSlot == -1) add() else addAt(arenaCellSlot)
+
+        // Частица ложится по тому же смещению внутри своей арены, что и клетка внутри
+        // своей: на этом держится particleIndexOfCell, то есть переход клетка -> частица
+        // без чтения particleIndexes.
+        val arenaParticleSlot =
+            if (arenaCellSlot == -1) -1
+            else organEntity.particleIndexOfCell(organIndex, cellIndex)
+
+        particleIndexes[cellIndex] = particleEntity.addParticleAt(
+            particleIndex = arenaParticleSlot,
             x = x,
             y = y,
             color = color,
@@ -500,6 +535,7 @@ class CellEntity(
         }
 
         specialEntity.addSpecial(
+            cellIndex = cellIndex,
             cell = cell,
             colorDifferentiation = colorDifferentiation,
             visibilityRange = visibilityRange,
@@ -535,6 +571,63 @@ class CellEntity(
         organToIdToIndex.put(organIndex, cellGenomeId, cellIndex)
 
         return cellIndex
+    }
+
+    /**
+     * Проверка инвариантов арен. Вызывать под DEBUG_CHECKS раз в тик, из однопоточного места.
+     *
+     * ЗАЧЕМ
+     * -----
+     * Нарушение арены не падает и даже не портит физику сразу — оно просто выключает то,
+     * ради чего арены заводились, и делает это молча. Клетка, оказавшаяся вне диапазона
+     * своего организма, будет считаться как раньше и выглядеть совершенно нормально; когда
+     * фазы начнут обходить организм ПО ДИАПАЗОНУ АРЕНЫ, она просто перестанет обсчитываться.
+     * Поэтому инвариант проверяется явно и заранее, до того как на него начнут опираться.
+     *
+     * ЧТО ОЗНАЧАЕТ КАЖДОЕ ПАДЕНИЕ
+     * ---------------------------
+     *  - «вне арены» — клетка получила слот от общего аллокатора, хотя у организма арена
+     *    есть. Значит на момент её addCell organIndex был ещё не проставлен: искать в
+     *    порядке команд, кто создал клетку раньше, чем организм узнал свой индекс.
+     *  - «частица разошлась с клеткой» — сломана параллельность арен, на которой держится
+     *    particleIndexOfCell. Искать в addCell: слот клетки и слот частицы обязаны браться
+     *    из одного смещения.
+     */
+    fun verifyArenaIntegrity() {
+        for (i in 0 until aliveList.size) {
+            val cellIndex = aliveList.getInt(i)
+
+            // SpecialEntity индексируется индексом КЛЕТКИ, а не своим. Раньше это держалось
+            // на том, что обе сущности растут в ногу, и разъехалось на аренах. Теперь связь
+            // явная (SpecialEntity.addSpecial), и её стоит охранять: расхождение проявляется
+            // не здесь, а через -1 в specialTypeIndexes у первого же глаза или хвоста.
+            if (!specialEntity.isAlive[cellIndex]) {
+                throw IllegalStateException(
+                    "у живой клетки $cellIndex нет записи в SpecialEntity: " +
+                        "индексы клеток и специальных частей разошлись"
+                )
+            }
+
+            val organ = organIndex[cellIndex]
+            if (!organEntity.hasArena(organ)) continue
+
+            val from = organEntity.cellArenaBase[organ]
+            val to = organEntity.cellArenaEnd(organ)
+            if (cellIndex < from || cellIndex >= to) {
+                throw IllegalStateException(
+                    "клетка $cellIndex организма $organ вне его арены [$from, $to) — " +
+                        "обход по диапазону арены её не увидит"
+                )
+            }
+
+            val expectedParticle = organEntity.particleIndexOfCell(organ, cellIndex)
+            if (particleIndexes[cellIndex] != expectedParticle) {
+                throw IllegalStateException(
+                    "клетка $cellIndex организма $organ: частица ${particleIndexes[cellIndex]}, " +
+                        "а по параллельности арен должна быть $expectedParticle"
+                )
+            }
+        }
     }
 
     fun deleteCell(cellIndex: Int) {

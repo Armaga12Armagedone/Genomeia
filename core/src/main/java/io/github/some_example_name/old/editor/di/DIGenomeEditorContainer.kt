@@ -86,7 +86,11 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     )
 
     override val organEntity = OrganEntity(
-        organStartMaxAmount = 1
+        organStartMaxAmount = 1,
+        // В редакторе арены не нужны: один организм, параллельных фаз нет, а ёмкость
+        // арены (рассчитанная на взрослое тело) растянула бы все массивы редактора
+        // на порядок. С false всё создание идёт прежним путём, через общий аллокатор.
+        arenasEnabled = false
     )
 
     override val particleEntity = ParticleEntity(
@@ -132,7 +136,8 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         substrateSettings = DIGameGlobalContainer.substrateSettings,
         cellList = cellList,
         neuralEntity = neuralEntity,
-        specialEntity = specialEntity
+        specialEntity = specialEntity,
+        organEntity = organEntity
     )
 
     override val linkEntity = LinkEntity(
@@ -140,13 +145,15 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         cellEntity = cellEntity,
         gridManager = gridManager,
         particleEntity = particleEntity,
-        diContext = this
+        diContext = this,
+        organEntity = organEntity
     )
 
     override val neuralLinkEntity = NeuralLinkEntity(
         50,
         cellEntity = cellEntity,
-        isEditor = true
+        isEditor = true,
+        organEntity = organEntity
     )
 
     override val substancesEntity = SubstancesEntity(

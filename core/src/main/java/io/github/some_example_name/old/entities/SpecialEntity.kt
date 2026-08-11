@@ -111,14 +111,33 @@ class SpecialEntity(
 
     fun getSpecialData(index: Int) = specialModDataEntity.specialModData[specialTypeIndexes[index]]
 
+    /**
+     * Заводит специальную часть для клетки [cellIndex].
+     *
+     * ЭТА СУЩНОСТЬ ИНДЕКСИРУЕТСЯ ИНДЕКСОМ КЛЕТКИ. Не своим собственным — именно чужим:
+     * весь класс состоит из методов вида `getVisibilityRange(index)`, куда снаружи
+     * передаётся cellIndex, и из [delete], который его же и принимает.
+     *
+     * Раньше индекс здесь выдавался своим add(), а совпадение с индексом клетки держалось
+     * лишь на том, что обе сущности всегда растут и умирают в ногу, то есть их lastId и
+     * deadStack ходят синхронно. Это молчаливое совпадение, а не инвариант, и арены его
+     * ломают: клетка берёт слот из диапазона своего организма, а add() здесь по-прежнему
+     * отдаёт следующий свободный. Дальше specialTypeIndexes[cellIndex] читается по индексу,
+     * который никто не заполнял, там -1, и падает первый же обратившийся к глазу или хвосту.
+     *
+     * Поэтому индекс теперь передаётся явно и занимается через addAt. Побочно это делает
+     * связь настоящим инвариантом: разъехаться она больше не может в принципе, независимо
+     * от того, чем и как выдаются слоты клеткам.
+     */
     fun addSpecial(
+        cellIndex: Int,
         cell: Cell,
         colorDifferentiation: Int = 7,
         visibilityRange: Float = 4.25f,
         speed: Float = 0f,
         specialModData: SpecialModData? = null
     ): Int {
-        val cellIndex = add()
+        addAt(cellIndex)
         when (cell) {
             is Tail -> {
                 addTail(cellIndex, speed)

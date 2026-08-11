@@ -131,6 +131,9 @@ class UserCommandManager(
                                     dividedTimes = genome.dividedTimes[0],
                                     mutatedTimes = genome.mutatedTimes[0]
                                 )
+                                // Строго до первой addCell: зигота уже должна брать слот
+                                // из арены, иначе тело начнётся вне своего диапазона.
+                                organEntity.allocateArenas(organIndex)
                                 val randomAngle = if (isEditor) 0f else 0f//MathUtils.random(0f, MathUtils.PI2)
                                 cellEntity.addCell(
                                     x = cmd.x,

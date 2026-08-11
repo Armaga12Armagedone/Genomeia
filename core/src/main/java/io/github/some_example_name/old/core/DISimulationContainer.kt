@@ -118,20 +118,30 @@ object DISimulationContainer : DIContext, Disposable {
         substrateSettings = substrateSettings,
         cellList = cellList,
         neuralEntity = neuralEntity,
-        specialEntity = specialEntity
+        specialEntity = specialEntity,
+        organEntity = organEntity
     )
     override val linkEntity = LinkEntity(
         20_000,
         cellEntity = cellEntity,
         gridManager = gridManager,
         particleEntity = particleEntity,
-        diContext = this
+        diContext = this,
+        organEntity = organEntity
     )
     override val neuralLinkEntity = NeuralLinkEntity(
         5_000,
         cellEntity = cellEntity,
-        isEditor = false
+        isEditor = false,
+        organEntity = organEntity
     )
+
+    init {
+        // Связывается здесь, а не конструктором: organEntity создаётся раньше всех,
+        // потому что CellEntity/LinkEntity/NeuralLinkEntity уже зависят от него.
+        // Без этого вызова арены просто не выдаются, и всё идёт прежним путём.
+        organEntity.bindEntities(cellEntity, particleEntity, linkEntity, neuralLinkEntity)
+    }
     override val pheromoneEntity = PheromoneEntity(
         gridManager = gridManager
     )

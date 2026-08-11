@@ -2,6 +2,7 @@ package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.CellSettings
+import io.github.some_example_name.old.core.SELF_REPRODUCTION_ENABLED
 import io.github.some_example_name.old.core.utils.pinkColors
 
 class Zygote(cellTypeId: Int) : Cell(
@@ -18,6 +19,13 @@ class Zygote(cellTypeId: Int) : Cell(
 ) {
 
     override fun onStart(cellIndex: Int, threadId: Int, genomeIndex: Int) {
+        // Зигота заказывает себе организм только при самозарождении. У зиготы, которую
+        // поставил игрок, организм уже есть — он заведён в UserCommandManager ДО неё,
+        // вместе с аренами, — и второй ADD_ORGAN просто переподчинил бы её новому
+        // организму, оставив первую арену сиротой.
+        if (!SELF_REPRODUCTION_ENABLED) return
+        if (cellEntity.organIndex[cellIndex] != -1) return
+
         with(cellEntity) {
             val parentOrganIndex = cellIndex
             val subGenome = 1//TODO subGenome

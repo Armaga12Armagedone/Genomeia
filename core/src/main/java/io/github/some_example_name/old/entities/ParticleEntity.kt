@@ -40,9 +40,69 @@ class ParticleEntity(
         isSub: Boolean,
         isPheromoneEmitter: Boolean = false,
         holderEntityIndex: Int
-    ): Int {
-        val particleIndex = add()
+    ): Int = initParticle(
+        particleIndex = add(),
+        x = x, y = y, radius = radius, color = color, vx = vx, vy = vy,
+        dragCoefficient = dragCoefficient, effectOnContact = effectOnContact,
+        isCollidable = isCollidable, cellStiffness = cellStiffness,
+        isCell = isCell, isSub = isSub, isPheromoneEmitter = isPheromoneEmitter,
+        holderEntityIndex = holderEntityIndex
+    )
 
+    /**
+     * То же, но в ЗАРАНЕЕ ИЗВЕСТНЫЙ слот арены организма.
+     *
+     * Так частицы клеток остаются параллельны самим клеткам: клетка со смещением k в своей
+     * арене владеет частицей с тем же смещением k, и переход клетка -> частица становится
+     * арифметикой вместо чтения cellEntity.particleIndexes.
+     * См. OrganEntity.particleIndexOfCell.
+     *
+     * [particleIndex] == -1 означает «арены нет, выдай слот общим аллокатором». Так у
+     * вызывающего остаётся одна точка вызова вместо двух почти одинаковых веток с
+     * пятнадцатью аргументами каждая — а расходятся эти ветки ровно в одном месте.
+     */
+    fun addParticleAt(
+        particleIndex: Int,
+        x: Float,
+        y: Float,
+        radius: Float,
+        color: Int,
+        vx: Float = 0f,
+        vy: Float = 0f,
+        dragCoefficient: Float = 0.03f,
+        effectOnContact: Boolean = false,
+        isCollidable: Boolean = true,
+        cellStiffness: Float = 0.02f,
+        isCell: Boolean,
+        isSub: Boolean,
+        isPheromoneEmitter: Boolean = false,
+        holderEntityIndex: Int
+    ): Int = initParticle(
+        particleIndex = if (particleIndex == -1) add() else addAt(particleIndex),
+        x = x, y = y, radius = radius, color = color, vx = vx, vy = vy,
+        dragCoefficient = dragCoefficient, effectOnContact = effectOnContact,
+        isCollidable = isCollidable, cellStiffness = cellStiffness,
+        isCell = isCell, isSub = isSub, isPheromoneEmitter = isPheromoneEmitter,
+        holderEntityIndex = holderEntityIndex
+    )
+
+    private fun initParticle(
+        particleIndex: Int,
+        x: Float,
+        y: Float,
+        radius: Float,
+        color: Int,
+        vx: Float,
+        vy: Float,
+        dragCoefficient: Float,
+        effectOnContact: Boolean,
+        isCollidable: Boolean,
+        cellStiffness: Float,
+        isCell: Boolean,
+        isSub: Boolean,
+        isPheromoneEmitter: Boolean,
+        holderEntityIndex: Int
+    ): Int {
         // Сетка не мутируется: запоминаем клетку частицы и регистрируем её как новую.
         // В самой сетке частица появится при ближайшей пересборке (в конце этого тика).
         gridId[particleIndex] = gridManager.cellIndexOf(x.toInt(), y.toInt())

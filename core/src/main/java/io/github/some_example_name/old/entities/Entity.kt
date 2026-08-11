@@ -18,6 +18,23 @@ abstract class Entity(startMaxAmount: Int) {
     private var cellBoundBeforeClear = 0
     private var oldMaxBeforeResize = 0
 
+    /**
+     * Индекс был выдан АРЕНОЙ организма, а не общим аллокатором.
+     *
+     * Нужен ровно для одного: такой индекс нельзя класть в [deadStack]. Общий стек — это
+     * LIFO переиспользования на весь мир, и если туда попадёт слот из арены организма A,
+     * следующий же add() отдаст его организму B. Клетка B окажется физически лежащей
+     * посреди чужой арены, и весь смысл непрерывной раскладки пропадёт — причём молча,
+     * без единой ошибки, и тем сильнее, чем дольше идёт симуляция.
+     *
+     * Сейчас (первая итерация арен) слот из арены просто теряется: переиспользования
+     * внутри организма нет, вместо него у арены есть запас ёмкости, см.
+     * OrganEntity.ARENA_HEADROOM. Когда понадобится реюз, здесь появится не общий стек,
+     * а свободный список внутри самой арены — это единственное место, которое придётся
+     * тронуть.
+     */
+    private var arenaAllocated = BooleanArray(maxAmount)
+
     protected fun add(): Int {
         val cellIndex = if (!deadStack.isEmpty()) {
             deadStack.removeInt(deadStack.size - 1)
@@ -26,6 +43,7 @@ abstract class Entity(startMaxAmount: Int) {
         }
 
         isAlive[cellIndex] = true
+        arenaAllocated[cellIndex] = false
         generation[cellIndex]++
 
         val pos = aliveList.size
@@ -38,11 +56,84 @@ abstract class Entity(startMaxAmount: Int) {
         return cellIndex
     }
 
+    /**
+     * Занять КОНКРЕТНЫЙ индекс, минуя deadStack и lastId.
+     *
+     * Так сущности заполняются по аренам: организм получает непрерывный диапазон при
+     * рождении и раздаёт из него слоты по мере роста, поэтому все его клетки, частицы и
+     * связи лежат в массивах подряд, а не там, куда их положил общий стек переиспользования.
+     *
+     * [lastId] всё равно ведётся как максимальный использованный индекс — на него опираются
+     * clear() и все обходы вида `0..lastId`.
+     */
+    protected fun addAt(index: Int): Int {
+        ensureCapacity(index)
+
+        if (isAlive[index]) {
+            throw IllegalStateException(
+                "арена выдала занятый индекс $index — пересечение арен или сбой курсора"
+            )
+        }
+
+        isAlive[index] = true
+        arenaAllocated[index] = true
+        generation[index]++
+
+        val pos = aliveList.size
+        aliveList.add(index)
+        positionInAlive[index] = pos
+
+        if (index > lastId) lastId = index
+        return index
+    }
+
+    /**
+     * Растит массивы так, чтобы [requiredIndex] стал валидным.
+     *
+     * Аренам это нужно потому, что они выдают индексы ВПЕРЁД: организм резервирует
+     * диапазон целиком при рождении, задолго до того, как заполнит его клетками. Обычный
+     * рост по lastId такого не покрывает — он реагирует на уже занятый индекс.
+     *
+     * Цикл, а не одна resize(): шаг роста задан в resize() (5/4), и повторять его до
+     * покрытия дешевле, чем дублировать здесь логику пересоздания всех массивов подсущности.
+     * Копирование геометрическое, то есть амортизированно линейное, а вызывается это только
+     * при рождении организма.
+     */
+    fun ensureCapacity(requiredIndex: Int) {
+        while (requiredIndex > maxAmount - 2) {
+            resize()
+        }
+    }
+
+    /**
+     * Забронировать непрерывный диапазон из [count] индексов и вернуть его начало.
+     *
+     * Ключевое здесь — что бронь СРАЗУ сдвигает [lastId] за конец диапазона. Иначе между
+     * резервированием арены и её заполнением обычный [add] выдал бы индекс ВНУТРЬ неё:
+     * организм резервирует тысячу слотов при рождении, а занимает их по одному в течение
+     * тысяч тиков, и всё это время диапазон для общего аллокатора выглядел бы свободным.
+     * Именно так первая версия и падала — субстанция получала слот 0, который арена уже
+     * считала своим.
+     *
+     * Диапазон берётся строго ЗА текущим [lastId], а не с нуля: слоты ниже уже могли быть
+     * розданы общим аллокатором (субстанции и террейн появляются раньше первого организма).
+     * [deadStack] при этом не трогается — дырки ниже брони остаются доступны обычному
+     * add(), и арены с ними не пересекаются, потому что бронь всегда выше.
+     */
+    fun reserveRange(count: Int): Int {
+        val base = lastId + 1
+        lastId = base + count - 1
+        ensureCapacity(lastId)
+        return base
+    }
+
     protected fun delete(index: Int) {
         if (!isAlive[index]) throw IllegalStateException("Entity $index is already dead")
 
         isAlive[index] = false
-        deadStack.add(index)
+        // Слот из арены в общий стек не возвращается — иначе его получит чужой организм,
+        // см. [arenaAllocated].
+        if (!arenaAllocated[index]) deadStack.add(index)
 
         val pos = positionInAlive[index]
         if (pos >= 0) {
@@ -65,6 +156,7 @@ abstract class Entity(startMaxAmount: Int) {
         deadStack.clear()
         generation.fill(0, 0, cellBound)
         isAlive.fill(false, 0, cellBound)
+        arenaAllocated.fill(false, 0, cellBound)
 
         aliveList.clear()
         positionInAlive.fill(-1, 0, cellBound)
@@ -85,6 +177,11 @@ abstract class Entity(startMaxAmount: Int) {
             val old = isAlive
             isAlive = BooleanArray(maxAmount)
             System.arraycopy(old, 0, isAlive, 0, oldMax)
+        }
+        run {
+            val old = arenaAllocated
+            arenaAllocated = BooleanArray(maxAmount)
+            System.arraycopy(old, 0, arenaAllocated, 0, oldMax)
         }
         run {
             val old = positionInAlive

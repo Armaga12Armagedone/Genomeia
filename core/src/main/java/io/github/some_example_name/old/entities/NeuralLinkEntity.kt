@@ -5,7 +5,9 @@ import io.github.some_example_name.old.core.utils.UnorderedIntPairMap
 class NeuralLinkEntity(
     linksStartMaxAmount: Int,
     val cellEntity: CellEntity,
-    val isEditor: Boolean
+    val isEditor: Boolean,
+    /** Источник арен: нейросвязи организма лежат в массивах подряд. См. OrganEntity. */
+    private val organEntity: OrganEntity
 ) : Entity(linksStartMaxAmount) {
 
     var links1 = IntArray(maxAmount) { -1 }
@@ -31,7 +33,26 @@ class NeuralLinkEntity(
             return -1
         }
 
-        val addLinkIndex = add()
+        // Слот из арены нейросвязей организма — та же схема, что у физических связей
+        // (LinkEntity.addLink). Нейросвязь всегда внутриорганизменная.
+        //
+        // Ёмкость этой арены, в отличие от клеток и связей, взята оценкой, а не замером
+        // (OrganEntity.DEFAULT_MAX_NEURAL_LINKS), поэтому исчерпание здесь вероятнее всего
+        // означает не разросшееся тело, а недооценённую константу.
+        val organIndex = cellEntity.organIndex[cellIndex]
+        val arenaLinkSlot = if (organEntity.hasArena(organIndex)) {
+            val slot = organEntity.takeNeuralLinkSlot(organIndex)
+            if (slot == -1) {
+                throw IllegalStateException(
+                    "арена нейросвязей организма $organIndex исчерпана " +
+                        "(ёмкость ${organEntity.neuralLinkArenaCapacity[organIndex]}) — " +
+                        "поднимите OrganEntity.DEFAULT_MAX_NEURAL_LINKS"
+                )
+            }
+            slot
+        } else -1
+
+        val addLinkIndex = if (arenaLinkSlot == -1) add() else addAt(arenaLinkSlot)
 
         links1[addLinkIndex] = cellIndex
         links2[addLinkIndex] = otherCellIndex
