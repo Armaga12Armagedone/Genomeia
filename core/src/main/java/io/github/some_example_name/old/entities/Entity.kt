@@ -19,21 +19,19 @@ abstract class Entity(startMaxAmount: Int) {
     private var oldMaxBeforeResize = 0
 
     /**
-     * Индекс был выдан АРЕНОЙ организма, а не общим аллокатором.
+     * Организм, из чьей арены выдан индекс, или -1 если индекс не из арены.
      *
-     * Нужен ровно для одного: такой индекс нельзя класть в [deadStack]. Общий стек — это
-     * LIFO переиспользования на весь мир, и если туда попадёт слот из арены организма A,
-     * следующий же add() отдаст его организму B. Клетка B окажется физически лежащей
-     * посреди чужой арены, и весь смысл непрерывной раскладки пропадёт — причём молча,
-     * без единой ошибки, и тем сильнее, чем дольше идёт симуляция.
+     * Нужен на удалении: слот обязан вернуться в свободный список СВОЕЙ арены, а к моменту
+     * delete() определить организм по содержимому сущности уже нельзя. У связи, например,
+     * organIndex берётся через её клетку, а клетку к этому моменту могли удалить — она и
+     * стала причиной удаления связи, — и её organIndex уже сброшен в -1.
      *
-     * Сейчас (первая итерация арен) слот из арены просто теряется: переиспользования
-     * внутри организма нет, вместо него у арены есть запас ёмкости, см.
-     * OrganEntity.ARENA_HEADROOM. Когда понадобится реюз, здесь появится не общий стек,
-     * а свободный список внутри самой арены — это единственное место, которое придётся
-     * тронуть.
+     * Поэтому владелец запоминается в момент выдачи, а не вычисляется в момент возврата.
      */
-    private var arenaAllocated = BooleanArray(maxAmount)
+    private var arenaOwner = IntArray(maxAmount) { -1 }
+
+    /** Организм-владелец слота, или -1 если слот не из арены. */
+    fun arenaOwnerOf(index: Int) = arenaOwner[index]
 
     protected fun add(): Int {
         val cellIndex = if (!deadStack.isEmpty()) {
@@ -43,7 +41,7 @@ abstract class Entity(startMaxAmount: Int) {
         }
 
         isAlive[cellIndex] = true
-        arenaAllocated[cellIndex] = false
+        arenaOwner[cellIndex] = -1
         generation[cellIndex]++
 
         val pos = aliveList.size
@@ -66,7 +64,7 @@ abstract class Entity(startMaxAmount: Int) {
      * [lastId] всё равно ведётся как максимальный использованный индекс — на него опираются
      * clear() и все обходы вида `0..lastId`.
      */
-    protected fun addAt(index: Int): Int {
+    protected fun addAt(index: Int, arenaOwner: Int = -1): Int {
         ensureCapacity(index)
 
         if (isAlive[index]) {
@@ -76,7 +74,7 @@ abstract class Entity(startMaxAmount: Int) {
         }
 
         isAlive[index] = true
-        arenaAllocated[index] = true
+        this.arenaOwner[index] = arenaOwner
         generation[index]++
 
         val pos = aliveList.size
@@ -131,9 +129,10 @@ abstract class Entity(startMaxAmount: Int) {
         if (!isAlive[index]) throw IllegalStateException("Entity $index is already dead")
 
         isAlive[index] = false
-        // Слот из арены в общий стек не возвращается — иначе его получит чужой организм,
-        // см. [arenaAllocated].
-        if (!arenaAllocated[index]) deadStack.add(index)
+        // Слот из арены в общий стек не возвращается — иначе его получит чужой организм.
+        // Он вернётся в свободный список СВОЕЙ арены, см. [arenaOwner] и
+        // OrganEntity.releaseCellSlot.
+        if (arenaOwner[index] == -1) deadStack.add(index)
 
         val pos = positionInAlive[index]
         if (pos >= 0) {
@@ -156,7 +155,7 @@ abstract class Entity(startMaxAmount: Int) {
         deadStack.clear()
         generation.fill(0, 0, cellBound)
         isAlive.fill(false, 0, cellBound)
-        arenaAllocated.fill(false, 0, cellBound)
+        arenaOwner.fill(-1, 0, cellBound)
 
         aliveList.clear()
         positionInAlive.fill(-1, 0, cellBound)
@@ -179,9 +178,9 @@ abstract class Entity(startMaxAmount: Int) {
             System.arraycopy(old, 0, isAlive, 0, oldMax)
         }
         run {
-            val old = arenaAllocated
-            arenaAllocated = BooleanArray(maxAmount)
-            System.arraycopy(old, 0, arenaAllocated, 0, oldMax)
+            val old = arenaOwner
+            arenaOwner = IntArray(maxAmount) { -1 }
+            System.arraycopy(old, 0, arenaOwner, 0, oldMax)
         }
         run {
             val old = positionInAlive

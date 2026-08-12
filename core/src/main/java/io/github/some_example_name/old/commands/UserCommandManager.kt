@@ -133,7 +133,22 @@ class UserCommandManager(
                                 )
                                 // Строго до первой addCell: зигота уже должна брать слот
                                 // из арены, иначе тело начнётся вне своего диапазона.
-                                organEntity.allocateArenas(organIndex)
+                                //
+                                // Размеры берутся из генома, снятые при запекании, а не из
+                                // констант: константа на все геномы сразу — это либо
+                                // перерасход на мелких телах, либо падение на крупных.
+                                // У незапечённого генома там нули, и тогда работают
+                                // прежние значения по умолчанию.
+                                if (genome.cellsAmount > 0) {
+                                    organEntity.allocateArenas(
+                                        organIndex = organIndex,
+                                        layout = genome.sortedGraph,
+                                        maxCells = genome.cellsAmount,
+                                        maxLinks = genome.linksAmount
+                                    )
+                                } else {
+                                    throw Exception("Пустой геном без клеток")
+                                }
                                 val randomAngle = if (isEditor) 0f else 0f//MathUtils.random(0f, MathUtils.PI2)
                                 cellEntity.addCell(
                                     x = cmd.x,

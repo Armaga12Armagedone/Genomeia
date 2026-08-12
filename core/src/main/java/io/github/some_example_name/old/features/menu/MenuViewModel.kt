@@ -60,8 +60,8 @@ class MenuViewModel(
 
         userCommandManager.push(
             cmd = PlayerCommand.Tap(
-                x = Random.nextFloat() * DISingleThreadSimulationContainer.gridWidth,
-                y = Random.nextFloat() * DISingleThreadSimulationContainer.gridHeight,
+                x = /*Random.nextFloat()*/0.5f * DISingleThreadSimulationContainer.gridWidth,
+                y = /*Random.nextFloat()*/0.5f * DISingleThreadSimulationContainer.gridHeight,
                 isLeftButton = true,
                 genomeIndex = 0
             )

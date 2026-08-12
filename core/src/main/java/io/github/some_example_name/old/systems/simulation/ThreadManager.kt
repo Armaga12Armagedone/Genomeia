@@ -164,6 +164,27 @@ class ThreadManager(
         executor.runChunks(slotCount, stageId) { slot, _ -> job(slot) }
     }
 
+    /**
+     * Стадия, где работа и воркер — РАЗНЫЕ вещи.
+     *
+     * [runSlotStage] отдаёт один номер, который вызывающие используют сразу в двух ролях:
+     * как «что считать» и как индекс в per-thread структурах (worldCommandBuffer, стеки,
+     * счётчики). Пока работ было ровно threadCount, это совпадало. Обход по организмам
+     * ломает совпадение: организмов может быть и девять, и сотня, а буферов команд
+     * по-прежнему threadCount, и слот №9 писал бы за границу массива.
+     *
+     * Здесь [work] — номер работы (организм), [workerId] — кто её взял; в per-thread
+     * структуры надо индексироваться вторым. Воркер за раз держит ровно одну работу,
+     * поэтому два одновременных workerId различны, и гонки на буферах нет.
+     */
+    inline fun runWorkStage(
+        workCount: Int,
+        stageId: Int = -1,
+        crossinline job: (work: Int, workerId: Int) -> Unit
+    ) {
+        executor.runChunks(workCount, stageId) { work, workerId -> job(work, workerId) }
+    }
+
     override fun resize() {
         val old = executor
         executor = ParallelExecutor(workerCount())

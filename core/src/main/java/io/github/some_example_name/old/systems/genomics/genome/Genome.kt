@@ -29,7 +29,25 @@ data class Genome(
     @ProtoNumber(1) val version: Int,
     @ProtoNumber(2) val name: String,
     @ProtoNumber(3) val stageInstruction: List<GenomeStage> = emptyList(),
-    @ProtoNumber(4) val subGenomes: Map<Int, SubGenome> = emptyMap()
+    @ProtoNumber(4) val subGenomes: Map<Int, SubGenome> = emptyMap(),
+    /**
+     * Размеры взрослого тела, снятые при запекании в редакторе.
+     *
+     * По ним считаются ёмкости арен организма. Раньше там стояли константы на все геномы
+     * сразу — то есть либо перерасход памяти на мелких телах, либо падение на крупных.
+     *
+     * Ноль означает «геном сохранён до появления запекания»: тогда арены берут размеры
+     * из констант OrganEntity, как и раньше.
+     */
+    @ProtoNumber(5) val cellsAmount: Int = 0,
+    @ProtoNumber(6) val linksAmount: Int = 0,
+    @ProtoNumber(7) val neuralLinksAmount: Int = 0,
+
+    /**
+     * Порядок укладки сущностей в арены. null — геном не запечён, порядок будет обычный
+     * (по мере роста). См. [BakedLayout].
+     */
+    @ProtoNumber(8) val sortedGraph: BakedLayout? = null
 ) {
     @Transient
     var genomeStageInstruction: List<GenomeStage> = stageInstruction

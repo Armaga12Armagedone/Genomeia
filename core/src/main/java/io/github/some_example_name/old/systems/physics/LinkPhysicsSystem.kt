@@ -30,55 +30,137 @@ class LinkPhysicsSystem(
 ) {
 
     /**
-     * Одна стадия на все связи: слот обрабатывает оба своих списка, нечётный и чётный.
+     * ОБХОД ИДЁТ ПО АРЕНАМ, а не по спискам чётности.
      *
-     * ПОЧЕМУ ЧЁТНОСТЬ БОЛЬШЕ НЕ НУЖНА
-     * -------------------------------
-     * Две стадии существовали ради корректности: слот задавался пространственной полосой,
-     * связь дотягивалась на длину пружины за её границу, поэтому соседние полосы нельзя
-     * было считать одновременно — их разводили по чётности.
+     * Списки хранили индексы связей в порядке регистрации, то есть обход прыгал по массивам
+     * LinkEntity как попало — и запечённый RCM-порядок не давал ровно ничего: он определял,
+     * ГДЕ связь лежит, но не в каком порядке её читают. Замер это и показал: локальность
+     * улучшили, время фазы не изменилось.
      *
-     * Теперь слот задаётся якорем организма (CellEntity.bodyAnchorY), и все связи одного
-     * тела лежат в одном слоте. Конфликтовать могут только линки с ОБЩЕЙ КЛЕТКОЙ, а общие
-     * клетки бывают исключительно внутри организма — значит любые два слота независимы,
-     * и разводить их по стадиям незачем.
+     * Диапазон арены обходится подряд, а внутри него связи уложены по возрастанию
+     * min(слот концов) — значит подряд идущие связи трогают соседние клетки, и окно
+     * горячих данных сжимается до ширины ленты графа вместо всего тела.
      *
-     * ПОЧЕМУ ЭТО ЕЩЁ И БЫСТРЕЕ
-     * -----------------------
-     * Стадия заканчивается по самому загруженному слоту. Двумя стадиями цена была
-     * max(нечётные) + max(чётные), одной стала max(нечётный + чётный) — а это никогда не
-     * больше, потому что max(a + b) <= max(a) + max(b). Слот, тяжёлый по одной чётности,
-     * обычно лёгкий по другой, и суммы выравниваются.
+     * ПРО ГОНКИ
+     * ---------
+     * Гонка в этой фазе возможна только между связями с ОБЩЕЙ КЛЕТКОЙ, а общие клетки
+     * бывают исключительно внутри одного организма. Организм целиком достаётся одному
+     * воркеру, значит гонок нет — и это более прямое обоснование, чем прежняя приписка
+     * по якорю: она давала то же свойство окольным путём, через геометрию чанков.
      *
-     * Это лечит просадку балансировки, которая появилась вместе с якорной раскладкой:
-     * организм теперь попадает в слот целиком, а размеры организмов разные, поэтому
-     * util_links упал с 0.93 до 0.82.
-     *
-     * Плюс один барьер вместо двух.
-     *
-     * Число слотов при этом осталось прежним намеренно: slot уходит в processLink как
-     * threadId и служит индексом в worldCommandBuffer, размер которого равен threadCount.
-     * Удвоение слотов потребовало бы расширять все per-thread структуры, иначе два
-     * одновременных слота начали бы писать в один буфер команд — новая гонка.
-     *
-     * Раздача слотов динамическая: в одном может быть несколько тысяч связей, в соседнем
-     * десяток, и освободившийся воркер берёт следующий сам.
+     * ГРАНИЦА ПРИМЕНИМОСТИ
+     * --------------------
+     * Обходятся ТОЛЬКО связи организмов с аренами. Связь между клетками без организма
+     * (organIndex == -1) в арену не попадёт и обсчитана не будет. Сейчас таких связей
+     * возникнуть неоткуда: единственная бесхозная клетка — зигота от продюсера, а она
+     * одна и связывать ей себя не с чем (см. SELF_REPRODUCTION_ENABLED). Если
+     * самозарождение включат обратно, этот путь придётся вернуть.
      */
     fun iterateLinksInParallel() {
-        val oddLists = worldCommandsManager.oddLinkLists
-        val evenLists = worldCommandsManager.evenLinkLists
+        val organEntity = linkEntity.organEntity
+        val organs = organEntity.aliveList
 
-        threadManager.runSlotStage(oddLists.size, Phase.LINKS) { slot ->
-            val oddList = oddLists[slot]
-            for (i in oddList.indices) {
-                processLink(oddList.getInt(i), slot)
-            }
-
-            val evenList = evenLists[slot]
-            for (i in evenList.indices) {
-                processLink(evenList.getInt(i), slot)
+        // Работ больше, чем воркеров, и это нормально: раздача динамическая, а организмы
+        // разного размера. Номер работы и номер воркера здесь РАЗНЫЕ вещи — в буферы
+        // команд индексируемся вторым, иначе слот №9 писал бы за границу массива.
+        threadManager.runWorkStage(organs.size, Phase.LINKS) { work, workerId ->
+            val organIndex = organs.getInt(work)
+            if (organEntity.hasArena(organIndex)) {
+                val from = organEntity.linkArenaBase[organIndex]
+                val to = organEntity.linkArenaEnd(organIndex)
+                val alive = linkEntity.isAlive
+                for (linkIndex in from until to) {
+                    // Дырки в арене: связь умерла, а слот ещё не переиспользован.
+                    if (!alive[linkIndex]) continue
+                    processLink(linkIndex, workerId)
+                }
             }
         }
+    }
+
+    /**
+     * Отчёт о локальности обхода связей. Только под DEBUG_CHECKS, вызывать раз в окно
+     * профиля — стоит O(связей).
+     *
+     * ЧТО МЕРЯЕТ И ЗАЧЕМ
+     * ------------------
+     * Ширина ленты — max |слотA - слотB| по связям организма, где слот это смещение клетки
+     * внутри её арены. Это и есть РАЗМЕР ГОРЯЧЕГО ОКНА: обходя связи по порядку, поток
+     * держит в кэше клетки в пределах ленты. Средняя лента показывает типичный случай,
+     * максимальная — худший.
+     *
+     * Ради чего это нужно видеть: «RCM применился» и «RCM дал эффект» — разные утверждения.
+     * Раскладка может быть запечена, но если обход идёт не по ней (как было со списками
+     * чётности) или геном сохранён до появления запекания, лента окажется порядка размера
+     * тела, и никакого выигрыша не будет. По одному лишь времени фазы это неразличимо,
+     * а по ленте видно сразу.
+     *
+     * Ориентир: для плоского тела RCM даёт ленту порядка sqrt(числа клеток). При 947
+     * клетках это ~30-60. Лента в сотни — раскладка не применилась.
+     */
+    fun describeLinkLocality(): String {
+        val organEntity = linkEntity.organEntity
+        val organs = organEntity.aliveList
+        val sb = StringBuilder("=== LINK LOCALITY ===\n")
+
+        for (i in 0 until organs.size) {
+            val organIndex = organs.getInt(i)
+            if (!organEntity.hasArena(organIndex)) {
+                sb.append("organ ").append(organIndex).append(": арены нет\n")
+                continue
+            }
+
+            val cellBase = organEntity.cellArenaBase[organIndex]
+            val from = organEntity.linkArenaBase[organIndex]
+            val to = organEntity.linkArenaEnd(organIndex)
+
+            // Считаем ЖИВЫЕ клетки, а не cellArenaUsed.
+            //
+            // cellArenaUsed — это bump-курсор, и при запечённой раскладке он равен размеру
+            // раскладки с самого первого тика: запечённые слоты выдаются по cellGenomeId
+            // напрямую, курсор через них не проходит. Печатать его как «клеток в арене»
+            // было прямой дезинформацией — тело выглядело выросшим целиком с первого тика,
+            // даже когда рост застревал на середине.
+            var aliveCells = 0
+            for (cellIndex in cellBase until organEntity.cellArenaEnd(organIndex)) {
+                if (cellEntity.isAlive[cellIndex]) aliveCells++
+            }
+
+            var count = 0
+            var maxBand = 0
+            var sumBand = 0L
+            for (linkIndex in from until to) {
+                if (!linkEntity.isAlive[linkIndex]) continue
+                val cellA = linkEntity.links1[linkIndex]
+                val cellB = linkEntity.links2[linkIndex]
+                if (cellA == -1 || cellB == -1) continue
+
+                val band = kotlin.math.abs((cellA - cellBase) - (cellB - cellBase))
+                if (band > maxBand) maxBand = band
+                sumBand += band
+                count++
+            }
+
+            val layout = organEntity.arenaLayout[organIndex]
+            sb.append("organ ").append(organIndex)
+                .append(": RCM=").append(if (layout == null) "НЕТ" else "да")
+            if (layout != null) {
+                sb.append(" (клеток в раскладке ").append(layout.cellsInLayout)
+                    .append(", связей ").append(layout.linksInLayout).append(')')
+            }
+            sb.append(", живых связей ").append(count)
+                .append(", лента avg ").append(if (count == 0) 0 else (sumBand / count))
+                .append(" max ").append(maxBand)
+                .append(", живых клеток ").append(aliveCells)
+                .append(" из ").append(layout?.cellsInLayout ?: organEntity.cellArenaUsed[organIndex])
+                .append(", стадия ").append(organEntity.stage[organIndex])
+                .append('/').append(organEntity.genomeSize[organIndex])
+                .append(if (organEntity.alreadyGrownUp[organIndex]) " (вырос)" else " (растёт)")
+                .append(", ждём делений ").append(organEntity.divideCounterThisStage[organIndex])
+                .append(" мутаций ").append(organEntity.mutateCounterThisStage[organIndex])
+                .append('\n')
+        }
+        return sb.toString()
     }
 
     /**
@@ -135,44 +217,22 @@ class LinkPhysicsSystem(
 
             // Обе клетки связи обязаны принадлежать ОДНОМУ организму.
             //
-            // Это и есть точное условие отсутствия гонки, без всяких допущений о геометрии.
-            // Слот связи выбирается по якорю организма (CellEntity.bodyAnchorY), значит все
-            // связи одного тела лежат в одном слоте и обрабатываются одним воркером
-            // последовательно. Конфликтовать могут только линки с общей клеткой, а общие
-            // клетки бывают исключительно внутри организма — следовательно, пока обе клетки
-            // связи в одной системе отсчёта, гонка невозможна в принципе.
+            // Точное условие отсутствия гонки, без допущений о геометрии.
             //
-            // Единственный способ это сломать — связать клетки разных организмов. Все пути
-            // создания связей резолвят вторую клетку внутри одного organIndex, а морфогенез
-            // вдобавок фильтрует по нему явно; проверка ловит любой путь, который это обошёл.
+            // Организм целиком достаётся одному воркеру (обход идёт по его арене),
+            // поэтому конфликтовать могут только линки с общей клеткой, а общие клетки
+            // бывают исключительно внутри организма. Единственный способ это сломать —
+            // связать клетки разных организмов.
             //
-            // Предыдущая версия сравнивала статические Y самих клеток с порогом
-            // HALF_CHUNK_HEIGHT и ложно срабатывала на деформированных телах: карта тела
-            // отражает форму на момент роста, а реальное тело со временем расходится с ней.
-            if (cellEntity.bodyAnchorY[linkCellA] != cellEntity.bodyAnchorY[linkCellB]) {
-                throw IllegalStateException(
-                    "связь $linkIndex соединяет клетки разных организмов (по якорю): " +
-                        "A=$linkCellA anchor=${cellEntity.bodyAnchorY[linkCellA]} " +
-                        "organIndex=${cellEntity.organIndex[linkCellA]}, " +
-                        "B=$linkCellB anchor=${cellEntity.bodyAnchorY[linkCellB]} " +
-                        "organIndex=${cellEntity.organIndex[linkCellB]} " +
-                        "— их связи попадут в разные слоты, возможна гонка на vx/vy"
-                )
-            }
-
-            // Отдельно по organIndex. Якорь и organIndex — независимые признаки организма:
-            // якорь ставится в addCell и наследуется от родителя, organIndex приходит из
-            // команды и у зиготы какое-то время равен -1. Расхождение между ними само по
-            // себе означает испорченную принадлежность клетки, даже если по якорю всё сошлось
-            // (два разных организма могут случайно совпасть якорем — они спавнились на одной
-            // высоте).
+            // Все пути создания связей резолвят вторую клетку внутри одного organIndex,
+            // а морфогенез вдобавок фильтрует по нему явно; проверка ловит любой путь,
+            // который это обошёл.
             if (cellEntity.organIndex[linkCellA] != cellEntity.organIndex[linkCellB]) {
                 throw IllegalStateException(
-                    "связь $linkIndex соединяет клетки разных организмов (по organIndex): " +
-                        "A=$linkCellA organIndex=${cellEntity.organIndex[linkCellA]} " +
-                        "anchor=${cellEntity.bodyAnchorY[linkCellA]}, " +
+                    "связь $linkIndex соединяет клетки разных организмов: " +
+                        "A=$linkCellA organIndex=${cellEntity.organIndex[linkCellA]}, " +
                         "B=$linkCellB organIndex=${cellEntity.organIndex[linkCellB]} " +
-                        "anchor=${cellEntity.bodyAnchorY[linkCellB]}"
+                        "— их связи обошёл бы не тот воркер, возможна гонка на vx/vy"
                 )
             }
         }

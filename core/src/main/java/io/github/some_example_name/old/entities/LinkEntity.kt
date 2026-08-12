@@ -16,7 +16,7 @@ class LinkEntity(
     val particleEntity: ParticleEntity,
     val diContext: DIContext,
     /** Источник арен: связи организма лежат в массивах подряд. См. OrganEntity. */
-    private val organEntity: OrganEntity
+    val organEntity: OrganEntity
 ) : Entity(linksStartMaxAmount) {
     /**
      * Клетки на концах связи, по массиву на конец.
@@ -46,93 +46,6 @@ class LinkEntity(
     var linksGeneration2 = IntArray(maxAmount) { -1 }
     var linksNaturalLength = FloatArray(maxAmount) { -10f }
 
-
-    var linkPhase = BooleanArray(maxAmount)
-    var assignedThread = ByteArray(maxAmount) { -1 }
-    var linkToListPosition = IntArray(maxAmount) { -1 }
-
-    fun registerNewLink(
-        linkIndex: Int,
-        evenLinkLists: Array<IntArrayList>,
-        oddLinkLists: Array<IntArrayList>
-    ) {
-        val cellIndex = links1[linkIndex]
-
-        // Чанк считается по ЯКОРЮ ОРГАНИЗМА — точке, где появилась его зигота.
-        //
-        // Так все связи одного организма гарантированно попадают в один слот, а значит
-        // два воркера никогда не пишут в vx/vy одной частицы: общие клетки бывают только
-        // внутри организма. Никаких допущений про геометрию тела при этом не требуется.
-        //
-        // Через что мы к этому пришли:
-        //  - приписка по РЕАЛЬНОЙ позиции устаревала, как только организм уплывал в соседний
-        //    чанк — гонка возвращалась молча, без падения;
-        //  - переназначать приписку на лету нельзя: это перемешивает порядок связей в
-        //    списках, а он стоит двукратной разницы во времени фазы (замерено);
-        //  - приписка по staticY САМОЙ КЛЕТКИ держалась на том, что связанные клетки близки
-        //    по карте тела. Замер это опроверг: тело деформируется по мере роста, разброс
-        //    доходил до 5.6 при допустимых 4.
-        //
-        // Якорь не меняется никогда и одинаков у всего тела, поэтому приписка делается один
-        // раз и остаётся верной при любой деформации, любом размере организма и даже когда
-        // от него отрывают куски — кусок сохраняет тот же якорь.
-        //
-        // Достаточно только Y: чанк это gridId / (gridWidth * chunkHeight), а gridId =
-        // y * gridWidth + x при x < gridWidth, то есть чанк равен y / chunkHeight.
-        // X берётся нулевым, а cellIndexOfClamped заодно зажимает координату в границы
-        // мира — от неё нужна только принадлежность к чанку, а не физический смысл.
-        val staticGridId =
-            gridManager.cellIndexOfClamped(0, cellEntity.bodyAnchorY[cellIndex].toInt())
-
-        val chunk = staticGridId / diContext.chunkSize
-        val phase = chunk % 2
-        val threadId = (chunk - phase) / 2
-
-        if (threadId !in 0 until diContext.threadCount) throw Exception("threadId out of threadCount")
-
-        linkPhase[linkIndex] = phase == 0
-        assignedThread[linkIndex] = threadId.toByte()
-
-        val lists = if (phase == 0) evenLinkLists else oddLinkLists
-        val list = lists[threadId]
-
-        val position = list.size
-        list.add(linkIndex)
-        linkToListPosition[linkIndex] = position
-    }
-
-    // === НОВЫЙ МЕТОД ДЛЯ БЫСТРОГО УДАЛЕНИЯ ===
-    fun removeLinkFromLists(
-        linkIndex: Int,
-        evenLinkLists: Array<IntArrayList>,
-        oddLinkLists: Array<IntArrayList>
-    ) {
-        val phase = linkPhase[linkIndex]
-        val threadId = assignedThread[linkIndex].toInt()
-
-        val list = if (phase) evenLinkLists[threadId] else oddLinkLists[threadId]
-        val pos = linkToListPosition[linkIndex]
-
-        // защита
-        if (pos < 0 || pos >= list.size || list.getInt(pos) != linkIndex) {
-            linkToListPosition[linkIndex] = -1
-            return
-        }
-
-        // === O(1) удаление: swap with last ===
-        val lastPos = list.size - 1
-        if (pos != lastPos) {
-            val lastLinkIndex = list.getInt(lastPos)
-            list.set(pos, lastLinkIndex)
-            linkToListPosition[lastLinkIndex] = pos
-        }
-        list.removeInt(lastPos)
-
-        // очистка
-        linkToListPosition[linkIndex] = -1
-        linkPhase[linkIndex] = false
-        assignedThread[linkIndex] = -1
-    }
 
     /**
      * Отладочная проверка: у клетки есть живая частица с осмысленной позицией.
@@ -197,7 +110,7 @@ class LinkEntity(
      *    в repulse стала сканом одной кэш-линии вместо похода в хэш-таблицу на полтора мегабайта;
      *  - одна из клеток уже мертва (см. ниже);
      *  - клетки слишком далеко друг от друга (см. ниже).
-     * Все вызывающие обязаны проверять результат перед registerNewLink.
+     * Все вызывающие обязаны проверять результат.
      */
     fun addLink(
         cellIndex: Int,
@@ -242,16 +155,12 @@ class LinkEntity(
         // из них, и её вторая клетка оказалась бы чужой для этого воркера — гонка на vx/vy.
         //
         // Проверка расстояния такое НЕ ловит: два разных организма могут соприкасаться
-        // физически, и тогда расстояние в норме, а якоря разнесены на пол-карты
-        // (наблюдалось 150.4 против 32.7).
+        // физически, и тогда расстояние в норме.
         //
         // Все пути создания связей ищут вторую клетку внутри одного organIndex, так что
-        // сюда такая пара приходить не должна. Но приходит: где-то поиск по organIndex
-        // возвращает чужую клетку — скорее всего из-за общего пространства ключей у клеток
-        // с organIndex == -1 в organToIdToIndex (там все такие клетки лежат вперемешку,
-        // независимо от организма). Пока источник не найден, барьер стоит здесь: связь
-        // просто не создаётся, вместо того чтобы молча портить физику.
-        if (cellEntity.bodyAnchorY[cellIndex] != cellEntity.bodyAnchorY[otherCellIndex]) {
+        // сюда такая пара приходить не должна — барьер стоит на случай, если какой-то путь
+        // это обойдёт: связь просто не создаётся, вместо того чтобы молча портить физику.
+        if (cellEntity.organIndex[cellIndex] != cellEntity.organIndex[otherCellIndex]) {
             return -1
         }
 
@@ -285,18 +194,23 @@ class LinkEntity(
         // связь идёт общим путём.
         val organIndex = cellEntity.organIndex[cellIndex]
         val arenaLinkSlot = if (organEntity.hasArena(organIndex)) {
-            val slot = organEntity.takeLinkSlot(organIndex)
+            val slot = organEntity.takeLinkSlot(
+                organIndex,
+                cellEntity.cellGenomeId[cellIndex],
+                cellEntity.cellGenomeId[otherCellIndex]
+            )
             if (slot == -1) {
                 throw IllegalStateException(
                     "арена связей организма $organIndex исчерпана " +
                         "(ёмкость ${organEntity.linkArenaCapacity[organIndex]}) — " +
-                        "поднимите OrganEntity.DEFAULT_MAX_LINKS или ARENA_HEADROOM_PERCENT"
+                        "поднимите OrganEntity.ARENA_HEADROOM_PERCENT или пересохраните геном"
                 )
             }
             slot
         } else -1
 
-        val addLinkIndex = if (arenaLinkSlot == -1) add() else addAt(arenaLinkSlot)
+        val addLinkIndex =
+            if (arenaLinkSlot == -1) add() else addAt(arenaLinkSlot, arenaOwner = organIndex)
 
         links1[addLinkIndex] = cellIndex
         links2[addLinkIndex] = otherCellIndex
@@ -337,11 +251,7 @@ class LinkEntity(
      * итератор не нужен и проблемы инвалидации тоже: просто разбираем слот 0, пока он занят.
      * Каждая итерация уменьшает список ровно на один элемент, так что цикл конечен.
      */
-    fun detachAllLinks(
-        cellIndex: Int,
-        evenLinkLists: Array<IntArrayList>,
-        oddLinkLists: Array<IntArrayList>
-    ) {
+    fun detachAllLinks(cellIndex: Int) {
         val base = cellIndex shl CellEntity.LINKS_SHIFT
         val neighbours = cellEntity.cellLinks
         val linkIds = cellEntity.cellLinkIds
@@ -367,7 +277,6 @@ class LinkEntity(
                 cellEntity.parentIndex[otherCellIndex] = -1
             }
 
-            removeLinkFromLists(linkIndex, evenLinkLists, oddLinkLists)
             // Без проверки поколения: индекс взят из живого списка соседей прямо сейчас,
             // переиспользовать его между этими двумя строками некому.
             deleteLink(linkIndex)
@@ -377,6 +286,11 @@ class LinkEntity(
 
     fun deleteLink(linkIndex: Int, linkGeneration: Int? = null) {
         if (isAlive[linkIndex] && (linkGeneration == null || getGeneration(linkIndex) == linkGeneration)) {
+            // Владелец берётся из запомненного при выдаче, а не через клетку связи: клетку
+            // к этому моменту могли удалить — она и стала причиной удаления связи, — и её
+            // organIndex уже сброшен.
+            organEntity.releaseLinkSlot(arenaOwnerOf(linkIndex), linkIndex)
+
             delete(linkIndex)
 
             val cellA = links1[linkIndex]
@@ -441,10 +355,7 @@ class LinkEntity(
         linksGeneration1.clear(-1)
         linksGeneration2.clear(-1)
         linksNaturalLength.clear(-10f)
-        linkPhase.clear(false)
 
-        assignedThread.clear(-1)
-        linkToListPosition.clear(-1)
     }
 
     override fun onResize(oldMax: Int) {
@@ -453,9 +364,6 @@ class LinkEntity(
         linksGeneration1 = linksGeneration1.resize(-1)
         linksGeneration2 = linksGeneration2.resize(-1)
         linksNaturalLength = linksNaturalLength.resize(-10f)
-        linkPhase = linkPhase.resize(false)
-        assignedThread = assignedThread.resize(-1)
-        linkToListPosition = linkToListPosition.resize(-1)
     }
 
     companion object {

@@ -6,6 +6,7 @@ import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.Entity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralLinkEntity
+import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
@@ -21,6 +22,7 @@ class SingleThreadSimulationSystem(
     val gridManager: GridManager,
     val worldCommandsManager: WorldCommandsManager,
     val organManager: OrganManager,
+    val organEntity: OrganEntity,
     val cellEntity: CellEntity,
     val linkEntity: LinkEntity,
     val neuralLinkEntity: NeuralLinkEntity,
@@ -41,8 +43,16 @@ class SingleThreadSimulationSystem(
         simulationData.tickCounter++
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
 
-        linkEntity.aliveList.forEach {
-            linkPhysicsSystem.processLink(it)
+        organEntity.aliveList.forEach { it ->
+            val from = organEntity.linkArenaBase[it]
+            val to = organEntity.linkArenaEnd(it)
+
+            val alive = linkEntity.isAlive
+            for (linkIndex in from until to) {
+                // Дырки в арене: связь могла умереть, а слот не переиспользуется.
+                if (!alive[linkIndex]) continue
+                linkPhysicsSystem.processLink(linkIndex)
+            }
         }
         neuralLinkManager.iterate()
 

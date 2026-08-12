@@ -53,7 +53,7 @@ object DISimulationContainer : DIContext, Disposable {
     override var totalChunks = threadCount * 2
     override var chunkSize = gridSize / totalChunks
 
-    var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks
+    var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks * 8f
     var linkMaxLength2 = 3f * 3f
     var cellsSettings = substrateSettings.cellsSettings
 
@@ -132,15 +132,14 @@ object DISimulationContainer : DIContext, Disposable {
     override val neuralLinkEntity = NeuralLinkEntity(
         5_000,
         cellEntity = cellEntity,
-        isEditor = false,
-        organEntity = organEntity
+        isEditor = false
     )
 
     init {
         // Связывается здесь, а не конструктором: organEntity создаётся раньше всех,
         // потому что CellEntity/LinkEntity/NeuralLinkEntity уже зависят от него.
         // Без этого вызова арены просто не выдаются, и всё идёт прежним путём.
-        organEntity.bindEntities(cellEntity, particleEntity, linkEntity, neuralLinkEntity)
+        organEntity.bindEntities(cellEntity, particleEntity, linkEntity)
     }
     override val pheromoneEntity = PheromoneEntity(
         gridManager = gridManager

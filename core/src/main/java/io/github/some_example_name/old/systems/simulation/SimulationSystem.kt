@@ -152,6 +152,8 @@ class SimulationSystem(
         if (profiler.endTick()) {
             fillWorldStats()
             profiler.flush(worldStats)
+            // Раз в окно профиля, а не каждый тик: отчёт стоит проход по всем связям.
+            if (DEBUG_CHECKS) println(linkPhysicsSystem.describeLinkLocality())
         }
     }
 
@@ -223,9 +225,17 @@ class SimulationSystem(
         stats.tick = simulationData.tickCounter.toLong()
         stats.ups = simulationData.ups
 
-        stats.cells = cellEntity.lastId - cellEntity.deadStack.size + 1
-        stats.particles = particleEntity.lastId - particleEntity.deadStack.size + 1
-        stats.links = linkEntity.lastId - linkEntity.deadStack.size + 1
+        // По aliveList, а не по lastId.
+        //
+        // Раньше считалось как lastId - deadStack.size + 1, и это работало, пока индексы
+        // выдавались подряд. С аренами lastId сдвигается за конец КАЖДОЙ брони сразу при
+        // рождении организма (Entity.reserveRange), задолго до того, как тело её заполнит,
+        // поэтому формула начала возвращать зарезервированную ёмкость вместо числа живых.
+        // На замере это выглядело как 11655 клеток и 31194 связи при реальных 8523 и 23553,
+        // то есть все производные метрики "на клетку" врали в полтора раза.
+        stats.cells = cellEntity.aliveList.size
+        stats.particles = particleEntity.aliveList.size
+        stats.links = linkEntity.aliveList.size
 
         stats.gridSize = gridManager.gridSize
         stats.occupiedCells = gridManager.occupiedCells
@@ -248,13 +258,9 @@ class SimulationSystem(
             stats.stageWallNanos[phase] = executor.takeStageWallNanos(phase)
         }
 
-        // Сколько связей реально обходит фаза 1. Это НЕ то же самое, что число живых
-        // связей: в списки слотов попадают только те, что зарегистрированы через
-        // registerNewLink, и по ним же идёт обход.
-        var processed = 0
-        for (list in worldCommandsManager.oddLinkLists) processed += list.size
-        for (list in worldCommandsManager.evenLinkLists) processed += list.size
-        stats.linksProcessed = processed
+        // Все живые связи обходятся по аренам организмов, поэтому "обработано" и "живо" —
+        // теперь одно и то же число. Поле оставлено, чтобы не ломать формат CSV.
+        stats.linksProcessed = linkEntity.aliveList.size
     }
 
     fun processParticleCollision() {

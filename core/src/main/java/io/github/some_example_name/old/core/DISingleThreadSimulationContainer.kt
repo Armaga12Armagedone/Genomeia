@@ -120,13 +120,12 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
     override val neuralLinkEntity = NeuralLinkEntity(
         150,
         cellEntity = cellEntity,
-        isEditor = false,
-        organEntity = organEntity
+        isEditor = false
     )
 
     init {
         // См. комментарий в DISimulationContainer: organEntity создаётся раньше всех.
-        organEntity.bindEntities(cellEntity, particleEntity, linkEntity, neuralLinkEntity)
+        organEntity.bindEntities(cellEntity, particleEntity, linkEntity)
     }
     override val pheromoneEntity = PheromoneEntity(
         gridManager = gridManager
@@ -318,6 +317,7 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
             gridManager = gridManager,
             worldCommandsManager = worldCommandsManager,
             organManager = organManager,
+            organEntity = organEntity,
             cellEntity = cellEntity,
             linkEntity = linkEntity,
             neuralLinkEntity = neuralLinkEntity,

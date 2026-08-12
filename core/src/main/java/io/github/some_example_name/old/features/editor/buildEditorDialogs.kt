@@ -19,6 +19,7 @@ import io.github.some_example_name.old.editor.system.logic.TryToRemove
 import io.github.some_example_name.old.features.editor.dialog.ActionDialog
 import io.github.some_example_name.old.features.editor.dialog.ActionDialogType
 import io.github.some_example_name.old.features.editor.dialog.MutateOrDivideDialog
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.features.menu.MenuScreen
 import io.github.some_example_name.old.features.simulation.SimulationScreen
@@ -144,6 +145,18 @@ fun Stage.saveDialog(
 ) {
     SaveGenomeDialog(
         genome = genome,
+        bake = { toSave ->
+            // Тело в этот момент уже выращено в сущностях редактора, поэтому раскладка
+            // считается прямо по ним. Организм в редакторе всегда один, с organIndex = 0.
+            val layout = DIGenomeEditorContainer.rcmSort.bake()
+            val cellEntity = DIGenomeEditorContainer.cellEntity
+            toSave.copy(
+                cellsAmount = cellEntity.aliveList.size,
+                linksAmount = DIGenomeEditorContainer.linkEntity.aliveList.size,
+                neuralLinksAmount = DIGenomeEditorContainer.neuralLinkEntity.aliveList.size,
+                sortedGraph = layout
+            )
+        },
         onSaveAndTest = { genomeNameForTest ->
             game.screen.dispose()
             game.screen = SimulationScreen(

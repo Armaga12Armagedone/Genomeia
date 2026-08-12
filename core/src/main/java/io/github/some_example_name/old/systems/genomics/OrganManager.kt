@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.systems.genomics
 
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
@@ -33,7 +34,9 @@ class OrganManager(
                         dividedTimes[index] = currentGenome.dividedTimes[stage[index]]
                         mutatedTimes[index] = currentGenome.mutatedTimes[stage[index]]
                     } else {
-//                        println("organism grown $index")
+                        if (DEBUG_CHECKS) {
+                            println("organism grown $index")
+                        }
                         //TODO Delete grown organs
                         alreadyGrownUp[index] = true
                     }

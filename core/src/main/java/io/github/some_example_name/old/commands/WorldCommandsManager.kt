@@ -65,8 +65,6 @@ class WorldCommandsManager(
     var evenCellCounter = IntArray(diContext.threadCount)
     var oddCellCounter = IntArray(diContext.threadCount)
 
-    var evenLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
-    var oddLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
 
     fun executingCommandsFromTheWorld() {
         worldCommandBuffer.forEachIndexed { threadId, worldCommandBuffer ->
@@ -113,7 +111,6 @@ class WorldCommandsManager(
                         // (или её индекс переиспользовала другая клетка) раньше, чем команда
                         // дошла до применения.
                         if (linkIndex != -1) {
-                            linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
                         }
                     }
 
@@ -139,20 +136,7 @@ class WorldCommandsManager(
                     }
                     WorldCommandType.DELETE_LINK -> {
                         val linkIndex = ints[0]
-                        // Проверка поколения ДО removeLinkFromLists, а не только внутри
-                        // deleteLink. Индекс связи мог быть освобождён и тут же
-                        // переиспользован новой связью в этой же фазе: detachAllLinks
-                        // возвращает индексы в deadStack, а ADD_LINK берёт их оттуда (LIFO).
-                        // Тогда removeLinkFromLists нашла бы по этому индексу ЖИВУЮ новую
-                        // связь (её собственная позиция в списке, её собственный индекс —
-                        // защита внутри метода такое не ловит) и выкинула бы её из списка
-                        // слота: связь осталась бы в LinkEntity, но перестала бы обсчитываться.
-                        if (linkEntity.isAliveAndSameGen(linkIndex, ints[1])) {
-                            linkEntity.removeLinkFromLists(
-                                linkIndex, evenLinkLists, oddLinkLists
-                            )
-                            linkEntity.deleteLink(linkIndex, linkGeneration = ints[1])
-                        }
+                        linkEntity.deleteLink(linkIndex, linkGeneration = ints[1])
                     }
                     WorldCommandType.ADD_CELL -> {
                         val isMorphogenesis = booleans[1]
@@ -171,7 +155,7 @@ class WorldCommandsManager(
                         // ADD_CELL из буфера 3. Делить уже нечего — контекст деления исчез.
                         //
                         // Если всё-таки создать клетку, она возьмёт свой якорь вместо
-                        // родительского (см. CellEntity.bodyAnchorY) и окажется новой системой
+                        // родительского (организм) и окажется новой системой
                         // отсчёта посреди чужого организма. Все её связи с телом отвергнет
                         // барьер в LinkEntity.addLink, и клетка молча повиснет отдельно.
                         //
@@ -257,7 +241,7 @@ class WorldCommandsManager(
                                 // Связываться можно только со своим организмом.
                                 //
                                 // Это не косметика: слот связи назначается по СТАТИЧЕСКИМ
-                                // координатам (см. CellEntity.staticX), а они осмысленно
+                                // organIndex, а он осмыслен
                                 // сравнимы лишь внутри одного организма — у разных начала
                                 // отсчёта не связаны. Связь между организмами дала бы
                                 // произвольное статическое расстояние между её клетками,
@@ -275,7 +259,6 @@ class WorldCommandsManager(
                                                 linksLength = sqrt(squareDist),
                                             )
                                             if (linkIndex != -1) {
-                                                linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
                                             }
                                         }
 
@@ -339,7 +322,7 @@ class WorldCommandsManager(
                             // умирающей клетки, а deleteCell его затирает. Здесь же
                             // выжившие соседи получают isOnEdge и сброс parentIndex —
                             // раньше это делал processLink, увидев мёртвую клетку.
-                            linkEntity.detachAllLinks(cellIndex, evenLinkLists, oddLinkLists)
+                            linkEntity.detachAllLinks(cellIndex)
                             neuralLinkEntity.detachAllNeuralLinks(cellIndex)
                             cellEntity.deleteCell(cellIndex)
                             cellList[cellEntity.cellType[cellIndex].toInt()].onDie(cellIndex)
@@ -453,7 +436,6 @@ class WorldCommandsManager(
                                 linksLength = linksLength,
                             )
                             if (linkIndex != -1) {
-                                linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
                             }
                         }
 
@@ -514,7 +496,7 @@ class WorldCommandsManager(
                             mutatedTimes = ints[4]
                         )
                         cellEntity.organIndex[organStartCellOrganIndex] = newOrganIndex
-                        organEntity.allocateArenas(organIndex = newOrganIndex)
+//                        organEntity.allocateArenas(organIndex = newOrganIndex)
                     }
                 }
 
@@ -531,14 +513,10 @@ class WorldCommandsManager(
         oddCellChunkPositionStack = Array(diContext.threadCount) { IntArray(5_000) }
         evenCellCounter = IntArray(diContext.threadCount)
         oddCellCounter = IntArray(diContext.threadCount)
-        evenLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
-        oddLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
     }
 
     override fun dispose() {
         oddCellCounter.fill(0)
         evenCellCounter.fill(0)
-        evenLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
-        oddLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
     }
 }

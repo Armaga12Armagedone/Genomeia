@@ -44,17 +44,45 @@ class CellSystem(
 
         if (size == 0) return
 
-        val chunkSize = (size + threadCount - 1) / threadCount
+        // ОБХОД ПО АРЕНАМ.
+        //
+        // Прежняя нарезка шла блоками aliveList, а он хранит клетки в порядке добавления
+        // и перемешивается swap-with-last при каждой смерти. То есть блок доставался
+        // воркеру произвольным набором клеток со всего мира: одна арена, вторая, третья,
+        // обратно в первую. Диапазон арены обходится подряд, и клетки одного тела читаются
+        // одним потоком.
+        //
+        // Заодно это делает владение явным: организм целиком принадлежит одному воркеру,
+        // а не размазан по блокам.
+        val organs = organEntity.aliveList
+        val organCount = organs.size
 
-        // Слот здесь одновременно и номер блока клеток, и индекс буфера команд, поэтому
-        // блоков ровно threadCount. Раздаются они динамически: клетки разной сложности
-        // (нейронные, делящиеся, обычные), и блок с тяжёлыми клетками раньше задерживал
-        // всю стадию, пока остальные ядра стояли на барьере Future.get.
-        threadManager.runSlotStage(threadCount, Phase.CELLS) { slot ->
-            val start = slot * chunkSize
-            val end = minOf(start + chunkSize, size)
-            for (i in start until end) {
-                processCell(aliveList.getInt(i), slot)
+        // Последняя работа — клетки без организма (organIndex == -1): зигота от продюсера
+        // живёт именно так. Она стоит O(aliveList) с одной дешёвой проверкой, поэтому
+        // включается только когда такие клетки есть, иначе это был бы холостой проход
+        // по всем клеткам мира на одном воркере.
+        val hasOrphans = orphanCellCount > 0
+        val workCount = organCount + if (hasOrphans) 1 else 0
+        if (workCount == 0) return
+
+        threadManager.runWorkStage(workCount, Phase.CELLS) { work, workerId ->
+            if (work < organCount) {
+                val organIndex = organs.getInt(work)
+                if (organEntity.hasArena(organIndex)) {
+                    val from = organEntity.cellArenaBase[organIndex]
+                    val to = organEntity.cellArenaEnd(organIndex)
+                    for (cellIndex in from until to) {
+                        // Дырки в арене: слот умершей клетки не переиспользуется.
+                        if (!isAlive[cellIndex]) continue
+                        processCell(cellIndex, workerId)
+                    }
+                }
+            } else {
+                for (i in 0 until aliveList.size) {
+                    val cellIndex = aliveList.getInt(i)
+                    if (organEntity.hasArena(organIndex[cellIndex])) continue
+                    processCell(cellIndex, workerId)
+                }
             }
         }
     }

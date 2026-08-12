@@ -25,6 +25,7 @@ import io.github.some_example_name.old.editor.system.logic.UiScreenCommands
 import io.github.some_example_name.old.editor.system.render.DrawingHelperElements
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.EyeEntity
+import io.github.some_example_name.old.editor.baking.RCMSort
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralEntity
 import io.github.some_example_name.old.entities.NeuralLinkEntity
@@ -152,8 +153,18 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     override val neuralLinkEntity = NeuralLinkEntity(
         50,
         cellEntity = cellEntity,
-        isEditor = true,
-        organEntity = organEntity
+        isEditor = true
+    )
+
+    /**
+     * Запекание раскладки организма. Живёт только в редакторе: считает порядок один раз
+     * при сохранении генома, когда тело уже выращено целиком. В симуляции этот порядок
+     * просто читается из генома.
+     */
+    val rcmSort = RCMSort(
+        linkEntity = linkEntity,
+        cellEntity = cellEntity,
+        neuralLinkEntity = neuralLinkEntity
     )
 
     override val substancesEntity = SubstancesEntity(

@@ -24,6 +24,16 @@ import io.github.some_example_name.old.core.ui.visTextField
 //TODO перейти на compose стиль
 class SaveGenomeDialog(
     val genome: Genome,
+    /**
+     * Запекание раскладки перед записью в файл: размеры тела и порядок укладки клеток,
+     * связей и нейросвязей в арены (см. RCMSort и BakedLayout).
+     *
+     * Именно здесь, а не при открытии диалога: считать надо по выращенному телу, а оно
+     * к моменту сохранения уже готово, и лишний раз гонять RCM при каждом показе окна
+     * незачем. По умолчанию — тождество, чтобы диалог оставался пригоден там, где
+     * запекать нечем.
+     */
+    val bake: (Genome) -> Genome = { it },
     val onSaveAndTest: (String) -> Unit,
     val onGoMenu: () -> Unit,
     val isGoToMenu: Boolean
@@ -57,7 +67,7 @@ class SaveGenomeDialog(
             saveToFileAndTestButton = visTextButton(bundle.get("button.saveAndTest"), onClick = {
                 val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
                 saveGenome(
-                    genome.copy(name = name),
+                    bake(genome.copy(name = name)),
                     name
                 )
                 onSaveAndTest.invoke("${genomeNameField.text}")
@@ -70,7 +80,7 @@ class SaveGenomeDialog(
             saveToFileButton = visTextButton(bundle.get("button.saveToFile"), onClick = {
                 val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
                 saveGenome(
-                    genome.copy(name = name),
+                    bake(genome.copy(name = name)),
                     name
                 )
             })
@@ -87,7 +97,7 @@ class SaveGenomeDialog(
                 exportButton = visTextButton(bundle.get("button.saveAndExport"), onClick = {
                     val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
                     saveGenome(
-                        genome.copy(name = name),
+                        bake(genome.copy(name = name)),
                         name
                     )
                     game.multiPlatformFileProvider.exportGenome("genomes/$name.genome")
@@ -97,7 +107,7 @@ class SaveGenomeDialog(
             visTextButton("Share with everyone", onClick = {
                 val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
                 saveGenome(
-                    genome.copy(name = name),
+                    bake(genome.copy(name = name)),
                     name
                 )
 

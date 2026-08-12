@@ -26,79 +26,8 @@ class CellEntity(
      * Клетки без организма (organIndex == -1) и режим редактора идут прежним путём:
      * hasArena вернёт false, и выдачей займётся обычный add().
      */
-    private val organEntity: OrganEntity
+    val organEntity: OrganEntity
 ) : Entity(cellsStartMaxAmount) {
-    /**
-     * Координаты клетки в системе отсчёта её организма — «карта тела», какой она была бы,
-     * если бы организм с момента появления не сдвинулся ни на пиксель.
-     *
-     * КАК СТРОИТСЯ
-     * -----------
-     * Клетка без родителя (зигота, спавн игроком, террейн) получает свою реальную позицию
-     * в момент создания — это и есть начало отсчёта её организма. Клетка, появившаяся
-     * делением, получает координату родителя плюс РЕАЛЬНОЕ смещение между ними на момент
-     * деления. Дальше значение не меняется никогда, как бы организм ни двигался.
-     *
-     * ЗАЧЕМ ЭТО ФИЗИКЕ
-     * ----------------
-     * По ним раз и навсегда назначается чанк связи (см. LinkEntity.registerNewLink).
-     *
-     * Гонка в фазе связей возникает, когда два одновременно обрабатываемых линка пишут в
-     * vx/vy одной и той же частицы, а это возможно только если у них ОБЩАЯ КЛЕТКА.
-     * Разбиение по чанкам было лишь косвенным способом это исключить: связанные клетки
-     * близки, значит попадают в один чанк. Но приписка делалась по реальной позиции и
-     * устаревала, как только организм уплывал, — гонка возвращалась молча, без падения.
-     *
-     * Со статическими координатами свойство держится вечно: два линка с общей клеткой
-     * всегда в одном или соседнем статическом чанке (расстояние между связанными клетками
-     * не больше длины связи, а чанк — chunkHeight рядов), а соседние чанки имеют разную
-     * чётность и обрабатываются в разных стадиях. Переназначать нечего, порядок связей в
-     * списках не нарушается — а он, как показал замер, стоит двукратной разницы.
-     *
-     * ГРАНИЦА ПРИМЕНИМОСТИ
-     * --------------------
-     * Всё это верно, пока связь соединяет клетки ОДНОГО организма: у разных организмов
-     * начала отсчёта не связаны, и статическое расстояние между их клетками произвольное.
-     * Поэтому морфогенез связывает новую клетку только с клетками своего организма
-     * (фильтр по organIndex в WorldCommandsManager). Если межорганизменные связи когда-то
-     * понадобятся, эту схему придётся дополнять.
-     */
-    var staticX = FloatArray(maxAmount)
-    var staticY = FloatArray(maxAmount)
-
-    /**
-     * Y точки, с которой начался организм — та самая, где появилась его КОРНЕВАЯ клетка
-     * (созданная без родителя). Наследуется всеми клетками тела без изменений, в отличие
-     * от staticY.
-     *
-     * Важно, что признак — отсутствие родителя, а не тип клетки: организм может содержать
-     * несколько зигот, потому что часть тела вырастает из зиготы, поделившейся внутри него.
-     * Такая зигота наследует якорь родителя и остаётся в том же слоте.
-     *
-     * По нему выбирается слот связи (см. LinkEntity.registerNewLink), и именно поэтому
-     * он общий на весь организм, а не свой у каждой клетки.
-     *
-     * ЗАЧЕМ ИМЕННО ЯКОРЬ, А НЕ staticY КЛЕТКИ
-     * ---------------------------------------
-     * Гонка в фазе связей возможна ровно между линками с ОБЩЕЙ КЛЕТКОЙ — только тогда два
-     * воркера пишут в vx/vy одной частицы. Общие клетки бывают лишь внутри одного организма.
-     * Значит достаточно, чтобы все связи организма попали в ОДИН слот, и конфликтовать
-     * станет нечему.
-     *
-     * Предыдущая версия брала staticY самой клетки и опиралась на то, что связанные клетки
-     * близки по карте тела. Замер это опроверг: тело деформируется по мере роста, и разброс
-     * доходил до 5.6 при допустимых 4. Поднимать порог бессмысленно — предел не обоснован
-     * ничем, кроме текущих наблюдений.
-     *
-     * С якорем геометрических допущений не остаётся вообще: организм может быть любого
-     * размера и любой формы, может быть разорван на куски (кусок сохраняет тот же якорь) —
-     * все его связи всё равно в одном слоте.
-     *
-     * Распределение по слотам при этом не меняется: якорь это место спавна организма,
-     * а раньше слот считался по staticY клетки, которая от якоря отличается на размер тела.
-     */
-    var bodyAnchorY = FloatArray(maxAmount)
-
     //Particle entity
     var particleIndexes = IntArray(maxAmount) { -1 }
     fun getParticleIndex(index: Int) = particleIndexes[index]
@@ -127,6 +56,18 @@ class CellEntity(
     fun setColor(index: Int, value: Int) { particleEntity.color[particleIndexes[index]] = value }
     fun getIsPheromoneEmitter(index: Int) = particleEntity.isPheromoneEmitter[particleIndexes[index]]
     fun setIsPheromoneEmitter(index: Int, value: Boolean) { particleEntity.isPheromoneEmitter[particleIndexes[index]] = value }
+    /**
+     * Сколько живых клеток лежит ВНЕ арен (organIndex == -1 либо у организма арены нет).
+     *
+     * Нужен ровно для того, чтобы фаза клеток могла не заводить работу по «сиротам», когда
+     * их нет: сама эта работа стоит проход по всему aliveList с проверкой, и на стенде,
+     * где все клетки в аренах, это был бы холостой обход тысяч клеток на одном воркере
+     * в каждом тике. Точный счётчик дешевле любой оценки: два инкремента на создание и
+     * удаление против прохода по миру за тик.
+     */
+    var orphanCellCount = 0
+        private set
+
     var cellGenomeId = IntArray(maxAmount) { -1 }
     var cellActions: Array<CellAction?> = arrayOfNulls(maxAmount)
     var organIndex = IntArray(maxAmount) { -1 }
@@ -407,23 +348,25 @@ class CellEntity(
         // Слот берётся из арены организма, если она у него есть.
         //
         // Исчерпание арены — это ошибка конфигурации, а не штатный режим: ёмкость
-        // рассчитана на взрослое тело плюс запас (OrganEntity.ARENA_HEADROOM_PERCENT).
+        // снята при запекании генома плюс OrganEntity.ARENA_HEADROOM_PERCENT.
         // Молча уйти в общий аллокатор нельзя — часть тела оказалась бы вне диапазона,
         // и обход организма по арене её просто не увидел бы.
         val arenaCellSlot = if (organEntity.hasArena(organIndex)) {
-            val slot = organEntity.takeCellSlot(organIndex)
+            val slot = organEntity.takeCellSlot(organIndex, cellGenomeId)
             if (slot == -1) {
                 throw IllegalStateException(
                     "арена клеток организма $organIndex исчерпана " +
                         "(ёмкость ${organEntity.cellArenaCapacity[organIndex]}): " +
                         "тело выросло больше, чем под него зарезервировали — " +
-                        "поднимите OrganEntity.DEFAULT_MAX_CELLS или ARENA_HEADROOM_PERCENT"
+                        "поднимите OrganEntity.ARENA_HEADROOM_PERCENT или пересохраните геном"
                 )
             }
             slot
         } else -1
 
-        val cellIndex = if (arenaCellSlot == -1) add() else addAt(arenaCellSlot)
+        val cellIndex =
+            if (arenaCellSlot == -1) add() else addAt(arenaCellSlot, arenaOwner = organIndex)
+        if (arenaCellSlot == -1) orphanCellCount++
 
         // Частица ложится по тому же смещению внутри своей арены, что и клетка внутри
         // своей: на этом держится particleIndexOfCell, то есть переход клетка -> частица
@@ -446,7 +389,6 @@ class CellEntity(
             isSub = false,
             holderEntityIndex = cellIndex
         )
-        // Карта тела организма (см. staticX).
         //
         // Зигота ВСЕГДА начинает новую систему отсчёта, даже если появилась делением из
         // родительского организма. Иначе род навсегда остался бы привязан к точке спавна
@@ -488,14 +430,7 @@ class CellEntity(
         }
 
         if (parentIndex != -1 && isAlive[parentIndex]) {
-            staticX[cellIndex] = staticX[parentIndex] + (x - getX(parentIndex))
-            staticY[cellIndex] = staticY[parentIndex] + (y - getY(parentIndex))
-            // Якорь наследуется как есть: он один на весь организм.
-            bodyAnchorY[cellIndex] = bodyAnchorY[parentIndex]
         } else {
-            staticX[cellIndex] = x
-            staticY[cellIndex] = y
-            bodyAnchorY[cellIndex] = y
         }
 
         this.cellGenomeId[cellIndex] = cellGenomeId
@@ -562,8 +497,7 @@ class CellEntity(
                     "конфликт ключа organToIdToIndex: organIndex=$organIndex " +
                         "genomeId=$cellGenomeId уже занят клеткой $previous " +
                         "(жива=${isAlive[previous]}, organIndex=${this.organIndex[previous]}, " +
-                        "genomeId=${this.cellGenomeId[previous]}, anchorY=${bodyAnchorY[previous]}), " +
-                        "новая клетка $cellIndex anchorY=${bodyAnchorY[cellIndex]}"
+                        "genomeId=${this.cellGenomeId[previous]}), новая клетка $cellIndex"
                 )
             }
         }
@@ -631,6 +565,14 @@ class CellEntity(
     }
 
     fun deleteCell(cellIndex: Int) {
+        // Считается ДО delete: organIndex ещё не сброшен, иначе клетка из арены выглядела
+        // бы сиротой и счётчик поехал бы в минус.
+        if (!organEntity.hasArena(organIndex[cellIndex])) orphanCellCount--
+
+        // Слот возвращается в арену СВОЕГО организма, иначе арена расходовалась бы по числу
+        // когда-либо созданных клеток, а не живых.
+        organEntity.releaseCellSlot(arenaOwnerOf(cellIndex), cellIndex)
+
         delete(cellIndex)
 
         organToIdToIndex.remove(organIndex[cellIndex], cellGenomeId[cellIndex])
@@ -681,9 +623,7 @@ class CellEntity(
     }
 
     override fun onClear(bound: Int) {
-        staticX.clear()
-        staticY.clear()
-        bodyAnchorY.clear()
+        orphanCellCount = 0
         particleIndexes.clear(-1)
         cellGenomeId.clear(-1)
         cellActions.fill(null, 0, bound)
@@ -718,9 +658,6 @@ class CellEntity(
 
 
     override fun onResize(oldMax: Int) {
-        staticX = staticX.resize()
-        staticY = staticY.resize()
-        bodyAnchorY = bodyAnchorY.resize()
         particleIndexes = particleIndexes.resize(-1)
         cellGenomeId = cellGenomeId.resize(-1)
         run {
