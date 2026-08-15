@@ -60,10 +60,6 @@ class WorldCommandsManager(
     private var lastAddedCellIndexBuffer = IntArray(diContext.threadCount) { -1 }
     private val organIndexCellIdMapIndex = OrderedIntPairMap()
 
-    var evenCellChunkPositionStack = Array(diContext.threadCount) { IntArray(5_000) }
-    var oddCellChunkPositionStack = Array(diContext.threadCount) { IntArray(5_000) }
-    var evenCellCounter = IntArray(diContext.threadCount)
-    var oddCellCounter = IntArray(diContext.threadCount)
 
 
     fun executingCommandsFromTheWorld() {
@@ -509,14 +505,8 @@ class WorldCommandsManager(
         worldCommandBuffer = Array(diContext.threadCount) { WorldCommandBuffer() }
         worldCommandSecondBuffer = Array(diContext.threadCount) { WorldCommandBuffer(100) }
         lastAddedCellIndexBuffer = IntArray(diContext.threadCount) { -1 }
-        evenCellChunkPositionStack = Array(diContext.threadCount) { IntArray(5_000) }
-        oddCellChunkPositionStack = Array(diContext.threadCount) { IntArray(5_000) }
-        evenCellCounter = IntArray(diContext.threadCount)
-        oddCellCounter = IntArray(diContext.threadCount)
     }
 
     override fun dispose() {
-        oddCellCounter.fill(0)
-        evenCellCounter.fill(0)
     }
 }

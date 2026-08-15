@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.systems.render
 
 import io.github.some_example_name.old.cells.Cell
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.cells.Eye
 import io.github.some_example_name.old.cells.base.formulaType
 import io.github.some_example_name.old.entities.CellEntity
@@ -80,66 +81,239 @@ class RenderBufferManager(
     fun getCurrentSpecificBufferData(): RenderSpecificBufferData =
         if (specificFrontIndex.get() == 0) specificBuffer0 else specificBuffer1
 
+    /**
+     * Частица -> её позиция в буфере клеток текущего кадра.
+     *
+     * Раньше эту роль играл particleEntity.positionInAlive: буфер собирался ровно в порядке
+     * aliveList, поэтому позиция в списке и позиция в буфере совпадали. Теперь буфер
+     * собирается по аренам организмов, и совпадения больше нет — а буферу связей нужна
+     * именно позиция В БУФЕРЕ, потому что шейдер по ней берёт координаты концов линии.
+     *
+     * Заполняется в том же проходе, что и сам буфер, поэтому лишних обходов не добавляет.
+     */
+    private var renderPosition = IntArray(0)
+
+    private fun ensureRenderPositionCapacity(size: Int) {
+        if (renderPosition.size < size) renderPosition = IntArray(size)
+    }
+
+    /**
+     * Клетки организмов — по аренам, то есть подряд.
+     *
+     * ЗАЧЕМ ИМЕННО ТАК
+     * ----------------
+     * Прежний проход шёл по particleEntity.aliveList (порядок создания, перемешанный
+     * swap-with-last при каждой смерти) и на каждой клетке лез в CellEntity по
+     * holderEntityIndex. То есть на частицу приходилось по два случайных прыжка: один
+     * за её собственными полями, другой за полями её клетки.
+     *
+     * Обход по арене снимает оба. Клетки организма лежат подряд, частицы — подряд и
+     * параллельно им, так что particleIndex получается арифметикой из слота, без чтения
+     * particleIndexes. Все шесть полей CellEntity (angleCos/Sin, degreeOfShortening,
+     * energy, cellType) читаются в том же слотовом порядке, то есть потоком.
+     *
+     * Ветки isCell внутри цикла тоже больше нет: здесь заведомо только клетки.
+     */
+    private fun writeOrganismCells(back: RenderCellBufferData, startIndex: Int): Int {
+        var writeIndex = startIndex
+
+        val organEntity = cellEntity.organEntity
+        val organs = organEntity.aliveList
+
+        val px = particleEntity.x
+        val py = particleEntity.y
+        val pColor = particleEntity.color
+        val pRadius = particleEntity.radius
+        val cellAlive = cellEntity.isAlive
+
+        for (organSlot in 0 until organs.size) {
+            val organIndex = organs.getInt(organSlot)
+            if (!organEntity.hasArena(organIndex)) continue
+
+            val cellFrom = organEntity.cellArenaBase[organIndex]
+            val cellTo = organEntity.cellArenaEnd(organIndex)
+            val particleBase = organEntity.particleArenaBase[organIndex]
+
+            for (cellIndex in cellFrom until cellTo) {
+                if (!cellAlive[cellIndex]) continue
+                val particleIndex = particleBase + (cellIndex - cellFrom)
+
+                // Частица берётся АРИФМЕТИКОЙ из слота, а не через particleIndexes.
+                // Если параллельность арен где-то нарушится, углы и радиусы поедут от
+                // ЧУЖОЙ клетки — картинка при этом останется правдоподобной, поэтому
+                // расхождение надо ловить явно, а не глазами.
+                if (DEBUG_CHECKS) {
+                    val expected = cellEntity.particleIndexes[cellIndex]
+                    if (expected != particleIndex) {
+                        throw IllegalStateException(
+                            "рендер: клетка $cellIndex организма $organIndex ссылается на " +
+                                "частицу $expected, а по параллельности арен это " +
+                                "$particleIndex (cellBase=$cellFrom particleBase=$particleBase)"
+                        )
+                    }
+                    if (!particleEntity.isAlive[particleIndex]) {
+                        throw IllegalStateException(
+                            "рендер: живая клетка $cellIndex с мёртвой частицей $particleIndex"
+                        )
+                    }
+                }
+
+                writeCell(back, writeIndex, cellIndex, particleIndex, px, py, pColor, pRadius)
+                renderPosition[particleIndex] = writeIndex
+                writeIndex++
+            }
+        }
+        return writeIndex
+    }
+
+    /**
+     * Клетки вне арен (organIndex == -1 либо у организма арены нет).
+     *
+     * Проход стоит O(живых клеток), поэтому включается только когда такие клетки реально
+     * есть: на стенде их нет, и холостой обход всего мира каждый кадр был бы заметен.
+     */
+    private fun writeOrphanCells(back: RenderCellBufferData, startIndex: Int): Int {
+        if (cellEntity.orphanCellCount == 0) return startIndex
+
+        var writeIndex = startIndex
+        val organEntity = cellEntity.organEntity
+        val alive = cellEntity.aliveList
+
+        val px = particleEntity.x
+        val py = particleEntity.y
+        val pColor = particleEntity.color
+        val pRadius = particleEntity.radius
+
+        for (i in 0 until alive.size) {
+            val cellIndex = alive.getInt(i)
+            if (organEntity.hasArena(cellEntity.organIndex[cellIndex])) continue
+            val particleIndex = cellEntity.particleIndexes[cellIndex]
+            if (particleIndex == -1) continue
+
+            writeCell(back, writeIndex, cellIndex, particleIndex, px, py, pColor, pRadius)
+            renderPosition[particleIndex] = writeIndex
+            writeIndex++
+        }
+        return writeIndex
+    }
+
+    /** Субстанции и прочие не-клетки — своим списком, без единого обращения в CellEntity. */
+    private fun writeNonCellParticles(back: RenderCellBufferData, startIndex: Int): Int {
+        var writeIndex = startIndex
+
+        val nonCells = particleEntity.nonCellList
+        val px = particleEntity.x
+        val py = particleEntity.y
+        val pColor = particleEntity.color
+        val pRadius = particleEntity.radius
+
+        // Тип «не клетка» один на всех — считается один раз, а не на каждой частице.
+        val packed2Value = (cellList.size + 1).coerceIn(0, 255) shl 8
+        val writeDirected = !doesUsePostProcess
+
+        for (i in 0 until nonCells.size) {
+            val particleIndex = nonCells.getInt(i)
+
+            back.x[writeIndex] = px[particleIndex]
+            back.y[writeIndex] = py[particleIndex]
+            back.color[writeIndex] = pColor[particleIndex]
+
+            val bRadius = (((pRadius[particleIndex] - 0.05f) / 0.7f) * 255f + 0.5f)
+                .toInt().coerceIn(0, 255)
+            back.packed1[writeIndex] = bRadius shl 24
+            back.packed2[writeIndex] = packed2Value or ((particleIndex and 0xFFFF) shl 16)
+
+            if (writeDirected) {
+                back.directedAngleCos[writeIndex] = 0f
+                back.directedAngleSin[writeIndex] = 0f
+            }
+
+            renderPosition[particleIndex] = writeIndex
+            writeIndex++
+        }
+        return writeIndex
+    }
+
+    private fun writeCell(
+        back: RenderCellBufferData,
+        writeIndex: Int,
+        cellIndex: Int,
+        particleIndex: Int,
+        px: FloatArray,
+        py: FloatArray,
+        pColor: IntArray,
+        pRadius: FloatArray
+    ) {
+        back.x[writeIndex] = px[particleIndex]
+        back.y[writeIndex] = py[particleIndex]
+        back.color[writeIndex] = pColor[particleIndex]
+
+        val angleCos = cellEntity.angleCos[cellIndex]
+        val angleSin = cellEntity.angleSin[cellIndex]
+        val cellType = cellEntity.cellType[cellIndex].toInt()
+
+        val cosByte = ((angleCos * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
+        val sinByte = ((angleSin * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
+
+        val bRadius = ((((pRadius[particleIndex] * cellEntity.degreeOfShortening[cellIndex]) - 0.05f) / 0.7f) * 255f + 0.5f)
+            .toInt().coerceIn(0, 255)
+        val bEnergy = ((cellEntity.energy[cellIndex] / 10f) * 255f + 0.5f).toInt().coerceIn(0, 255)
+
+        back.packed1[writeIndex] = cosByte or (sinByte shl 8) or (bRadius shl 24)
+        // Старшие 16 бит — устойчивый ключ шума для шейдера.
+        //
+        // Шейдер доворачивает текстуру на случайный угол, и раньше брал его из
+        // gl_InstanceID, то есть из позиции в буфере. Пока буфер собирался в порядке
+        // aliveList, позиция живой клетки не менялась, и доворот был постоянным.
+        // Теперь порядок задаёт арена: рождение клетки в более раннем слоте сдвигает
+        // все последующие, и во время роста доворот пересчитывался каждый тик — текстуры
+        // визуально крутились у всего тела, пока организм не дорастал.
+        //
+        // Индекс частицы это слот арены: он закреплён за клеткой на всю жизнь и от
+        // порядка сборки буфера не зависит вообще.
+        back.packed2[writeIndex] =
+            bEnergy or (cellType.coerceIn(0, 255) shl 8) or ((particleIndex and 0xFFFF) shl 16)
+
+        if (!doesUsePostProcess) {
+            val cell = cellList[cellType]
+            val length = when {
+                cell is Eye -> specialEntity.getVisibilityRange(cellIndex)
+                cell.isDirected -> 1f
+                else -> 0f
+            }
+            back.directedAngleCos[writeIndex] = angleCos * length
+            back.directedAngleSin[writeIndex] = angleSin * length
+        }
+    }
+
     fun updateBuffer(performanceInfo: String = "") {
         // Общий back-индекс на клетки и связи: оба буфера собираются в него и публикуются
         // одним переключением в конце, чтобы рендер не увидел их вразнобой.
         val frameBackIndex = 1 - frameFrontIndex.get()
 
         // ==================== CELL ====================
-        with(particleEntity) {
-            val needed = aliveList.size
-            val back = cellBuffers[frameBackIndex]
+        val cellBack = cellBuffers[frameBackIndex]
+        cellBack.ensureCapacity(particleEntity.aliveList.size)
+        ensureRenderPositionCapacity(particleEntity.isAlive.size)
 
-            back.ensureCapacity(needed)
+        var writeIndex = writeOrganismCells(cellBack, 0)
+        writeIndex = writeOrphanCells(cellBack, writeIndex)
+        writeIndex = writeNonCellParticles(cellBack, writeIndex)
 
-            for (bufIndex in 0..<aliveList.size) {
-                val i = aliveList.getInt(bufIndex)
-                back.x[bufIndex] = x[i]
-                back.y[bufIndex] = y[i]
-                back.color[bufIndex] = color[i]
-
-                if (isCell[i]) {
-                    val cellIndex = holderEntityIndex[i]
-
-                    val cosByte = ((cellEntity.angleCos[cellIndex] * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
-                    val sinByte = ((cellEntity.angleSin[cellIndex] * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
-
-                    val bRadius = ((((radius[i] * cellEntity.degreeOfShortening[cellIndex]) - 0.05f) / 0.7f) * 255f + 0.5f).toInt().coerceIn(0, 255)
-                    val bEnergy = ((cellEntity.energy[cellIndex] / 10f) * 255f + 0.5f).toInt().coerceIn(0, 255)
-                    val bCell = cellEntity.cellType[cellIndex].toInt().coerceIn(0, 255)
-
-                    back.packed1[bufIndex] = cosByte or (sinByte shl 8) or (bRadius shl 24)
-                    back.packed2[bufIndex] = bEnergy or (bCell shl 8)
-
-                    if (!doesUsePostProcess) {
-                        val cell = cellList[cellEntity.cellType[cellIndex].toInt()]
-                        val length = when {
-                            cell is Eye -> specialEntity.getVisibilityRange(cellIndex)
-                            cell.isDirected -> 1f
-                            else -> 0f
-                        }
-                        with(cellEntity) {
-                            val cos = angleCos[cellIndex]
-                            val sin = angleSin[cellIndex]
-                            back.directedAngleCos[bufIndex] = cos * length
-                            back.directedAngleSin[bufIndex] = sin * length
-                        }
-                    }
-                } else {
-                    val bRadius = (((radius[i] - 0.05f) / 0.7f) * 255f + 0.5f).toInt().coerceIn(0, 255)
-                    val bCell = (cellList.size + 1).coerceIn(0, 255)
-
-                    back.packed1[bufIndex] = bRadius shl 24
-                    back.packed2[bufIndex] = bCell shl 8
-
-                    if (!doesUsePostProcess) {
-                        back.directedAngleCos[bufIndex] = 0f
-                        back.directedAngleSin[bufIndex] = 0f
-                    }
-                }
-            }
-            back.renderCellBufferSize = aliveList.size
+        // Буфер обязан содержать РОВНО все живые частицы: клетки организмов, клетки вне
+        // арен и не-клетки в сумме дают aliveList. Расхождение означает, что какие-то
+        // частицы либо не попали в буфер, либо попали дважды — а обе беды выглядят как
+        // «часть картинки ведёт себя странно», а не как явная ошибка.
+        if (DEBUG_CHECKS && writeIndex != particleEntity.aliveList.size) {
+            throw IllegalStateException(
+                "рендер: в буфер записано $writeIndex частиц, а живых " +
+                    "${particleEntity.aliveList.size} (клеток ${cellEntity.aliveList.size}, " +
+                    "не-клеток ${particleEntity.nonCellList.size}, " +
+                    "вне арен ${cellEntity.orphanCellCount})"
+            )
         }
+
+        cellBack.renderCellBufferSize = writeIndex
         // Переключения тут больше нет: клетки публикуются вместе со связями, в самом конце.
 
         // ==================== PHEROMONE ===============
@@ -185,14 +359,15 @@ class RenderBufferManager(
 
                     val particleAIndex = cellEntity.getParticleIndex(linkCellA)
                     val particleBIndex = cellEntity.getParticleIndex(linkCellB)
+                    // Клетка без частицы — уже испорченное состояние, но обращаться по
+                    // индексу -1 нельзя: это выход за границу массива, а не битая картинка.
+                    if (particleAIndex == -1 || particleBIndex == -1) continue
 
-                    // Позиция -1 означает, что частицы нет в aliveList, то есть её в буфере
-                    // клеток тоже не будет. Рисовать по такому индексу нельзя: линия уйдёт
-                    // в нулевую координату. Проверка защитная — при живых клетках такого
-                    // быть не должно.
-                    val positionA = particleEntity.positionInAlive[particleAIndex]
-                    val positionB = particleEntity.positionInAlive[particleBIndex]
-                    if (positionA == -1 || positionB == -1) continue
+                    // Позиция В БУФЕРЕ КЛЕТОК этого же кадра, а не в aliveList: буфер
+                    // собирается по аренам организмов, и его порядок с aliveList больше
+                    // не совпадает. Карта заполняется в том же проходе, что и буфер.
+                    val positionA = renderPosition[particleAIndex]
+                    val positionB = renderPosition[particleBIndex]
 
                     back.cellA[writeIndex] = positionA
                     back.cellB[writeIndex] = positionB
@@ -216,14 +391,15 @@ class RenderBufferManager(
 
                     val particleAIndex = cellEntity.getParticleIndex(linkCellA)
                     val particleBIndex = cellEntity.getParticleIndex(linkCellB)
+                    // Клетка без частицы — уже испорченное состояние, но обращаться по
+                    // индексу -1 нельзя: это выход за границу массива, а не битая картинка.
+                    if (particleAIndex == -1 || particleBIndex == -1) continue
 
-                    // Позиция -1 означает, что частицы нет в aliveList, то есть её в буфере
-                    // клеток тоже не будет. Рисовать по такому индексу нельзя: линия уйдёт
-                    // в нулевую координату. Проверка защитная — при живых клетках такого
-                    // быть не должно.
-                    val positionA = particleEntity.positionInAlive[particleAIndex]
-                    val positionB = particleEntity.positionInAlive[particleBIndex]
-                    if (positionA == -1 || positionB == -1) continue
+                    // Позиция В БУФЕРЕ КЛЕТОК этого же кадра, а не в aliveList: буфер
+                    // собирается по аренам организмов, и его порядок с aliveList больше
+                    // не совпадает. Карта заполняется в том же проходе, что и буфер.
+                    val positionA = renderPosition[particleAIndex]
+                    val positionB = renderPosition[particleBIndex]
 
                     back.cellA[writeIndex] = positionA
                     back.cellB[writeIndex] = positionB

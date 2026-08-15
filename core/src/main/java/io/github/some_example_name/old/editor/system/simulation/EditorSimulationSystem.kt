@@ -122,7 +122,7 @@ class EditorSimulationSystem(
 
         // Редактор не двигает частицы, но создаёт их командами, поэтому сетку нужно
         // пересобрать: поиск клетки под курсором читает cellStart/particleIdx.
-        gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId)
+        gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId, particleEntity.isInGrid)
 
         cellEntity.aliveList.forEach { cellIndex ->
             energy[cellIndex] = 5.0f

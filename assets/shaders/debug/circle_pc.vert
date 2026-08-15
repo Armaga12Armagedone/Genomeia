@@ -77,12 +77,21 @@ void main() {
     ex_UV = a_position * 0.5 + 0.5;
     ex_cellType = cellType;
 
-    // === СЛУЧАЙНАЯ РЕФРАКЦИЯ (только от номера инстанса) ===
-    float hx = hash(float(id) * 12.9898);
-    float hy = hash(float(id) * 78.233);
+    // === СЛУЧАЙНАЯ РЕФРАКЦИЯ ===
+    //
+    // Ключ шума берётся из packed2 (старшие 16 бит), а НЕ из gl_InstanceID.
+    //
+    // gl_InstanceID это позиция в буфере, а порядок сборки буфера задаётся аренами
+    // организмов: рождение клетки в более раннем слоте сдвигает все последующие.
+    // Пока организм рос, доворот текстуры пересчитывался каждый кадр у всего тела.
+    // Ключ из packed2 закреплён за клеткой на всю жизнь.
+    float seed = float((packed2 >> 16u) & 0xFFFFu);
+
+    float hx = hash(seed * 12.9898);
+    float hy = hash(seed * 78.233);
     ex_Refract = vec2(hx, hy) * 2.0 - 1.0;   // [-1…1] × [-1…1]
 
-    float noiseAngle = (hash(float(id)) - 0.5) * 3.0;
+    float noiseAngle = (hash(seed) - 0.5) * 3.0;
     float ca = cos(noiseAngle);
     float sa = sin(noiseAngle);
     float mirroredCos = cosA;

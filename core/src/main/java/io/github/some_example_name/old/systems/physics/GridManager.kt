@@ -196,7 +196,7 @@ class GridManager (
      * циклическую зависимость (ParticleEntity уже держит GridManager) и чтобы ссылки
      * лежали в локальных переменных, а не перечитывались из полей на каждом обращении.
      */
-    fun rebuild(isAlive: BooleanArray, particleCell: IntArray) {
+    fun rebuild(isAlive: BooleanArray, particleCell: IntArray, inGrid: BooleanArray) {
         val counts = cursor
         // memset 64 КБ — это ~2 мкс, и это единственная "лишняя" работа, зависящая от
         // размера сетки, а не от числа частиц.
@@ -215,6 +215,9 @@ class GridManager (
         for (i in 0 until prevCount) {
             val particleIndex = prev[i]
             if (!isAlive[particleIndex]) continue
+            // Внутренние клетки организма в сетку не кладутся: снаружи до них не дотянуться,
+            // см. ParticleEntity.isInGrid.
+            if (!inGrid[particleIndex]) continue
             // Индекс мог быть переиспользован новой частицей в этом же тике: тогда за него
             // отвечает запись в pending, а эту нужно пропустить, иначе будет дубль.
             if (particleIndex < flags.size && flags[particleIndex]) continue
@@ -226,6 +229,8 @@ class GridManager (
         for (i in 0 until pendingSize) {
             val particleIndex = pendingList[i]
             if (!isAlive[particleIndex]) continue
+            // Внутренние клетки организма в сетку не кладутся, см. ParticleEntity.isInGrid.
+            if (!inGrid[particleIndex]) continue
             val cellIndex = particleCell[particleIndex]
             if (cellIndex < 0) continue
             counts[cellIndex]++
@@ -276,6 +281,9 @@ class GridManager (
         for (i in 0 until prevCount) {
             val particleIndex = prev[i]
             if (!isAlive[particleIndex]) continue
+            // Внутренние клетки организма в сетку не кладутся: снаружи до них не дотянуться,
+            // см. ParticleEntity.isInGrid.
+            if (!inGrid[particleIndex]) continue
             if (particleIndex < flags.size && flags[particleIndex]) continue
             val cellIndex = particleCell[particleIndex]
             if (cellIndex < 0) continue
@@ -285,6 +293,8 @@ class GridManager (
         for (i in 0 until pendingSize) {
             val particleIndex = pendingList[i]
             if (!isAlive[particleIndex]) continue
+            // Внутренние клетки организма в сетку не кладутся, см. ParticleEntity.isInGrid.
+            if (!inGrid[particleIndex]) continue
             val cellIndex = particleCell[particleIndex]
             if (cellIndex < 0) continue
             next[counts[cellIndex]] = particleIndex
@@ -334,6 +344,7 @@ class GridManager (
     fun verifyIntegrity(
         isAlive: BooleanArray,
         particleCell: IntArray,
+        inGrid: BooleanArray,
         px: FloatArray,
         py: FloatArray
     ) {
@@ -368,6 +379,8 @@ class GridManager (
 
         for (particleIndex in isAlive.indices) {
             if (!isAlive[particleIndex]) continue
+            // Внутренней клетки в сетке нет по построению — это не расхождение.
+            if (!inGrid[particleIndex]) continue
 
             if (!seen[particleIndex]) {
                 throw IllegalStateException(

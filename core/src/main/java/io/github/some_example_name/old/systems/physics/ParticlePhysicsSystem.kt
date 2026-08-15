@@ -27,14 +27,6 @@ class ParticlePhysicsSystem(
 ) {
 
     /**
-     * Многопоточная фаза: обрабатывает клетки сетки [start, end) и складывает индексы
-     * частиц в стек чанка для последующей фазы движения.
-     */
-    fun processGridChunkPhysics(start: Int, end: Int, threadId: Int, isOdd: Boolean) {
-        processGridRangePhysics(start, end, threadId, isOdd, distributeIndices = true)
-    }
-
-    /**
      * Ядро широкой фазы.
      *
      * Ключевые моменты по производительности:
@@ -47,13 +39,11 @@ class ParticlePhysicsSystem(
      *    левая граница следующей, поэтому на клетку приходится одно чтение cellStart.
      *  - НЕТ целочисленного деления на клетку: x/y ведутся инкрементально
      *    (раньше было i % gridWidth и i / gridWidth = 2 idiv на каждую из 16k клеток).
-
-     *  - НЕТ false sharing на счётчике чанка: позиция в стеке живёт в локальной
-     *    переменной и пишется в oddCellCounter/evenCellCounter один раз в конце.
-     *    Раньше counters[threadId] писался на КАЖДУЮ частицу, а все счётчики
-     *    (IntArray(threadCount), 8 int = 32 байта) лежат в одной кэш-линии — то есть
-     *    ~30k записей за тик гоняли одну линию между всеми ядрами по кругу
-     *    (RFO + инвалидация в остальных L1, десятки-сотни циклов на запись).
+     *  - НЕТ раскладки частиц по стекам чанков: фаза больше ничего не собирает для
+     *    движения. Список для moveParticle берётся из aliveList (см.
+     *    SimulationSystem.arrangementOfPositionsInTheGrid), потому что движению
+     *    пространственная изоляция не нужна, а привязка к сетке молча выключала
+     *    движение у частиц, которых в сетке нет.
      *  - Ссылки на массивы подняты в локальные переменные: поля cellStart/particleIdx
      *    объявлены как var, поэтому JIT обязан перечитывать их после каждой записи в память.
      *
@@ -61,27 +51,10 @@ class ParticlePhysicsSystem(
      * Прямой обход сетки безопасен, потому что в этой фазе сетка не мутирует:
      * repulse и onContact пишут только в vx/vy/energy/radius и в отложенные команды.
      */
-    fun processGridRangePhysics(
-        start: Int,
-        end: Int,
-        threadId: Int,
-        isOdd: Boolean,
-        distributeIndices: Boolean
-    ) {
+    fun processGridRangePhysics(start: Int, end: Int, threadId: Int) {
         val starts = gridManager.cellStart
         val indices = gridManager.particleIdx
         val width = gridManager.gridWidth
-
-
-        val stacks: Array<IntArray>? = if (!distributeIndices) null
-        else if (isOdd) worldCommandsManager.oddCellChunkPositionStack
-        else worldCommandsManager.evenCellChunkPositionStack
-
-        // Позиция в стеке чанка держится в регистре, а не в разделяемом массиве счётчиков.
-        var stack = stacks?.get(threadId)
-        var stackCount = if (stacks == null) 0
-        else if (isOdd) worldCommandsManager.oddCellCounter[threadId]
-        else worldCommandsManager.evenCellCounter[threadId]
 
         // Двойной цикл по ряду/столбцу вместо i % width и i / width на каждую клетку.
         // gridWidth — это var, поэтому JIT не может свернуть деление в сдвиг: раньше на
@@ -131,18 +104,9 @@ class ParticlePhysicsSystem(
                         }
                     }
 
-                    // Соседние клетки + раскладка по чанкам.
+                    // Соседние клетки.
                     for (i in from until to) {
-                        val particleIndex = indices[i]
-                        processNeighborsCellsCollision(particleIndex, x, y, threadId)
-
-                        if (stack != null) {
-                            if (stackCount >= stack.size) {
-                                stack = growChunkStack(stacks!!, threadId, stack)
-                            }
-                            stack[stackCount] = particleIndex
-                            stackCount++
-                        }
+                        processNeighborsCellsCollision(indices[i], x, y, threadId)
                     }
                 }
 
@@ -155,13 +119,6 @@ class ParticlePhysicsSystem(
             y++
         }
 
-
-
-        // Единственная запись в разделяемый счётчик за весь чанк.
-        if (stacks != null) {
-            if (isOdd) worldCommandsManager.oddCellCounter[threadId] = stackCount
-            else worldCommandsManager.evenCellCounter[threadId] = stackCount
-        }
 
         if (PROFILE_COUNTERS) {
             SimCounters.add(threadId, SimCounters.PAIR_CANDIDATES, pairCandidates)
@@ -199,17 +156,6 @@ class ParticlePhysicsSystem(
         }
 
         return total
-    }
-
-    /**
-     * Растит стек чанка и публикует новую ссылку. Каждый поток трогает только свой слот,
-
-     * поэтому синхронизация не нужна; путь редкий, из горячего цикла вынесен.
-     */
-    private fun growChunkStack(stacks: Array<IntArray>, threadId: Int, current: IntArray): IntArray {
-        val grown = current.copyOf(current.size + (current.size shr 1))
-        stacks[threadId] = grown
-        return grown
     }
 
     /**

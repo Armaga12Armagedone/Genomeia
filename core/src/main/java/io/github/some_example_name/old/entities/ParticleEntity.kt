@@ -2,6 +2,7 @@ package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
+import it.unimi.dsi.fastutil.ints.IntArrayList
 import kotlin.math.PI
 
 class ParticleEntity(
@@ -24,6 +25,48 @@ class ParticleEntity(
     var isSub = BooleanArray(maxAmount) { false }
     var holderEntityIndex = IntArray(maxAmount) { -1 }
     var isPheromoneEmitter = BooleanArray(maxAmount) { false }
+
+    /**
+     * Участвует ли частица в пространственной сетке, то есть может ли она столкнуться.
+     *
+     * false ставится ВНУТРЕННИМ клеткам организма (CellEntity.isOnEdge == false): они
+     * закрыты со всех сторон соседями по решётке, поэтому снаружи до них не дотянуться,
+     * и держать их в сетке — значит считать пары, ни одна из которых не даёт контакта
+     * с внешним миром.
+     *
+     * Экономия здесь порядковая, а не процентная: у плотно упакованного диска граничных
+     * клеток порядка sqrt(n). Для тела на 947 клеток это ~110 из 947, то есть в сетку
+     * попадает восьмая часть, а число пар-кандидатов падает примерно как квадрат.
+     *
+     * Субстанции и всё остальное остаются в сетке: по умолчанию true, и снимается флаг
+     * только через CellEntity.refreshOnEdge.
+     *
+     * ВАЖНО: это НЕ isCollidable. isCollidable решает, отталкиваются ли две частицы,
+     * когда пара уже найдена; этот флаг решает, попадёт ли частица в перебор вообще.
+     */
+    var isInGrid = BooleanArray(maxAmount) { true }
+
+    /**
+     * Частицы, которые НЕ являются клетками (isCell == false): субстанции, террейн и всё
+     * прочее без владельца в CellEntity.
+     *
+     * ЗАЧЕМ ОТДЕЛЬНЫЙ СПИСОК
+     * ----------------------
+     * Сборка буфера рендера шла одним циклом по aliveList с проверкой `if (isCell[i])`
+     * внутри. Ветка непредсказуемая (клетки и субстанции перемешаны в порядке создания),
+     * а тела у неё совершенно разные: у клетки читаются шесть полей из CellEntity, у
+     * субстанции — ни одного. Разделение на два цикла убирает ветку целиком и позволяет
+     * обходить клетки по аренам организмов, то есть подряд.
+     *
+     * Ведётся инкрементально, тем же приёмом, что и aliveList: добавление в конец,
+     * удаление через swap-with-last по [positionInNonCellList]. isCell за время жизни
+     * частицы не меняется (мутация меняет тип клетки, но не превращает клетку в
+     * субстанцию), поэтому трогать список приходится только на создании и удалении.
+     */
+    var nonCellList = IntArrayList(particlesStartMaxAmount)
+
+    /** Позиция частицы в [nonCellList], или -1 если её там нет (то есть это клетка). */
+    var positionInNonCellList = IntArray(maxAmount) { -1 }
 
     fun addParticle(
         x: Float,
@@ -123,11 +166,33 @@ class ParticleEntity(
         this.isSub[particleIndex] = isSub
         this.holderEntityIndex[particleIndex] = holderEntityIndex
         this.isPheromoneEmitter[particleIndex] = isPheromoneEmitter
+        // Слот мог достаться от внутренней клетки — сбрасываем, иначе новая частица
+        // молча не попала бы в сетку.
+        this.isInGrid[particleIndex] = true
+
+        // Субстанции и прочие не-клетки собираются в свой список: буфер рендера обходит
+        // их отдельным циклом, без ветки isCell внутри.
+        if (!isCell) {
+            positionInNonCellList[particleIndex] = nonCellList.size
+            nonCellList.add(particleIndex)
+        }
         return particleIndex
     }
 
     fun deleteParticle(particleIndex: Int) {
         delete(particleIndex)
+
+        // Снимается ДО обнуления полей: позиция в списке не-клеток самодостаточна, но
+        // порядок важен, если сюда когда-нибудь добавится чтение isCell.
+        val nonCellPosition = positionInNonCellList[particleIndex]
+        if (nonCellPosition >= 0) {
+            val lastPosition = nonCellList.size - 1
+            val lastParticle = nonCellList.getInt(lastPosition)
+            nonCellList.set(nonCellPosition, lastParticle)
+            positionInNonCellList[lastParticle] = nonCellPosition
+            nonCellList.removeInt(lastPosition)
+            positionInNonCellList[particleIndex] = -1
+        }
 
         // Из сетки мёртвая частица уйдёт сама при пересборке: она пропускает всё,
         // что помечено как !isAlive. Отдельная операция удаления не нужна.
@@ -148,6 +213,7 @@ class ParticleEntity(
         isSub[particleIndex] = false
         holderEntityIndex[particleIndex] = -1
         isPheromoneEmitter[particleIndex] = false
+        isInGrid[particleIndex] = true
     }
 
     override fun onCopy() {
@@ -175,6 +241,9 @@ class ParticleEntity(
         isSub.clear(false)
         holderEntityIndex.clear(-1)
         isPheromoneEmitter.clear(false)
+        isInGrid.clear(true)
+        nonCellList.clear()
+        positionInNonCellList.clear(-1)
     }
 
     override fun onResize(oldMax: Int) {
@@ -194,5 +263,7 @@ class ParticleEntity(
         isSub = isSub.resize(false)
         holderEntityIndex = holderEntityIndex.resize(-1)
         isPheromoneEmitter = isPheromoneEmitter.resize(false)
+        isInGrid = isInGrid.resize(true)
+        positionInNonCellList = positionInNonCellList.resize(-1)
     }
 }

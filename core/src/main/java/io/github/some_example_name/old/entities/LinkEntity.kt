@@ -222,6 +222,11 @@ class LinkEntity(
         cellEntity.linkAmount[cellIndex] ++
         cellEntity.linkAmount[otherCellIndex] ++
 
+        // Связь могла закрыть последний свободный сектор вокруг клетки — тогда она
+        // становится внутренней и уходит из пространственной сетки.
+        cellEntity.refreshOnEdge(cellIndex)
+        cellEntity.refreshOnEdge(otherCellIndex)
+
         cellEntity.addCellLink(cellIndex, otherCellIndex, addLinkIndex)
         cellEntity.addCellLink(otherCellIndex, cellIndex, addLinkIndex)
 
@@ -300,8 +305,12 @@ class LinkEntity(
             cellEntity.removeCellLink(cellB, cellA)
 
             cellEntity.linkAmount[cellA] --
-
             cellEntity.linkAmount[cellB] --
+
+            // Обратное: у клетки открылся сектор, она снова на границе и возвращается
+            // в сетку. Иначе оторванный кусок тела перестал бы сталкиваться вообще.
+            cellEntity.refreshOnEdge(cellA)
+            cellEntity.refreshOnEdge(cellB)
 
             links1[linkIndex] = -1
             links2[linkIndex] = -1

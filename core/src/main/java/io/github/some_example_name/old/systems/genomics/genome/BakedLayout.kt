@@ -58,7 +58,26 @@ data class BakedLayout(
     @ProtoNumber(2) val linkPairsInSlotOrder: List<Int> = emptyList(),
 
     /** То же для нейросвязей. */
-    @ProtoNumber(3) val neuralLinkPairsInSlotOrder: List<Int> = emptyList()
+    @ProtoNumber(3) val neuralLinkPairsInSlotOrder: List<Int> = emptyList(),
+
+    /**
+     * Треугольники сетки тела: тройки СЛОТОВ арены подряд, тройка k — элементы 3k..3k+2.
+     *
+     * Хранятся слоты, а не cellGenomeId: раскладка их и так задаёт, поэтому в рантайме
+     * `cellIndex = cellArenaBase + slot`, а благодаря параллельности арен и
+     * `particleIndex = particleArenaBase + slot` — ни одного поиска.
+     *
+     * Порядок вершин внутри тройки выбран так, чтобы удвоенная знаковая площадь в позе
+     * покоя была ПОЛОЖИТЕЛЬНОЙ. На этом держится обнаружение выворачивания: у сложившегося
+     * наизнанку треугольника она меняет знак.
+     */
+    @ProtoNumber(4) val triangleSlots: List<Int> = emptyList(),
+
+    /**
+     * Удвоенная знаковая площадь каждого треугольника в позе покоя, снятая в редакторе
+     * с выращенного тела. Удвоенная — чтобы в рантайме не делить на два.
+     */
+    @ProtoNumber(5) val triangleRestArea2: List<Float> = emptyList()
 ) {
 
     /**
@@ -85,6 +104,31 @@ data class BakedLayout(
 
     @Transient
     val slotByNeuralLinkPair: OrderedIntPairMap = buildPairMap(neuralLinkPairsInSlotOrder)
+
+    /**
+     * Те же треугольники, но массивами и с уже обращённой площадью покоя.
+     *
+     * Списки из protobuf — это `List<Int>`/`List<Float>`, то есть боксинг на каждый
+     * элемент и разыменование на каждое чтение. В фазе связей треугольников примерно
+     * вдвое больше, чем клеток, и читаются они каждый тик — поэтому один раз при загрузке
+     * они разворачиваются в примитивные массивы.
+     *
+     * Обратная площадь считается здесь, а не в цикле: деление это ~14 тактов, и на двух
+     * тысячах треугольников шести организмов оно вылезло бы в десятки микросекунд за тик
+     * на ровном месте.
+     */
+    @Transient
+    val triangleSlotsArray: IntArray = IntArray(triangleSlots.size) { triangleSlots[it] }
+
+    @Transient
+    val triangleInvRestArea2: FloatArray =
+        FloatArray(triangleRestArea2.size) { 1f / triangleRestArea2[it] }
+
+    @Transient
+    val triangleRestArea2Array: FloatArray =
+        FloatArray(triangleRestArea2.size) { triangleRestArea2[it] }
+
+    val trianglesInLayout: Int get() = triangleRestArea2.size
 
     /** Сколько слотов реально занято раскладкой — ёмкость арены считается от них. */
     val cellsInLayout: Int get() = cellGenomeIdsInSlotOrder.size

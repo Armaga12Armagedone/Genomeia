@@ -58,14 +58,14 @@ class MenuViewModel(
 //            }
 //        }
 
-        userCommandManager.push(
-            cmd = PlayerCommand.Tap(
-                x = /*Random.nextFloat()*/0.5f * DISingleThreadSimulationContainer.gridWidth,
-                y = /*Random.nextFloat()*/0.5f * DISingleThreadSimulationContainer.gridHeight,
-                isLeftButton = true,
-                genomeIndex = 0
-            )
-        )
+//        userCommandManager.push(
+//            cmd = PlayerCommand.Tap(
+//                x = /*Random.nextFloat()*/0.5f * DISingleThreadSimulationContainer.gridWidth,
+//                y = /*Random.nextFloat()*/0.5f * DISingleThreadSimulationContainer.gridHeight,
+//                isLeftButton = true,
+//                genomeIndex = 0
+//            )
+//        )
     }
 
     fun updateFrame() {

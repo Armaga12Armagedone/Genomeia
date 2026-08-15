@@ -73,7 +73,7 @@ class SingleThreadSimulationSystem(
         worldCommandsManager.executingLastCommandsFromTheWorld()
 
         // Пересборка сетки: после движения и всех команд, один раз за тик.
-        gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId)
+        gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId, particleEntity.isInGrid)
 
         renderBufferManager.updateBuffer()
 
@@ -83,9 +83,7 @@ class SingleThreadSimulationSystem(
         particlePhysicsSystem.processGridRangePhysics(
             start = 0,
             end = gridManager.gridSize,
-            threadId = 0,
-            isOdd = false,
-            distributeIndices = false
+            threadId = 0
         )
     }
 

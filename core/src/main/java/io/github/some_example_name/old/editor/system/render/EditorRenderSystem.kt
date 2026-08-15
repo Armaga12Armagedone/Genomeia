@@ -68,7 +68,12 @@ class EditorRenderSystem(
         y: Float,
         color: Int,
         radius: Float,
-        cellType: Byte
+        cellType: Byte,
+        /**
+         * Устойчивый ключ шума для шейдера — см. RenderBufferManager.
+         * Без него все клетки получили бы одинаковый доворот текстуры.
+         */
+        noiseSeed: Int
     ) {
         val cosByte = ((cos * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
         val sinByte = ((sin * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
@@ -78,7 +83,7 @@ class EditorRenderSystem(
         val bCell = cellType.toInt().coerceIn(0, 255)
 
         val packed1 = cosByte or (sinByte shl 8) or (bRadius shl 24)
-        val packed2 = bEnergy or (bCell shl 8)
+        val packed2 = bEnergy or (bCell shl 8) or ((noiseSeed and 0xFFFF) shl 16)
 
 
         buffer.putFloat(x)
@@ -104,7 +109,8 @@ class EditorRenderSystem(
                     y = particleEntity.y[index],
                     color = color,
                     radius = particleEntity.radius[index],
-                    cellType = cellType
+                    cellType = cellType,
+                    noiseSeed = index
                 )
             }
 
@@ -127,7 +133,8 @@ class EditorRenderSystem(
                             y = particleEntity.y[index],
                             color = (divide.color ?: Color.WHITE).toIntBits(),
                             radius = particleEntity.radius[index],
-                            cellType = 20
+                            cellType = 20,
+                            noiseSeed = index
                         )
                     }
                 }

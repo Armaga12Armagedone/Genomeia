@@ -147,7 +147,13 @@ class UserCommandManager(
                                         maxLinks = genome.linksAmount
                                     )
                                 } else {
-                                    throw Exception("Пустой геном без клеток")
+                                    organEntity.allocateArenas(
+                                        organIndex = organIndex,
+                                        layout = genome.sortedGraph,
+                                        maxCells = genome.cellsAmount,
+                                        maxLinks = genome.linksAmount
+                                    )
+//                                    throw Exception("Пустой геном без клеток")
                                 }
                                 val randomAngle = if (isEditor) 0f else 0f//MathUtils.random(0f, MathUtils.PI2)
                                 cellEntity.addCell(

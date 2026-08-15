@@ -122,7 +122,7 @@ class SimulationSystem(
         // финальному состоянию тика. Фазы 1-6 следующего тика читают её только на чтение,
         // поэтому многопоточным фазам не нужно ни блокировок, ни чётно-нечётных ограничений
         // из-за мутации сетки.
-        profiler.measure(Phase.REBUILD) { gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId) }
+        profiler.measure(Phase.REBUILD) { gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId, particleEntity.isInGrid) }
 
         // Ловит расхождение «частица есть в aliveList, но её нет в сетке или она лежит не
         // в своей клетке» — то самое состояние, в котором частица рисуется, но не
@@ -137,6 +137,7 @@ class SimulationSystem(
             gridManager.verifyIntegrity(
                 isAlive = particleEntity.isAlive,
                 particleCell = particleEntity.gridId,
+                inGrid = particleEntity.isInGrid,
                 px = particleEntity.x,
                 py = particleEntity.y
             )
@@ -265,10 +266,10 @@ class SimulationSystem(
 
     fun processParticleCollision() {
         threadManager.runChunkStage(isOdd = true, stageId = Phase.COLLIDE) { start, end, threadId ->
-            particlePhysicsSystem.processGridChunkPhysics(start, end, threadId, isOdd = true)
+            particlePhysicsSystem.processGridRangePhysics(start, end, threadId)
         }
         threadManager.runChunkStage(isOdd = false, stageId = Phase.COLLIDE) { start, end, threadId ->
-            particlePhysicsSystem.processGridChunkPhysics(start, end, threadId, isOdd = false)
+            particlePhysicsSystem.processGridRangePhysics(start, end, threadId)
         }
     }
 
@@ -286,22 +287,34 @@ class SimulationSystem(
      * чанкам обе стадии можно будет слить в одну.
      */
     fun arrangementOfPositionsInTheGrid() {
-        threadManager.runSlotStage(threadCount, Phase.ARRANGE) { chunk ->
-            val stack = worldCommandsManager.oddCellChunkPositionStack[chunk]
-            for (i in 0..<worldCommandsManager.oddCellCounter[chunk]) {
-                movementManager.moveParticle(stack[i], chunk)
+        val alive = particleEntity.aliveList
+        val size = alive.size
+        if (size == 0) return
+
+        // Ровные блоки aliveList, а не стеки, набитые обходом сетки.
+        //
+        // Раньше список частиц для движения набирался ПОБОЧНЫМ ЭФФЕКТОМ фазы коллизий:
+        // проходя сетку, она складывала встреченные индексы в стеки чанков, и двигалось
+        // ровно то, что попало в сетку. Пока в сетке были все частицы, это работало и
+        // экономило отдельный обход. Как только из сетки убрали внутренние клетки
+        // (ParticleEntity.isInGrid), они перестали и двигаться — стояли на месте, потому
+        // что их никто не клал в стек.
+        //
+        // Связывать движение с сеткой не было причины и раньше: moveParticle трогает
+        // только свою же частицу, никакой пространственной изоляции ему не нужно.
+        // Чётность существовала лишь потому, что буферы команд индексировались номером
+        // чанка; теперь номер воркера приходит отдельно, и обе стадии слились в одну —
+        // на барьер меньше.
+        val blockCount = threadCount
+        val blockSize = (size + blockCount - 1) / blockCount
+
+        threadManager.runWorkStage(blockCount, Phase.ARRANGE) { block, workerId ->
+            val start = block * blockSize
+            val end = minOf(start + blockSize, size)
+            for (i in start until end) {
+                movementManager.moveParticle(alive.getInt(i), workerId)
             }
         }
-
-        threadManager.runSlotStage(threadCount, Phase.ARRANGE) { chunk ->
-            val stack = worldCommandsManager.evenCellChunkPositionStack[chunk]
-            for (i in 0..<worldCommandsManager.evenCellCounter[chunk]) {
-                movementManager.moveParticle(stack[i], chunk)
-            }
-        }
-
-        worldCommandsManager.oddCellCounter.fill(0)
-        worldCommandsManager.evenCellCounter.fill(0)
     }
 
     fun stopUpdateThread() {
