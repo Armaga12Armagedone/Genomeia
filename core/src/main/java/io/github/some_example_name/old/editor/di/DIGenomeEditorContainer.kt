@@ -25,6 +25,7 @@ import io.github.some_example_name.old.editor.system.logic.UiScreenCommands
 import io.github.some_example_name.old.editor.system.render.DrawingHelperElements
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.EyeEntity
+import io.github.some_example_name.old.editor.baking.BodyExport
 import io.github.some_example_name.old.editor.baking.RCMSort
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralEntity
@@ -165,6 +166,15 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         linkEntity = linkEntity,
         cellEntity = cellEntity,
         neuralLinkEntity = neuralLinkEntity
+    )
+
+    /**
+     * Выгрузка топологии выращенного тела в текстовый файл. Как и запекание, живёт только
+     * в редакторе и срабатывает в тот же момент — при сохранении генома.
+     */
+    val bodyExport = BodyExport(
+        cellEntity = cellEntity,
+        linkEntity = linkEntity
     )
 
     override val substancesEntity = SubstancesEntity(

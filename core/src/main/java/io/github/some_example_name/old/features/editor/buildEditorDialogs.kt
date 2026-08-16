@@ -149,6 +149,12 @@ fun Stage.saveDialog(
             // Тело в этот момент уже выращено в сущностях редактора, поэтому раскладка
             // считается прямо по ним. Организм в редакторе всегда один, с organIndex = 0.
             val layout = DIGenomeEditorContainer.rcmSort.bake()
+
+            // Выгрузка топологии для стенда физики. Здесь же, потому что момент тот
+            // самый: тело выращено целиком и отработало последний тик, значит координаты
+            // это реальная поза покоя. Путь к файлу уходит в лог.
+            DIGenomeEditorContainer.bodyExport.exportToFile()
+
             val cellEntity = DIGenomeEditorContainer.cellEntity
             toSave.copy(
                 cellsAmount = cellEntity.aliveList.size,
