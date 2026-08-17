@@ -11,6 +11,7 @@ import com.badlogic.gdx.math.Matrix4
 import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.commands.GoExit
 import io.github.some_example_name.old.commands.GoGenomeEditor
+import io.github.some_example_name.old.commands.GoLevelEditor
 import io.github.some_example_name.old.commands.GoSettings
 import io.github.some_example_name.old.commands.GoSupport
 import io.github.some_example_name.old.commands.GoWorldEditor
@@ -95,6 +96,11 @@ class MenuScreen : VisDslScreen(
                         isMenu = true
                     ).show(stage)
                 }
+            }) { growX() }
+            row()
+
+            visTextButton("levelEditor", onClick =  {
+                navigation.performCommand(GoLevelEditor)
             }) { growX() }
             row()
 

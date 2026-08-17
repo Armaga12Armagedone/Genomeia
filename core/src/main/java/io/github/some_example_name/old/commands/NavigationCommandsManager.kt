@@ -6,6 +6,7 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.features.devsupport.SupportScreen
 import io.github.some_example_name.old.features.ecosystem.EcoSystemScreen
 import io.github.some_example_name.old.features.editor.GenomeEditorScreen
+import io.github.some_example_name.old.features.levelEditor.ui.LevelEditorScreen
 import io.github.some_example_name.old.features.settings.SettingsScreen
 import io.github.some_example_name.old.features.simulation.SimulationScreen
 import io.github.some_example_name.old.features.worldeditor.WorldEditorScreen
@@ -23,6 +24,7 @@ class NavigationCommandsManager {
 
                 game.screen = when (navigationCommands) {
                     GoEcoSystem -> EcoSystemScreen()
+                    GoLevelEditor -> LevelEditorScreen()
                     is GoGenomeEditor -> GenomeEditorScreen(navigationCommands.genomeName)
                     GoSettings -> SettingsScreen()
                     GoWorldEditor -> WorldEditorScreen()
