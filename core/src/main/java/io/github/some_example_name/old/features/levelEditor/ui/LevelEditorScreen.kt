@@ -2,13 +2,21 @@ package io.github.some_example_name.old.features.levelEditor.ui
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Screen
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import com.badlogic.gdx.math.Vector2
+import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
+import com.badlogic.gdx.scenes.scene2d.utils.DragListener
 import com.kotcrab.vis.ui.VisUI
+import com.kotcrab.vis.ui.widget.Draggable
+import com.kotcrab.vis.ui.widget.VisTable
+import io.github.some_example_name.old.core.ui.density
 import io.github.some_example_name.old.features.levelEditor.node.Node
 import io.github.some_example_name.old.features.levelEditor.nodes.BaseNode
+import io.github.some_example_name.old.features.levelEditor.nodes.Nodes
 
 class LevelEditorScreen: Screen {
 
@@ -19,7 +27,71 @@ class LevelEditorScreen: Screen {
 
     private val batch = SpriteBatch()
 
-    val node = BaseNode().apply { this.init() }
+    //val node = BaseNode(false).apply { this.init() }
+    val nodes = mutableListOf<Node>()
+
+    init {
+        setupUI()
+    }
+
+    fun setupUI() {
+        val table = VisTable()
+        table.setFillParent(true)
+
+        val sideMenu = VisTable()
+        sideMenu.setBackground(VisUI.getSkin().newDrawable("white", Color.GRAY))
+
+        for (nodePrototype in Nodes.nodes) {
+            nodePrototype.addListener(object : DragListener() {
+                private var draggedNode: Node? = null
+
+                override fun dragStart(event: InputEvent?, x: Float, y: Float, pointer: Int){
+                    val newInstance = try {
+                        nodePrototype.javaClass.getDeclaredConstructor(Boolean::class.java) //создани такой же ноды
+                            .newInstance(false)
+                    } catch (e: Exception) {
+                        nodePrototype::class.java.newInstance().apply {
+                        }
+                    }
+                    newInstance.init()
+
+                    stage.addActor(newInstance)
+
+                    nodes.add(newInstance)
+
+                    val stageCoords = Vector2(Gdx.input.getX().toFloat(), Gdx.input.getY().toFloat())
+                    stage.screenToStageCoordinates(stageCoords)
+                    newInstance.setPosition(
+                        stageCoords.x - newInstance.nodeWidth / 2,
+                        stageCoords.y - newInstance.nodeHeight / 2
+                    )
+                    draggedNode = newInstance
+                }
+
+                override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                    val stageCoords = Vector2(Gdx.input.getX().toFloat(), Gdx.input.getY().toFloat())
+                    stage.screenToStageCoordinates(stageCoords)
+                    draggedNode?.setPosition(
+                        stageCoords.x - draggedNode!!.nodeWidth / 2,
+                        stageCoords.y - draggedNode!!.nodeHeight / 2
+                    )
+                }
+
+                override fun dragStop(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                    draggedNode = null
+                }
+            })
+            sideMenu.add(nodePrototype).row()
+        }
+
+        table.add(sideMenu)
+            .height(Gdx.graphics.height.toFloat())
+            .width(384 * density)
+            .expand()
+            .right()
+
+        stage.addActor(table)
+    }
 
     override fun dispose() {
         stage.dispose()
@@ -55,8 +127,8 @@ class LevelEditorScreen: Screen {
     override fun show() {
         Gdx.input.setInputProcessor(stage)
 
-        stage.addActor(node)
-        node.setPosition(256f, 256f)
+        //stage.addActor(node)
+        //node.setPosition(256f, 256f)
     }
 
     override fun resume() {
