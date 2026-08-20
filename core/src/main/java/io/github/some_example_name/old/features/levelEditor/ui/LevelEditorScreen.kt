@@ -11,11 +11,10 @@ import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.utils.DragListener
 import com.kotcrab.vis.ui.VisUI
-import com.kotcrab.vis.ui.widget.Draggable
 import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.core.ui.density
-import io.github.some_example_name.old.features.levelEditor.node.Node
-import io.github.some_example_name.old.features.levelEditor.nodes.BaseNode
+import io.github.some_example_name.old.systems.node.ConnectionManager
+import io.github.some_example_name.old.systems.node.Node
 import io.github.some_example_name.old.features.levelEditor.nodes.Nodes
 
 class LevelEditorScreen: Screen {
@@ -38,12 +37,16 @@ class LevelEditorScreen: Screen {
         val table = VisTable()
         table.setFillParent(true)
 
+        stage.addActor(ConnectionRenderer(nodes))
+
         val sideMenu = VisTable()
         sideMenu.setBackground(VisUI.getSkin().newDrawable("white", Color.GRAY))
 
         for (nodePrototype in Nodes.nodes) {
             nodePrototype.addListener(object : DragListener() {
                 private var draggedNode: Node? = null
+                private var lastX = 0f
+                private var lastY = 0f
 
                 override fun dragStart(event: InputEvent?, x: Float, y: Float, pointer: Int){
                     val newInstance = try {
@@ -65,19 +68,22 @@ class LevelEditorScreen: Screen {
                         stageCoords.x - newInstance.nodeWidth / 2,
                         stageCoords.y - newInstance.nodeHeight / 2
                     )
+                    lastX = x
+                    lastY = y
                     draggedNode = newInstance
                 }
 
                 override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
-                    val stageCoords = Vector2(Gdx.input.getX().toFloat(), Gdx.input.getY().toFloat())
-                    stage.screenToStageCoordinates(stageCoords)
-                    draggedNode?.setPosition(
-                        stageCoords.x - draggedNode!!.nodeWidth / 2,
-                        stageCoords.y - draggedNode!!.nodeHeight / 2
-                    )
+                    val node = draggedNode ?: return
+                    node.moveSubtree(x - lastX, y - lastY)
+                    lastX = x
+                    lastY = y
+                    ConnectionManager.onDrag(node, nodes)
                 }
 
                 override fun dragStop(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                    val node = draggedNode ?: return
+                    ConnectionManager.onDrop(node, nodes)
                     draggedNode = null
                 }
             })
