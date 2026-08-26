@@ -11,6 +11,7 @@ import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.ui.makeStyledNP
 import io.github.some_example_name.old.features.levelEditor.nodes.actionNodes.ActionNode
+import io.github.some_example_name.old.features.levelEditor.nodes.actionNodes.OnStartAction
 import io.github.some_example_name.old.game.applyCustomFont
 import kotlin.collections.mutableListOf
 
@@ -20,7 +21,7 @@ open class Node(val preview: Boolean = false): VisTable() {
     open val nodeColor: Color = Color.RED
     open val nodeWidth = 256f
     open val nodeHeight = 128f
-    open var nodeAction: ActionNode? = null
+    open val nodeAction: ActionNode = BaseAction()
      //executer node это по сути команда, компилятор по идее должен работать так: event-executer-final, при этом executer может быть final. Ну надо посмотреть
 
     val childNodes = mutableListOf<Node>()
@@ -31,7 +32,7 @@ open class Node(val preview: Boolean = false): VisTable() {
     val outputSocket get() = Vector2(x + nodeWidth / 2, y)
 
     fun canConnectTo(parent: Node): Boolean {
-        if (nodeAction?.nodeData?.eventNode == false || parent.nodeAction?.nodeData?.finalNode == false) return false
+        if (nodeAction?.nodeData?.eventNode == true || parent.nodeAction?.nodeData?.finalNode == true) return false
         if (parent === this || parentNode != null) return false
         return !isDescendant(parent)
     }
@@ -55,15 +56,22 @@ open class Node(val preview: Boolean = false): VisTable() {
         childNodes.any { it === node || it.isDescendant(node) }
 
     open fun init() {
+        initUI()
+        initLogic()
+    }
+
+    open fun initUI() {
         this.setSize(nodeWidth, nodeHeight)
         //this.setBackground(VisUI.getSkin().newDrawable("white", nodeColor));
-        this.setBackground(makeStyledNP(Color.RED, textures = mutableListOf(), border = Color.BLACK))
+        this.setBackground(makeStyledNP(nodeColor, textures = mutableListOf(), border = Color.BLACK))
 
         val nameLabel = VisLabel(nodeName)
         this.top()
         game.applyCustomFont(nameLabel)
         this.add(nameLabel).fillX()
+    }
 
+    open fun initLogic() {
         this.setTouchable(Touchable.enabled)
         if (!preview) {
             this.addListener(object : DragListener() {
@@ -88,5 +96,15 @@ open class Node(val preview: Boolean = false): VisTable() {
                 }
             })
         }
+    }
+}
+
+class BaseAction: ActionNode {
+    override val id = 0
+    override var nextNode: ActionNode? = null
+    override val nodeData = NodeData(funcNode = true)
+
+    override fun execute(context: Context) {
+        println("Base Node Executed")
     }
 }

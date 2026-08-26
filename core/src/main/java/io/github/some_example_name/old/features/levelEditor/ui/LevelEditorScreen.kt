@@ -5,17 +5,24 @@ import com.badlogic.gdx.Screen
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
+import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
+import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.scenes.scene2d.utils.DragListener
 import com.kotcrab.vis.ui.VisUI
 import com.kotcrab.vis.ui.widget.VisTable
+import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.ui.density
+import io.github.some_example_name.old.core.ui.makeStyledButton
 import io.github.some_example_name.old.systems.node.ConnectionManager
 import io.github.some_example_name.old.systems.node.Node
 import io.github.some_example_name.old.features.levelEditor.nodes.Nodes
+import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.systems.node.NodeExecuter
+import it.unimi.dsi.fastutil.ints.IntLists
 
 class LevelEditorScreen: Screen {
 
@@ -28,6 +35,7 @@ class LevelEditorScreen: Screen {
 
     //val node = BaseNode(false).apply { this.init() }
     val nodes = mutableListOf<Node>()
+    val nodeExecuter = NodeExecuter()
 
     init {
         setupUI()
@@ -56,7 +64,7 @@ class LevelEditorScreen: Screen {
                         nodePrototype::class.java.newInstance().apply {
                         }
                     }
-                    newInstance.init()
+                    newInstance.initLogic()
 
                     stage.addActor(newInstance)
 
@@ -95,6 +103,17 @@ class LevelEditorScreen: Screen {
             .width(384 * density)
             .expand()
             .right()
+
+        val runButton = makeStyledButton("Run", game = DIGameGlobalContainer.game, textures = mutableListOf<Texture>()).apply {
+            addListener(object : ClickListener() {
+                override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                    super.clicked(event, x, y)
+                    nodeExecuter.run(nodes)
+                }
+            })
+        }
+
+        table.add(runButton).top().left().row()
 
         stage.addActor(table)
     }

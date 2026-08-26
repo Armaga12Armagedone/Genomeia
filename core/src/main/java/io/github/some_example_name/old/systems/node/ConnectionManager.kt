@@ -32,7 +32,7 @@ object ConnectionManager {
 
         for (other in nodes) {
             if (other === dragged || other === dragged.ignoreParent) continue
-            if (!dragged.finalNode && other.canConnectTo(dragged)) {
+            if (dragged.nodeAction?.nodeData?.finalNode == false && other.canConnectTo(dragged)) {
                 val d = dragged.outputSocket.dst(other.inputSocket)
 
                 if (d < bestDist) {
@@ -40,7 +40,7 @@ object ConnectionManager {
                     best = dragged to other
                 }
             }
-            if (!other.finalNode && dragged.canConnectTo(other)) {
+            if (other.nodeAction?.nodeData?.finalNode == false && dragged.canConnectTo(other)) {
                 val d = dragged.inputSocket.dst(other.outputSocket)
 
                 if (d < bestDist) {

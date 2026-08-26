@@ -1,16 +1,14 @@
 package io.github.some_example_name.old.features.levelEditor.nodes.actionNodes
 
-import io.github.some_example_name.old.features.levelEditor.nodes.Nodes
 import io.github.some_example_name.old.systems.node.Context
-import io.github.some_example_name.old.systems.node.Node
 import io.github.some_example_name.old.systems.node.NodeData
 
-class OnStartAction: ActionNode {
-    override val id = 1
+class LogAction: ActionNode {
+    override val id = 2
     override var nextNode: ActionNode? = null
-    override val nodeData = NodeData(eventNode = true)
+    override val nodeData = NodeData(funcNode = true, arguments = mutableMapOf<Any, Any>())
 
     override fun execute(context: Context) {
-
+        println(nodeData.arguments["string"])
     }
 }

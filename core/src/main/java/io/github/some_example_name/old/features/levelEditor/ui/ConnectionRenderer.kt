@@ -22,8 +22,8 @@ class ConnectionRenderer(private val nodes: List<Node>): Actor() {
                 shapes.setColor(Color.WHITE)
                 shapes.rectLine(cx, node.y, child.x + child.width / 2, child.y + child.height, 3f)
             }
-            val inFree = !node.event && node.parentNode == null
-            val outFree = !node.finalNode && node.childNodes.isEmpty()
+            val inFree = !(node?.nodeAction?.nodeData?.eventNode == true) && node.parentNode == null
+            val outFree = !(node?.nodeAction?.nodeData?.finalNode == true) && node.childNodes.isEmpty()
             shapes.setColor(if (inFree) Color.GREEN else Color.GRAY)
             shapes.circle(cx, node.y + node.height, 5f)
             shapes.setColor(if (outFree) Color.GREEN else Color.GRAY)
