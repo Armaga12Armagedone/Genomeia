@@ -24,6 +24,7 @@ cell_textures/texture.png
 cell_textures/zygote.png
 fonts/Roboto-Regular.ttf
 fonts/Rubik-Regular.ttf
+nodes/Condition.svg
 ost/track1.ogg
 ost/track2.ogg
 ost/track3.ogg

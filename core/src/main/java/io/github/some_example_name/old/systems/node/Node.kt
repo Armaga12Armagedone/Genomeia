@@ -10,26 +10,27 @@ import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.ui.makeStyledNP
+import io.github.some_example_name.old.features.levelEditor.nodes.ConditionNode
 import io.github.some_example_name.old.features.levelEditor.nodes.actionNodes.ActionNode
-import io.github.some_example_name.old.features.levelEditor.nodes.actionNodes.OnStartAction
 import io.github.some_example_name.old.game.applyCustomFont
-import kotlin.collections.mutableListOf
 
-
-open class Node(val preview: Boolean = false): VisTable() {
+open class Node(val preview: Boolean = false) : VisTable() {
     open val nodeName: String = "Base"
     open val nodeColor: Color = Color.RED
     open val nodeWidth = 256f
     open val nodeHeight = 128f
     open val nodeAction: ActionNode = BaseAction()
-     //executer node это по сути команда, компилятор по идее должен работать так: event-executer-final, при этом executer может быть final. Ну надо посмотреть
+    open val svgPath: String? = null
 
     val childNodes = mutableListOf<Node>()
     var parentNode: Node? = null
     var ignoreParent: Node? = null
 
-    val inputSocket get() = Vector2(x + nodeWidth / 2, y + nodeHeight)
-    val outputSocket get() = Vector2(x + nodeWidth / 2, y)
+    // ДОБАВЛЕНО: для корректного восстановления узла в нужную полость ConditionNode при отмене перетаскивания
+    var previousConditionZone: ConnectionManager.Socket? = null
+
+    open val inputSocket get() = Vector2(x + nodeWidth / 2, y + nodeHeight)
+    open val outputSocket get() = Vector2(x + nodeWidth / 2, y)
 
     fun canConnectTo(parent: Node): Boolean {
         if (nodeAction?.nodeData?.eventNode == true || parent.nodeAction?.nodeData?.finalNode == true) return false
@@ -43,11 +44,22 @@ open class Node(val preview: Boolean = false): VisTable() {
     }
 
     fun disconnectFromParent() {
-        parentNode?.childNodes?.remove(this)
+        val parent = parentNode
+        if (parent is ConditionNode) {
+            // ДОБАВЛЕНО: запоминаем, откуда именно был удален узел, для возможного отката
+            if (parent.ifNodes.remove(this)) {
+                previousConditionZone = ConnectionManager.Socket.IF
+            } else if (parent.elseNodes.remove(this)) {
+                previousConditionZone = ConnectionManager.Socket.ELSE
+            }
+            parent.refresh()
+        }
+        parent?.childNodes?.remove(this)
+        parent?.nodeAction?.nodeData?.arguments?.entries?.removeAll { it.value === this }
         parentNode = null
     }
 
-    fun moveSubtree(dx: Float, dy: Float) {
+    open fun moveSubtree(dx: Float, dy: Float) {
         moveBy(dx, dy)
         childNodes.forEach { it.moveSubtree(dx, dy) }
     }
@@ -62,13 +74,19 @@ open class Node(val preview: Boolean = false): VisTable() {
 
     open fun initUI() {
         this.setSize(nodeWidth, nodeHeight)
-        //this.setBackground(VisUI.getSkin().newDrawable("white", nodeColor));
-        this.setBackground(makeStyledNP(nodeColor, textures = mutableListOf(), border = Color.BLACK))
+        this.setBackground(
+            svgPath?.let { SvgAssets.drawable(it, nodeWidth.toInt(), nodeHeight.toInt()) }
+                ?: makeStyledNP(nodeColor, textures = mutableListOf(), border = Color.BLACK)
+        )
 
         val nameLabel = VisLabel(nodeName)
         this.top()
         game.applyCustomFont(nameLabel)
         this.add(nameLabel).fillX()
+    }
+
+    open fun refresh() {
+
     }
 
     open fun initLogic() {
@@ -83,23 +101,47 @@ open class Node(val preview: Boolean = false): VisTable() {
                 public override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
                     val stageCoords = Vector2(Gdx.input.getX().toFloat(), Gdx.input.getY().toFloat())
                     stage.screenToStageCoordinates(stageCoords)
+                    //Хватаем нод за верхний край (а не за центр): так легче стыковать цепочки
                     moveSubtree(
                         stageCoords.x - nodeWidth / 2 - this@Node.x,
-                        stageCoords.y - nodeHeight / 2 - this@Node.y
+                        stageCoords.y - nodeHeight - this@Node.y
                     )
+
+                    if (nodeAction.nodeData.argumentNode) {
+                        ConnectionManager.onDragArgument(this@Node, stage.actors.filterIsInstance<Node>())
+                        return
+                    }
                     ConnectionManager.onDrag(this@Node, stage.actors.filterIsInstance<Node>())
                 }
 
                 public override fun dragStop(event: InputEvent?, x: Float, y: Float, pointer: Int) {
                     ConnectionManager.onDrop(this@Node, stage.actors.filterIsInstance<Node>())
+
+                    // ИСПРАВЛЕНО: сохраняем значение в локальную val-переменную для безопасного smart cast
+                    val currentIgnoreParent = ignoreParent
+
+                    if (parentNode == null && currentIgnoreParent != null) {
+                        connectTo(currentIgnoreParent)
+
+                        if (currentIgnoreParent is ConditionNode) {
+                            if (previousConditionZone == ConnectionManager.Socket.IF) {
+                                currentIgnoreParent.ifNodes.add(this@Node)
+                            } else if (previousConditionZone == ConnectionManager.Socket.ELSE) {
+                                currentIgnoreParent.elseNodes.add(this@Node)
+                            }
+                            currentIgnoreParent.refresh()
+                        }
+                    }
+
                     ignoreParent = null
+                    previousConditionZone = null
                 }
             })
         }
     }
 }
 
-class BaseAction: ActionNode {
+class BaseAction : ActionNode {
     override val id = 0
     override var nextNode: ActionNode? = null
     override val nodeData = NodeData(funcNode = true)

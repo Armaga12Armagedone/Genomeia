@@ -28,6 +28,7 @@ public class Lwjgl3Launcher {
     }
 
     private static Lwjgl3Application createApplication() {
+        SvgRenderer.INSTANCE.install();
         return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null), getDefaultConfiguration());
     }
 
