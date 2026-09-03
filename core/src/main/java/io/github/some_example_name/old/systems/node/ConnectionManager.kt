@@ -43,7 +43,6 @@ object ConnectionManager {
     fun onDrop(dragged: Node, nodes: List<Node>) {
         val (parent, child, socket) = highlight ?: return
 
-        //Защита: event/final/уже-подключённые/дескенданты не могут стать дочерними ветками
         if (!child.nodeAction.nodeData.argumentNode && !child.canConnectTo(parent)) {
             highlight = null
             return
@@ -51,6 +50,11 @@ object ConnectionManager {
 
         if (child.nodeAction.nodeData.argumentNode) {
             parent.nodeAction.nodeData.arguments["arg"] = child.nodeAction
+            if (parent is ConditionNode) parent.argumentNode = child
+            child.parentNode = parent
+            parent.refresh()
+            highlight = null
+            return
         }
 
         when (socket) {
@@ -79,7 +83,6 @@ object ConnectionManager {
     private fun findCandidate(dragged: Node, nodes: List<Node>): Highlight? {
         var best: Highlight? = null
         var bestDist = SNAP_RADIUS
-        //Кандидат от полостей condition; если dragged попал в полость — он приоритетнее NEXT
         var slotHit: Highlight? = null
 
         for (other in nodes) {
@@ -88,7 +91,7 @@ object ConnectionManager {
                 val d = dragged.outputSocket.dst(other.inputSocket)
                 if (d < bestDist) {
                     bestDist = d
-                    best = Highlight(other, dragged, Socket.NEXT)
+                    best = Highlight(dragged, other, Socket.NEXT)
                 }
             }
             if (other.nodeAction?.nodeData?.finalNode == false && dragged.canConnectTo(other)  && !dragged.nodeAction.nodeData.argumentNode) {
@@ -99,7 +102,6 @@ object ConnectionManager {
                 }
             }
 
-            //Пристыковка к веткам condition: if/else сокетам
             if (other is ConditionNode) {
                 if (dragged.canConnectTo(other)) {
                     val dIf = dragged.inputSocket.dst(other.ifSocket)
@@ -112,15 +114,12 @@ object ConnectionManager {
                         bestDist = dElse
                         best = Highlight(other, dragged, Socket.ELSE)
                     }
-                    //Если dragged физически находится внутри полости condition — прикрепляем к полости
-                    //Внутри canConnectTo: event/final/с-родителем ноды не могут попасть в ветки condition
                     val zone = other.zoneFor(dragged.inputSocket)
                     if (zone != null) slotHit = Highlight(other, dragged, zone)
                 }
             }
         }
 
-        //Попадание в полость condition важнее цепочки NEXT к соседям
         if (slotHit != null) return slotHit
         return best
     }

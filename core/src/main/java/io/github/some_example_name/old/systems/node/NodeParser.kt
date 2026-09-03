@@ -17,12 +17,6 @@ class NodeParser {
         return events
     }
 
-    /**
-     * Рекурсивно проставляет nextNode по NEXT-цепочке, начиная с childNodes.first() у [start]:
-     * каждый action.nextNode = следующий action этой цепочки, а хвост цепочки -> [after].
-     * Ветки condition линкуются отдельно: их хвосты -> null, т.к. ConditionAction сам
-     * циклом выполняет все ноды своей ветки, а затем зовёт внешний nextNode.
-     */
     private fun linkChain(start: Node, list: MutableList<ActionNode>, after: ActionNode?) {
         var current: Node = start
         var prev: ActionNode? = null

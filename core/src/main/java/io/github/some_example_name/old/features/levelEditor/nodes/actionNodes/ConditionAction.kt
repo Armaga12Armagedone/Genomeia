@@ -8,8 +8,8 @@ class ConditionAction: ActionNode {
     override var nextNode: ActionNode? = null //то что снаружи после condition
     override val nodeData = NodeData(funcNode = true)
 
-    val ifChain = mutableListOf<ActionNode>() //цепочка if (условие выполняется)
-    val elseChain = mutableListOf<ActionNode>() //цепочка else (условие не выполняется)
+    val ifChain = mutableListOf<ActionNode>()
+    val elseChain = mutableListOf<ActionNode>()
 
     override fun execute(context: Context) {
         val arg = nodeData.arguments["arg"] as? BaseArgumentAction

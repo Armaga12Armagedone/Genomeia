@@ -26,7 +26,6 @@ open class Node(val preview: Boolean = false) : VisTable() {
     var parentNode: Node? = null
     var ignoreParent: Node? = null
 
-    // ДОБАВЛЕНО: для корректного восстановления узла в нужную полость ConditionNode при отмене перетаскивания
     var previousConditionZone: ConnectionManager.Socket? = null
 
     open val inputSocket get() = Vector2(x + nodeWidth / 2, y + nodeHeight)
@@ -46,16 +45,16 @@ open class Node(val preview: Boolean = false) : VisTable() {
     fun disconnectFromParent() {
         val parent = parentNode
         if (parent is ConditionNode) {
-            // ДОБАВЛЕНО: запоминаем, откуда именно был удален узел, для возможного отката
             if (parent.ifNodes.remove(this)) {
                 previousConditionZone = ConnectionManager.Socket.IF
             } else if (parent.elseNodes.remove(this)) {
                 previousConditionZone = ConnectionManager.Socket.ELSE
             }
+            if (parent.argumentNode === this) parent.argumentNode = null
             parent.refresh()
         }
         parent?.childNodes?.remove(this)
-        parent?.nodeAction?.nodeData?.arguments?.entries?.removeAll { it.value === this }
+        parent?.nodeAction?.nodeData?.arguments?.entries?.removeAll { it.value === this || it.value === this.nodeAction }
         parentNode = null
     }
 
@@ -101,7 +100,6 @@ open class Node(val preview: Boolean = false) : VisTable() {
                 public override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
                     val stageCoords = Vector2(Gdx.input.getX().toFloat(), Gdx.input.getY().toFloat())
                     stage.screenToStageCoordinates(stageCoords)
-                    //Хватаем нод за верхний край (а не за центр): так легче стыковать цепочки
                     moveSubtree(
                         stageCoords.x - nodeWidth / 2 - this@Node.x,
                         stageCoords.y - nodeHeight - this@Node.y
@@ -117,7 +115,6 @@ open class Node(val preview: Boolean = false) : VisTable() {
                 public override fun dragStop(event: InputEvent?, x: Float, y: Float, pointer: Int) {
                     ConnectionManager.onDrop(this@Node, stage.actors.filterIsInstance<Node>())
 
-                    // ИСПРАВЛЕНО: сохраняем значение в локальную val-переменную для безопасного smart cast
                     val currentIgnoreParent = ignoreParent
 
                     if (parentNode == null && currentIgnoreParent != null) {
