@@ -43,8 +43,14 @@ object ConnectionManager {
     fun onDrop(dragged: Node, nodes: List<Node>) {
         val (parent, child, socket) = highlight ?: return
 
+        //Защита: event/final/уже-подключённые/дескенданты не могут стать дочерними ветками
+        if (!child.nodeAction.nodeData.argumentNode && !child.canConnectTo(parent)) {
+            highlight = null
+            return
+        }
+
         if (child.nodeAction.nodeData.argumentNode) {
-            parent.nodeAction.nodeData.arguments["arg"] = child
+            parent.nodeAction.nodeData.arguments["arg"] = child.nodeAction
         }
 
         when (socket) {
@@ -106,10 +112,11 @@ object ConnectionManager {
                         bestDist = dElse
                         best = Highlight(other, dragged, Socket.ELSE)
                     }
+                    //Если dragged физически находится внутри полости condition — прикрепляем к полости
+                    //Внутри canConnectTo: event/final/с-родителем ноды не могут попасть в ветки condition
+                    val zone = other.zoneFor(dragged.inputSocket)
+                    if (zone != null) slotHit = Highlight(other, dragged, zone)
                 }
-                //Если dragged физически находится внутри полости condition — прикрепляем к полости
-                val zone = other.zoneFor(dragged.inputSocket)
-                if (zone != null) slotHit = Highlight(other, dragged, zone)
             }
         }
 

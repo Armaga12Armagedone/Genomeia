@@ -148,5 +148,6 @@ class BaseAction : ActionNode {
 
     override fun execute(context: Context) {
         println("Base Node Executed")
+        nextNode?.execute(context)
     }
 }

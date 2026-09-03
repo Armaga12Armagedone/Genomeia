@@ -24,10 +24,11 @@ class NodeExecuter {
     fun OnStartEvent() {
         val startEvent = events.filter { it.key is OnStartAction }
         println(startEvent.values)
-        if (startEvent.values.size > 0) {
-            for (node in startEvent.values.first()) {
-                node.execute(context)
-            }
+        if (startEvent.values.first().size > 0) {
+//            for (node in startEvent.values.first()) {
+//                node.execute(context)
+//            }
+            startEvent.values.first()[0].execute(context) //будет ка4к домино эффект
         }
     }
 

@@ -15,5 +15,6 @@ class ConditionAction: ActionNode {
         val arg = nodeData.arguments["arg"] as? BaseArgumentAction
         val branch = if (arg?.value == true) ifChain else elseChain
         for (n in branch) n.execute(context)
+        nextNode?.execute(context)
     }
 }

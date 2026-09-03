@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.systems.node
 
+import io.github.some_example_name.old.features.levelEditor.nodes.ConditionNode
 import io.github.some_example_name.old.features.levelEditor.nodes.actionNodes.ActionNode
 
 class NodeParser {
@@ -7,20 +8,39 @@ class NodeParser {
 
     fun parse(nodes: List<Node>): MutableMap<ActionNode, MutableList<ActionNode>> {
         for (node in nodes.filter { it.nodeAction.nodeData.eventNode }) {
-            //events[node.nodeAction] = mutableListOf<ActionNode>()//node.nodeAction.nextNode
-            //var nextNode: ActionNode? = node.nodeAction.nextNode
             val nodesList = mutableListOf<ActionNode>()
-            var currentNode = node
-            while (currentNode.childNodes.isNotEmpty()) {
-                currentNode = currentNode.childNodes.first() //ветвление не будет мухаха, пока что :)
-                if (currentNode.nodeAction.nodeData.eventNode) { continue }
-                nodesList.add(currentNode.nodeAction)
-            }
-
+            //Проставляем nextNode по основной NEXT-цепочке + веткам condition (домино-модель).
+            //В nodesList собираются action основной цепочки (для обратной совместимости/дебага).
+            linkChain(node, nodesList, null)
             events[node.nodeAction] = nodesList
         }
         return events
     }
 
+    /**
+     * Рекурсивно проставляет nextNode по NEXT-цепочке, начиная с childNodes.first() у [start]:
+     * каждый action.nextNode = следующий action этой цепочки, а хвост цепочки -> [after].
+     * Ветки condition линкуются отдельно: их хвосты -> null, т.к. ConditionAction сам
+     * циклом выполняет все ноды своей ветки, а затем зовёт внешний nextNode.
+     */
+    private fun linkChain(start: Node, list: MutableList<ActionNode>, after: ActionNode?) {
+        var current: Node = start
+        var prev: ActionNode? = null
+        while (true) {
+            val next = current.childNodes.firstOrNull() ?: break
+            val action = next.nodeAction
+            if (action.nodeData.eventNode) { current = next; continue }
+            if (prev != null) prev.nextNode = action
+            prev = action
+            list.add(action)
+
+            if (next is ConditionNode) {
+                for (b in next.ifNodes) linkChain(b, mutableListOf(), null)
+                for (b in next.elseNodes) linkChain(b, mutableListOf(), null)
+            }
+            current = next
+        }
+        if (prev != null) prev.nextNode = after
+    }
 }
 

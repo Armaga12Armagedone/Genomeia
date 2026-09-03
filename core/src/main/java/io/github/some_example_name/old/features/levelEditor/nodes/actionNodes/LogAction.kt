@@ -10,5 +10,6 @@ class LogAction: ActionNode {
 
     override fun execute(context: Context) {
         println(nodeData.arguments["string"])
+        nextNode?.execute(context)
     }
 }

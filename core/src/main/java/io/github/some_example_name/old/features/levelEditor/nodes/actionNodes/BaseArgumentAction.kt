@@ -9,7 +9,7 @@ class BaseArgumentAction: ActionNode {
     override var nextNode: ActionNode? = null
     override val nodeData = NodeData(argumentNode = true)
 
-    var value: Boolean? = null
+    var value: Boolean? = true
 
     override fun execute(context: Context) {
 
