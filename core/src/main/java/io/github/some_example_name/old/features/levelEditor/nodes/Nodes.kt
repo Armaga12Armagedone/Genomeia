@@ -2,7 +2,9 @@ package io.github.some_example_name.old.features.levelEditor.nodes
 
 import io.github.some_example_name.old.features.levelEditor.nodes.actionNodes.ActionNode
 import io.github.some_example_name.old.features.levelEditor.nodes.actionNodes.OnStartAction
+import io.github.some_example_name.old.features.levelEditor.nodes.actionNodes.arguments.evaluateArgumentAction
 import io.github.some_example_name.old.features.levelEditor.nodes.argumentNodes.BaseArgument
+import io.github.some_example_name.old.features.levelEditor.nodes.argumentNodes.EvaluateArgument
 import io.github.some_example_name.old.systems.node.Node
 import io.github.some_example_name.old.systems.node.NodeData
 
@@ -13,7 +15,8 @@ object Nodes {
         OnStartNode(true),
         LogNode(true),
         ConditionNode(true),
-        BaseArgument(true)
+        BaseArgument(true),
+        EvaluateArgument(true),
     )
 //
 //    val dataNodes = mapOf<ActionNode, NodeData>(

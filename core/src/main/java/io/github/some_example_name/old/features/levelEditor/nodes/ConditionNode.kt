@@ -7,6 +7,7 @@ import io.github.some_example_name.old.features.levelEditor.nodes.argumentNodes.
 import io.github.some_example_name.old.systems.node.ConnectionManager
 import io.github.some_example_name.old.systems.node.Node
 import io.github.some_example_name.old.systems.node.SvgAssets
+import kotlin.math.max
 
 class ConditionNode(val previewNode: Boolean = false) : Node(previewNode) {
     override val nodeColor = Color.BLUE
@@ -32,6 +33,10 @@ class ConditionNode(val previewNode: Boolean = false) : Node(previewNode) {
     val argumentSocket get() = localToStageCoordinates(Vector2(81.5f * s(), nodeHeight - 4f * s()))
     val ifSocket get() = localToStageCoordinates(Vector2(nodeWidth / 2f, nodeHeight - headerH()))
     val elseSocket get() = localToStageCoordinates(Vector2(nodeWidth / 2f, nodeHeight - headerH() - ifH() - lipH()))
+
+    val argumentSize = Vector2(64f, 32f)
+
+    var additionWidth = 0
 
     private fun ifH(): Float = contentHeight(ifNodes).coerceAtLeast(ConditionSvg.MIN_SLOT)
     private fun elseH(): Float = contentHeight(elseNodes).coerceAtLeast(ConditionSvg.MIN_SLOT)
@@ -69,7 +74,7 @@ class ConditionNode(val previewNode: Boolean = false) : Node(previewNode) {
         nodeHeight = ConditionSvg.height(nodeWidth, ifH(), elseH())
         this.setSize(nodeWidth, nodeHeight)
         SvgAssets.invalidateCondition(svgKey)
-        this.setBackground(bg())
+        //this.setBackground(bg())
 
         val delta = nodeHeight - prevHeight
         if (delta != 0f) {
@@ -89,6 +94,17 @@ class ConditionNode(val previewNode: Boolean = false) : Node(previewNode) {
             n.setPosition(contentX(), cursor - n.nodeHeight)
             cursor -= n.nodeHeight + GAP
         }
+
+        nodeWidth += (argumentNode?.width?: argumentSize.x) - argumentSize.x
+        println((argumentNode?.width?: argumentSize.x) - argumentSize.x)
+        setSize(nodeWidth, nodeHeight)
+
+
+//        println(deltaW)
+//        additionWidth += deltaW.toInt()
+//        println(additionWidth)
+//        println(NodeXWidth())
+        this.setBackground(bg())
     }
 
     private fun contentX() = x + 18f * s()
@@ -120,8 +136,12 @@ class ConditionNode(val previewNode: Boolean = false) : Node(previewNode) {
         return null
     }
 
+    fun NodeXWidth(): Float {
+        return nodeWidth
+    }
+
     private fun bg() = SvgAssets.conditionDrawable(
-        svgKey, ConditionSvg.SVG, nodeWidth.toInt(), Math.round(ifH()), Math.round(elseH())
+        svgKey, ConditionSvg.SVG, NodeXWidth().toInt(), Math.round(ifH()), Math.round(elseH())
     )
 
     companion object {
