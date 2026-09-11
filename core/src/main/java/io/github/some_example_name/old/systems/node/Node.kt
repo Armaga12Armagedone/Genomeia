@@ -31,6 +31,9 @@ open class Node(val preview: Boolean = false) : VisTable() {
     open val inputSocket get() = Vector2(x + nodeWidth / 2, y + nodeHeight)
     open val outputSocket get() = Vector2(x + nodeWidth / 2, y)
 
+    override fun getPrefWidth(): Float = nodeWidth
+    override fun getPrefHeight(): Float = nodeHeight
+
     fun canConnectTo(parent: Node): Boolean {
         if (nodeAction?.nodeData?.eventNode == true || parent.nodeAction?.nodeData?.finalNode == true) return false
         if (parent === this || parentNode != null) return false
@@ -117,7 +120,7 @@ open class Node(val preview: Boolean = false) : VisTable() {
 
                     val currentIgnoreParent = ignoreParent
 
-                    if (parentNode == null && currentIgnoreParent != null) {
+                    if (parentNode == null && currentIgnoreParent != null && !nodeAction.nodeData.argumentNode) {
                         connectTo(currentIgnoreParent)
 
                         if (currentIgnoreParent is ConditionNode) {

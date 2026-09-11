@@ -30,8 +30,9 @@ object ConditionSvg {
     const val MIN_SLOT = 40f
     const val BASE_WIDTH = 250f
 
-    /** Масштаб по ширине: коэффициент, на который масштабируются фиксированные части. */
-    private fun s(width: Float) = width / REF
+    /** Масштаб фиксированных частей — константа (задаётся при BASE_WIDTH), чтобы
+     *  декор не масштабировался при изменении ширины. */
+    private fun s(width: Float) = BASE_WIDTH / REF
 
     fun headerH(width: Float) = HEAD_H0 * s(width)
     fun lipH(width: Float) = LIP_H0 * s(width)

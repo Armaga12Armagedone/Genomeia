@@ -38,26 +38,43 @@ object SvgRenderer {
             sg.dispose()
 
             //Границы полос в опорных координатах (REF) — пропорционально (uy-16)*2
-            val hBot = 66 * 2
-            val ifBot = 81 * 2
-            val lipBot = 129 * 2
-            val esBot = 145 * 2
+            val sc = 250f / 168f
+            val headerH = Math.round(66 * sc)
+            val lipH = Math.round(48 * sc)
+            val bottomH = Math.round(23 * sc)
 
-            val scale = w / 168f
-            val headerH = Math.round(66f * scale)
-            val lipH = Math.round(48f * scale)
-            val bottomH = Math.round(23f * scale)
+            //Горизонтальный 9-slice: декор в фиксированных колонках, растягиваются только пустые промежутки
+            val cA = Math.round(51 * sc)
+            val g1 = Math.round(8 * sc)
+            val cB = Math.round(90 * sc)
+            val cC = Math.round(9 * sc)
+            val extra = w - 250
+            val g1w = g1 + extra / 2
+            val outColW = intArrayOf(cA, g1w, cB, w - cA - g1w - cB - cC, cC)
+            val outColX = IntArray(5)
+            var cx = 0
+            for (i in 0..4) { outColX[i] = cx; cx += outColW[i] }
+            val srcColX = intArrayOf(0, 51 * 2, 59 * 2, 149 * 2, 159 * 2)
+            val srcColW = intArrayOf(51 * 2, 8 * 2, 90 * 2, 10 * 2, 9 * 2)
+
             val outH = headerH + ifH + lipH + elseH + bottomH
-
             val out = BufferedImage(w, outH, BufferedImage.TYPE_INT_ARGB)
             val og = out.createGraphics()
             og.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
             var y = 0
-            og.drawImage(src.getSubimage(0, 0, REF, hBot), 0, y, w, headerH, null); y += headerH
-            og.drawImage(src.getSubimage(0, hBot, REF, ifBot - hBot), 0, y, w, ifH, null); y += ifH
-            og.drawImage(src.getSubimage(0, ifBot, REF, lipBot - ifBot), 0, y, w, lipH, null); y += lipH
-            og.drawImage(src.getSubimage(0, lipBot, REF, esBot - lipBot), 0, y, w, elseH, null); y += elseH
-            og.drawImage(src.getSubimage(0, esBot, REF, REF - esBot), 0, y, w, bottomH, null); y += bottomH
+            val bands = arrayOf(
+                intArrayOf(0, 66 * 2, headerH),
+                intArrayOf(66 * 2, 15 * 2, ifH),
+                intArrayOf(81 * 2, 48 * 2, lipH),
+                intArrayOf(129 * 2, 16 * 2, elseH),
+                intArrayOf(145 * 2, 23 * 2, bottomH)
+            )
+            for (b in bands) {
+                for (c in 0..4) {
+                    og.drawImage(src.getSubimage(srcColX[c], b[0], srcColW[c], b[1]), outColX[c], y, outColW[c], b[2], null)
+                }
+                y += b[2]
+            }
             og.dispose()
 
             val pixmap = Pixmap(w, outH, Pixmap.Format.RGBA8888)

@@ -28,15 +28,15 @@ class ConditionNode(val previewNode: Boolean = false) : Node(previewNode) {
 
     private fun headerH() = 50f * s()
     private fun lipH() = 48f * s()
-    private fun s() = nodeWidth / 168f
+    private fun s() = ConditionSvg.BASE_WIDTH / 168f
 
-    val argumentSocket get() = localToStageCoordinates(Vector2(81.5f * s(), nodeHeight - 4f * s()))
+    val argumentSocket get() = localToStageCoordinates(Vector2(81.5f * s() + extraW() / 2f, nodeHeight - 4f * s()))
     val ifSocket get() = localToStageCoordinates(Vector2(nodeWidth / 2f, nodeHeight - headerH()))
     val elseSocket get() = localToStageCoordinates(Vector2(nodeWidth / 2f, nodeHeight - headerH() - ifH() - lipH()))
 
     val argumentSize = Vector2(64f, 32f)
 
-    var additionWidth = 0
+    private fun extraW() = max(0f, nodeWidth - ConditionSvg.BASE_WIDTH)
 
     private fun ifH(): Float = contentHeight(ifNodes).coerceAtLeast(ConditionSvg.MIN_SLOT)
     private fun elseH(): Float = contentHeight(elseNodes).coerceAtLeast(ConditionSvg.MIN_SLOT)
@@ -95,15 +95,12 @@ class ConditionNode(val previewNode: Boolean = false) : Node(previewNode) {
             cursor -= n.nodeHeight + GAP
         }
 
-        nodeWidth += (argumentNode?.width?: argumentSize.x) - argumentSize.x
-        println((argumentNode?.width?: argumentSize.x) - argumentSize.x)
+        nodeWidth = ConditionSvg.BASE_WIDTH + max(0f, (argumentNode?.width ?: argumentSize.x) - argumentSize.x)
         setSize(nodeWidth, nodeHeight)
-
-
-//        println(deltaW)
-//        additionWidth += deltaW.toInt()
-//        println(additionWidth)
-//        println(NodeXWidth())
+        argumentNode?.let {
+            val at = argumentSocket
+            it.setPosition(at.x - it.width / 2f, at.y - it.height)
+        }
         this.setBackground(bg())
     }
 
