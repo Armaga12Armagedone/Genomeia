@@ -1,0 +1,41 @@
+{
+"name": "Morphogenesis",
+"genomeStageInstruction": [
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"0": {
+				"divide": {
+					"id": "1",
+					"angle": 0,
+					"cellType": 8,
+					"physicalLink": {
+						"0": {
+							"length": 24
+						}
+					},
+					"colorHsv": "ffc0caff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"0": {
+				"mutate": {
+					"cellType": 22,
+					"physicalLink": {},
+					"colorHsv": "4169e0ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true,
+                    "pheromoneType": 11
+				}
+			}
+		}
+	}
+]
+}
