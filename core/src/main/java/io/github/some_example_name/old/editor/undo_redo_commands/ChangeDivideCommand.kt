@@ -8,15 +8,20 @@ class ChangeDivideCommand(
     val clickedCell: EditorCell,
     val divide: Action,
     stageInstruction: MutableList<GenomeStage>,
-    currentStage: Int
+    currentTick: Int
 ) : UndoRedoCommand(
-    stage = currentStage,
-    genomeStageInstruction = stageInstruction
+    tick = currentTick,
+    genomeStageInstruction = stageInstruction,
+    doesNeedAddNewStage = false
 ) {
 
-    override fun execute() {
-        genomeStageInstruction[stage].cellActions.compute(clickedCell.parentId) { _, oldValue ->
-            oldValue?.copy(divide = oldValue.divide?.copy(
+    override fun execute(): StageResult {
+        val stage = genomeStageInstruction[tick]
+        val oldValue = stage.cellActions[clickedCell.parentId] ?: throw Exception("Nothing to change")
+        val existingDivide = oldValue.divide ?: throw Exception("Nothing to change")
+
+        val newValue = oldValue.copy(
+            divide = existingDivide.copy(
                 cellType = divide.cellType,
                 radius = divide.radius,
                 color = divide.color,
@@ -29,7 +34,9 @@ class ChangeDivideCommand(
                 colorRecognition = divide.colorRecognition,
                 lengthDirected = divide.lengthDirected,
                 pheromoneType = divide.pheromoneType
-            ))
-        }
+            )
+        )
+
+        return StageResult.Keep(stage.copy(cellActions = stage.cellActions + (clickedCell.parentId to newValue)))
     }
 }

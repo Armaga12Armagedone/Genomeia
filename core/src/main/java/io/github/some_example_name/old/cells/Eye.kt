@@ -1,7 +1,6 @@
 package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.cells.base.activation
-import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.core.utils.skyBlueColors
 import java.util.BitSet
@@ -11,13 +10,17 @@ import kotlin.math.pow
 import kotlin.math.round
 import kotlin.math.sqrt
 
-class Eye(cellTypeId: Int, var visitedBits: Array<BitSet>): Cell(
+class Eye(cellTypeId: Int): Cell(
     defaultColor = skyBlueColors[2],
     cellTypeId = cellTypeId,
+    textureName = "eye.png",
     isNeural = true,
     isNeuronTransportable = false,
     isDirected = true
 ) {
+
+    lateinit var visitedBits: Array<BitSet>
+    lateinit var checkedObjectListId: Array<IntArray>
 
     override fun doOnTick(cellIndex: Int, threadId: Int) = with(cellEntity) {
         //TODO у глаза будет другая система с диапозоном
@@ -118,9 +121,13 @@ class Eye(cellTypeId: Int, var visitedBits: Array<BitSet>): Cell(
         var tMaxX = if (dx == 0f) Float.POSITIVE_INFINITY else abs((xBound - x1) / dx)
         var tMaxY = if (dy == 0f) Float.POSITIVE_INFINITY else abs((yBound - y1) / dy)
 
-        val dirLength = 1.0f / invSqrt(dx * dx + dy * dy)
-        val normX = -dy / dirLength
-        val normY = dx / dirLength
+        // invSqrt возвращает 1/длину — им и надо умножать. Раньше здесь было
+        // 1f / invSqrt(...) (то есть деление, чтобы получить длину) и потом ещё два
+        // деления на неё же: три деления там, где достаточно двух умножений.
+        val invDirLength = invSqrt(dx * dx + dy * dy)
+        val normX = -dy * invDirLength
+        val normY = dx * invDirLength
+
         var objectsCount = 0
         val gridWidth = gridManager.gridWidth
         val gridHeight = gridManager.gridHeight
@@ -139,23 +146,22 @@ class Eye(cellTypeId: Int, var visitedBits: Array<BitSet>): Cell(
                 val pack = nx * gridHeight + ny
                 if (!visitedBits[threadId].get(pack)) {
                     visitedBits[threadId].set(pack)
-                    val items = gridManager.getParticles(nx, ny)
-                    if (items.isNotEmpty()) {
-                        for (index in items) {
-                            if (isSegmentIntersectingCircle(
-                                    x1,
-                                    y1,
-                                    x2,
-                                    y2,
-                                    particleEntity.x[index],
-                                    particleEntity.y[index],
-                                    r = particleEntity.radius[index]
-                                )
-                            ) {
-                                if (objectsCount < checkedObjectListId[threadId].size) {
-                                    checkedObjectListId[threadId][objectsCount] = index
-                                    objectsCount++
-                                }
+                    // Обход без аллокации: раньше getParticles копировал слоты клетки
+                    // в новый IntArray на каждый шаг DDA (3 клетки на шаг).
+                    gridManager.forEachParticleAt(nx, ny) { index ->
+                        if (isSegmentIntersectingCircle(
+                                x1,
+                                y1,
+                                x2,
+                                y2,
+                                particleEntity.x[index],
+                                particleEntity.y[index],
+                                r = particleEntity.radius[index]
+                            )
+                        ) {
+                            if (objectsCount < checkedObjectListId[threadId].size) {
+                                checkedObjectListId[threadId][objectsCount] = index
+                                objectsCount++
                             }
                         }
                     }
@@ -261,8 +267,5 @@ class Eye(cellTypeId: Int, var visitedBits: Array<BitSet>): Cell(
         val distSq = (closestX - cx).pow(2) + (closestY - cy).pow(2)
         return distSq <= r * r
     }
-
-
-    var checkedObjectListId = Array(threadCount) { IntArray(16) { -1 } }  // Увеличен размер для безопасности
 
 }

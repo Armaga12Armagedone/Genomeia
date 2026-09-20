@@ -2,11 +2,15 @@ package io.github.some_example_name.lwjgl3;
 
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
-import com.badlogic.gdx.video.SilentVideoPlayer;
 
-import io.github.some_example_name.old.ui.screens.MyGame;
+import io.github.some_example_name.old.core.log.CrashReport;
+import io.github.some_example_name.old.game.MyGame;
+import kotlin.Unit;
 
 import java.awt.Dimension;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.awt.Toolkit;
 
 /**
@@ -22,13 +26,41 @@ public class Lwjgl3Launcher {
 //        createApplication();
 //    }
     public static void main(String[] args) {
+        installCrashReporter();
         if (StartupHelper.startNewJvmIfRequired())
             return; // This handles macOS support and helps on Windows.
         createApplication();
     }
 
+    /**
+     * Необработанное исключение в scene2d роняет приложение — и вместе с ним всё, что
+     * игрок успел сделать. Здесь мы дописываем к стектрейсу маршрут по экранам и хвост
+     * журнала действий, то есть сценарий, по которому баг воспроизводится.
+     */
+    private static void installCrashReporter() {
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            try {
+                String report = CrashReport.INSTANCE.build(throwable);
+                System.err.println(report);
+                Files.write(
+                    Paths.get(CRASH_REPORT_FILE),
+                    report.getBytes(StandardCharsets.UTF_8)
+                );
+                System.err.println("[Genomeia] Отчёт сохранён: "
+                    + Paths.get(CRASH_REPORT_FILE).toAbsolutePath());
+            } catch (Throwable reportingFailure) {
+                // Сборщик отчёта не имеет права стать причиной второй ошибки:
+                // исходный стектрейс важнее любых наших украшений.
+                throwable.printStackTrace();
+            }
+            System.exit(1);
+        });
+    }
+
+    private static final String CRASH_REPORT_FILE = "crash-report.txt";
+
     private static Lwjgl3Application createApplication() {
-        return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null, null, null, SilentVideoPlayer::new), getDefaultConfiguration());
+        return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null), getDefaultConfiguration());
     }
 
     private static Lwjgl3ApplicationConfiguration getDefaultConfiguration() {
@@ -75,10 +107,16 @@ public class Lwjgl3Launcher {
         //// You may also need to configure GPU drivers to fully disable Vsync; this can cause screen tearing.
 //        configuration.useVsync(false);
 //        configuration.setForegroundFPS(60);
-        configuration.setWindowedMode(1300, 1300);
+        // Размер окна можно задать снаружи: -Dgenomeia.width=1280 -Dgenomeia.height=720.
+        // Нужно для проверки вёрстки на разных разрешениях без правки кода.
+        int windowWidth = Integer.getInteger("genomeia.width", 1300);
+        int windowHeight = Integer.getInteger("genomeia.height", 1300);
+        configuration.setWindowedMode(windowWidth, windowHeight);
 //        configuration.setFullscreenMode(Lwjgl3ApplicationConfiguration.getDisplayMode());
-        configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL32, 3, 2);
-//        configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 4, 3);
+        // GLES 3.0 feature set (no SSBO). Desktop GL 3.3 for uintBitsToFloat / core profile.
+        configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 3, 0);
+//        configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL32, 3, 2);
+
         //// You can change these files; they are in lwjgl3/src/main/resources/ .
         configuration.setWindowIcon("libgdx128.png", "libgdx64.png", "libgdx32.png", "libgdx16.png");
         return configuration;

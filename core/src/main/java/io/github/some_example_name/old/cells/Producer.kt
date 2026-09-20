@@ -3,11 +3,12 @@ package io.github.some_example_name.old.cells
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.DISimulationContainer.zygote
 import io.github.some_example_name.old.core.utils.redColors
-import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
+import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 
 class Producer(cellTypeId: Int): Cell(
     defaultColor = redColors[4],
     cellTypeId = cellTypeId,
+    textureName = "Producer.png",
     isDirected = true,
     isNeural = true
 ) {
@@ -26,7 +27,7 @@ class Producer(cellTypeId: Int): Cell(
             val genomeIndex = organEntity.genomeIndex[organIndex] // TODO сделать выбор sub-genome
             val genome = genomeManager.genomes[genomeIndex]
             var counter = 0
-            genome.genomeStageInstruction.forEach {
+            genome.stageInstruction.forEach {
                 counter += it.cellActions.size
             }
             specialEntity.setReproductionRestriction(cellIndex, counter * substrateSettings.data.producerRestoreTimeTickCoefficient.toInt())
@@ -71,7 +72,10 @@ class Producer(cellTypeId: Int): Cell(
                 colorDifferentiation,
                 activationFuncType,
                 pheromoneType,
-                -1 //mod data
+                -1, //mod data
+                // Родителя нет (parentIndex = -1), поэтому и поколения нет —
+                // обработчик ADD_CELL в этом случае проверку пропускает.
+                -1
             )
         )
 

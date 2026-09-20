@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.cells.base
 
-import io.github.some_example_name.old.core.DISimulationContainer.cellEntity
+import io.github.some_example_name.old.entities.CellEntity
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.pow
@@ -18,25 +19,35 @@ val formulaType = arrayOf(
     "y = impulse(a), x>=1",
     "y = x in (a, b) else y = c",
     "y = x^(a)",
-    "y = remember(x), 0, 1",
+    "y = remember(x), x > 0",
     "y = random(a, b)",
     "y = r(x)",
     "y = g(x)",
     "y = b(x)",
     "y = energy",
-    "y = controller(a)"
+    "y = controller(a)",
+    "y = decay(x - a), (b, c)",
+    "y = spike(x) = 1, dx >= a",
+    "y = |x|",
+    "y = links amount"
 )
 
-fun activation(cellIndex: Int, nonSafeX: Float) = with(cellEntity) {
-    val x = nonSafeX.coerceIn(-1e10f, 1e10f)
-    when (getActivationFuncType(cellIndex)) {
+fun CellEntity.activation(cellIndex: Int, nonSafeX: Float): Float {
+    val x = when {
+        nonSafeX.isNaN() -> 0f
+        nonSafeX == Float.POSITIVE_INFINITY -> 1e10f
+        nonSafeX == Float.NEGATIVE_INFINITY -> -1e10f
+        else -> nonSafeX.coerceIn(-1e10f, 1e10f)
+    }
+
+    val y = when (getActivationFuncType(cellIndex)) {
         0 -> getA(cellIndex) * x + getB(cellIndex)
         1 -> getC(cellIndex) * sin(getA(cellIndex) * x + getB(cellIndex))
         2 -> getC(cellIndex) * cos(getA(cellIndex) * x + getB(cellIndex))
         3 -> 1f / (1f + exp(-(getA(cellIndex) * x + getB(cellIndex)))) + getC(cellIndex)
         4 -> if (x <= getA(cellIndex)) getB(cellIndex) else getC(cellIndex)
         5 -> if (x < getA(cellIndex)) getB(cellIndex) else getC(cellIndex)
-        6 -> simulationData.timeSimulation
+        6 -> simulationData.timeSimulation + cellIndex
         7 -> {
             if (x >= 1f && simulationData.timeSimulation > getDTime(cellIndex)) {
                 setDTime(cellIndex, simulationData.timeSimulation + getA(cellIndex))
@@ -56,14 +67,12 @@ fun activation(cellIndex: Int, nonSafeX: Float) = with(cellEntity) {
             } else getC(cellIndex)
         }
 
-        9 -> {
-            x.pow(getA(cellIndex))
-        }
+        9 -> x.pow(getA(cellIndex))
 
         10 -> {
             if (x > 0) {
-                setRemember(cellIndex, 1.0f)
-            } else if (x < 0) {
+                setRemember(cellIndex, x)
+            } else if (x <= 0) {
                 setRemember(cellIndex, 0.0f)
             }
             getRemember(cellIndex)
@@ -75,28 +84,60 @@ fun activation(cellIndex: Int, nonSafeX: Float) = with(cellEntity) {
             randomFromFloat(x, a, b)
         }
 
-        12 -> {
-            (x * 255f).toInt().toFloat()
+        12 -> (x * 255f).toInt().toFloat()
+
+        13 -> ((x * 255f).toInt() * 256).toFloat()
+
+        14 -> ((x * 255f).toInt() * 65536).toFloat()
+
+        15 -> energy[cellIndex] / maxEnergy[cellIndex]
+
+        16 -> if (simulationData.controllerKeyTouched[getA(cellIndex).toInt()]) 1f else 0f + x
+
+        17 -> {
+            val decay = getA(cellIndex)
+            val min = getB(cellIndex)
+            val max = getC(cellIndex)
+
+            if (x > min && x > getRemember(cellIndex)) {
+                setRemember(cellIndex, x.coerceIn(min, max))
+            }
+            var impulse = getRemember(cellIndex)
+
+            if (impulse > min) {
+                impulse -= decay
+            }
+            impulse = impulse.coerceIn(min, max)
+
+            setRemember(cellIndex, impulse)
+
+            impulse
         }
 
-        13 -> {
-            ((x * 255f).toInt() * 256).toFloat()
+        18 -> {
+            val dx = x - getRemember(cellIndex)
+            setRemember(cellIndex, x)
+
+            if (dx > 0 && dx >= getA(cellIndex)) {
+                setDTime(cellIndex, simulationData.tickCounter.toFloat())
+                1f
+            } else 0f
         }
 
-        14 -> {
-            ((x * 255f).toInt() * 65536).toFloat()
-        }
+        19 -> abs(x)
 
-        15 -> {
-            energy[cellIndex] / maxEnergy[cellIndex]
-        }
-
-        16 -> {
-            if (simulationData.controllerKeyTouched[getA(cellIndex).toInt()]) 1f else 0f
-        }
-
+        20 -> linkAmount[cellIndex].toFloat()
         else -> x
     }
+
+    val safeY = when {
+        y.isNaN() -> 0f
+        y == Float.POSITIVE_INFINITY -> 1e10f
+        y == Float.NEGATIVE_INFINITY -> -1e10f
+        else -> y
+    }
+
+    return safeY.coerceIn(-1e10f, 1e10f)
 }
 
 fun randomFromFloat(seed: Float, min: Float, max: Float): Float {

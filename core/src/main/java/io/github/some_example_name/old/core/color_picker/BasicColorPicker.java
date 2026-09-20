@@ -28,10 +28,10 @@ import com.kotcrab.vis.ui.widget.color.internal.VerticalChannelBar;
 
 import static com.kotcrab.vis.ui.widget.color.internal.ColorPickerText.HEX;
 
-import static io.github.some_example_name.old.ui.screens.MainGameKt.applyCustomFont;
-import static io.github.some_example_name.old.ui.screens.MainGameKt.applyCustomFontMedium;
+import static io.github.some_example_name.old.game.MainGameKt.applyCustomFont;
+import static io.github.some_example_name.old.game.MainGameKt.applyCustomFontMedium;
 
-import io.github.some_example_name.old.ui.screens.MyGame;
+import io.github.some_example_name.old.game.MyGame;
 
 // Assuming MyGame is defined elsewhere; import if necessary
 // import your.package.MyGame;

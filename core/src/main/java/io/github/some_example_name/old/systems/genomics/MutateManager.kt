@@ -11,9 +11,9 @@ import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.core.DISimulationContainer.cellsSettings
-import io.github.some_example_name.old.core.utils.collectParticles
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
+import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.SpecialEntity
@@ -24,6 +24,7 @@ import kotlin.math.sin
 class MutateManager(
     val cellEntity: CellEntity,
     val linkEntity: LinkEntity,
+    val neuralLinkEntity: NeuralLinkEntity,
     val particleEntity: ParticleEntity,
     val worldCommandsManager: WorldCommandsManager,
     val gridManager: GridManager,
@@ -130,11 +131,15 @@ class MutateManager(
                 setCellStiffness(index, cellsSettings[it].cellStiffness)
                 isNeural[index] = newCell.isNeural
 
-                val genomeIndex = organEntity.genomeIndex[organIndex[index]]
                 if (newCell is Zygote && !isEditor) {
                     cellGenomeId[index] = 0
                 }
-                newCell.onStart(index, threadId, genomeIndex)
+
+                val genomeIndex = organEntity.genomeIndex[organIndex[index]]
+                worldCommandsManager.worldCommandBuffer[threadId].push(
+                    type = WorldCommandType.MUTATE_ON_START,
+                    ints = intArrayOf(index, threadId, genomeIndex)
+                )
             }
 
             if (isFromMuscleToAnother) {
@@ -185,80 +190,40 @@ class MutateManager(
             }
 
             if (action.physicalLink.isNotEmpty()) {
-                val gridX = getX(index).toInt()
-                val gridY = getY(index).toInt()
-                val closestCells = gridManager.collectParticles(gridX, gridY)
-                val idToIndexAssociation = closestCells
-                    .filter { particleEntity.isCell[it] }
-                    .map { particleEntity.holderEntityIndex[it] }
-                    .filter { organIndex[it] == organIndex[index] && it != index }
-                    .associateBy { cellGenomeId[it] }
-
                 action.physicalLink.forEach { (cellGenomeIdToConnectWith, linkData) ->
-                    val linkedCellIndex = idToIndexAssociation[cellGenomeIdToConnectWith]
-                    if (linkedCellIndex != null) {
-                        val linkIndex = linkEntity.linkIndexMap.get(index, linkedCellIndex)
-                        if (linkData != null) {
-                            if (linkIndex == -1) {
-                                if (linkData.isNeuronal && linkData.directedNeuronLink != cellGenomeId[index]
-                                    && linkData.directedNeuronLink != cellGenomeIdToConnectWith
-                                ) {
-                                    throw Exception("Incorrect logic in the neural-link")
-                                }
 
+                    val linkedCellIndex = organToIdToIndex.get(organIndex[index], cellGenomeIdToConnectWith)
+                    if (linkedCellIndex != -1) {
+                        val neuralLinkIndex = neuralLinkEntity.linkIndexMap.get(index, linkedCellIndex)
+                        if (linkData != null && linkData.isNeuronal) {
+                            val isLink1NeuralDirected: Boolean = linkData.directedNeuronLink == cellGenomeId[index]
+                            val linkColor = (linkData.color ?: Color.CYAN).toIntBits()
+
+                            if (neuralLinkIndex == -1) {
                                 val cellIndex: Int = index
                                 val otherCellIndex: Int = linkedCellIndex
-                                val linksLength: Float = linkData.length ?: -1f
-                                val degreeOfShortening: Float = 1f
-                                val isStickyLink: Boolean = false
-                                val isNeuronLink: Boolean = linkData.isNeuronal
-                                val isLink1NeuralDirected: Boolean = linkData.directedNeuronLink == cellGenomeId[index]
-                                val linkColor = (linkData.color ?: if (linkData.isNeuronal) Color.CYAN else Color.RED).toIntBits()
 
-                                if (otherCellIndex == -1) throw Exception("otherCellIndex == -1 in Mutate")
                                 worldCommandsManager.worldCommandBuffer[threadId].push(
-                                    type = WorldCommandType.ADD_LINK,
-                                    booleans = booleanArrayOf(
-                                        isStickyLink,
-                                        isNeuronLink,
-                                        isLink1NeuralDirected
-                                    ),
-                                    floats = floatArrayOf(linksLength, degreeOfShortening),
-                                    ints = intArrayOf(cellIndex, otherCellIndex, linkColor)
+                                    type = WorldCommandType.ADD_NEURAL_LINK,
+                                    booleans = booleanArrayOf(isLink1NeuralDirected),
+                                    ints = intArrayOf(
+                                        cellIndex,
+                                        otherCellIndex,
+                                        linkColor,
+                                        getGeneration(cellIndex),
+                                        getGeneration(otherCellIndex)
+                                    )
                                 )
                             } else {
-                                with(linkEntity) {
-                                    color[linkIndex] = (linkData.color ?: if (linkData.isNeuronal) Color.CYAN else Color.RED).toIntBits()
-
-                                    if (!linkData.isNeuronal) {
-                                        val cellIndex = if (isLink1NeuralDirected[linkIndex]) links1[linkIndex] else links2[linkIndex]
-                                        if (isNeural[cellIndex]) {
-                                            neuronImpulseInput[cellIndex] = 0f
-                                            neuronImpulseOutput[cellIndex] = 0f
-                                        }
-                                    } else {
-                                        val cellLink1Index = links1[linkIndex]
-                                        val cellLink2Index = links2[linkIndex]
-                                        val cellLink1Id = cellGenomeId[cellLink1Index]
-                                        val cellLink2Id = cellGenomeId[cellLink2Index]
-
-                                        isLink1NeuralDirected[linkIndex] =
-                                            linkData.directedNeuronLink == cellLink1Id
-
-                                        if (linkData.directedNeuronLink != cellLink1Id && linkData.directedNeuronLink != cellLink2Id) {
-                                            throw Exception("Incorrect logic in the neural-link ${linkData.directedNeuronLink} ${cellGenomeId[index]} $cellGenomeIdToConnectWith")
-                                        }
-                                    }
-
-                                    isNeuronLink[linkIndex] = linkData.isNeuronal
-                                }
+                                neuralLinkEntity.isLink1NeuralDirected[neuralLinkIndex] = isLink1NeuralDirected
+                                neuralLinkEntity.color[neuralLinkIndex] = linkColor
                             }
                         } else {
-                            if (linkIndex != -1) {
-                                linkEntity.reinitParentLink(linkIndex)
+                            //Удаление нейро-линка
+                            if (neuralLinkIndex != -1) {
                                 worldCommandsManager.worldCommandBuffer[threadId].push(
-                                    type = WorldCommandType.DELETE_LINK,
-                                    ints = intArrayOf(linkIndex, linkEntity.getGeneration(linkIndex))
+                                    type = WorldCommandType.DELETE_NEURAL_LINK,
+                                    ints = intArrayOf(neuralLinkIndex, neuralLinkEntity.getGeneration(neuralLinkIndex))
                                 )
                             }
                         }

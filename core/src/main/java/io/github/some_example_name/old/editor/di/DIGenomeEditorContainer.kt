@@ -10,7 +10,7 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.editor.system.command.CommandEditorStackManager
 import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.entities.EyeReplay
-import io.github.some_example_name.old.editor.entities.LinkReplay
+import io.github.some_example_name.old.editor.entities.NeuralLinkReplay
 import io.github.some_example_name.old.editor.entities.NeuralReplay
 import io.github.some_example_name.old.editor.system.CellSearchManager
 import io.github.some_example_name.old.editor.system.control.LeftRightClickManager
@@ -18,11 +18,18 @@ import io.github.some_example_name.old.editor.system.logic.EditorLogicSystem
 import io.github.some_example_name.old.editor.system.render.EditorRenderSystem
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
 import io.github.some_example_name.old.editor.system.SymmetryManager
+import io.github.some_example_name.old.editor.system.control.TryActionManager
+import io.github.some_example_name.old.editor.system.logic.MoveCellManager
 import io.github.some_example_name.old.editor.system.logic.ToEditorDataMapper
+import io.github.some_example_name.old.editor.system.logic.UiScreenCommands
+import io.github.some_example_name.old.editor.system.render.DrawingHelperElements
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.EyeEntity
+import io.github.some_example_name.old.editor.baking.BodyExport
+import io.github.some_example_name.old.editor.baking.RCMSort
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralEntity
+import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEmitterEntity
@@ -49,13 +56,13 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     override var totalChunks = 1
 
     override var currentTick = 0
-    override var currentStage = 0
     override var lastTick = 0
-    override var lastStage = 0
     override var grabbedCellIndex = -1
     override var lastGrabbedCellX = 0.0f
     override var lastGrabbedCellY = 0.0f
+    override var isDruggingCamera = false
     override var isRightClick = false
+    var showPhysicalLink = true
     var previousCtrlClicked = -1
     var linkColor: Color = Color.CYAN
 
@@ -66,7 +73,9 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         maxAmountOfParticles = 8
     )
 
-    private val cellListBuilder = CellListBuilder(this)
+    private val cellListBuilder = CellListBuilder().apply {
+        bindToDIContext(this@DIGenomeEditorContainer)
+    }
     val cellsTypeNames = cellListBuilder.instances.map { it.name }.toTypedArray()
     val cellList = cellListBuilder.instances
     val zygote = cellListBuilder.zygote
@@ -75,13 +84,15 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
 
     override val genomeManager = GenomeManager(
         genomeJsonReader = DIGameGlobalContainer.genomeJsonReader,
-        simulationData = simulationData,
-        isGenomeEditor = true,
-        genomeName = null
+        simulationData = simulationData
     )
 
     override val organEntity = OrganEntity(
-        organStartMaxAmount = 1
+        organStartMaxAmount = 1,
+        // В редакторе арены не нужны: один организм, параллельных фаз нет, а ёмкость
+        // арены (рассчитанная на взрослое тело) растянула бы все массивы редактора
+        // на порядок. С false всё создание идёт прежним путём, через общий аллокатор.
+        arenasEnabled = false
     )
 
     override val particleEntity = ParticleEntity(
@@ -127,7 +138,8 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         substrateSettings = DIGameGlobalContainer.substrateSettings,
         cellList = cellList,
         neuralEntity = neuralEntity,
-        specialEntity = specialEntity
+        specialEntity = specialEntity,
+        organEntity = organEntity
     )
 
     override val linkEntity = LinkEntity(
@@ -135,8 +147,36 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         cellEntity = cellEntity,
         gridManager = gridManager,
         particleEntity = particleEntity,
-        diContext = this
+        diContext = this,
+        organEntity = organEntity
     )
+
+    override val neuralLinkEntity = NeuralLinkEntity(
+        50,
+        cellEntity = cellEntity,
+        isEditor = true
+    )
+
+    /**
+     * Запекание раскладки организма. Живёт только в редакторе: считает порядок один раз
+     * при сохранении генома, когда тело уже выращено целиком. В симуляции этот порядок
+     * просто читается из генома.
+     */
+    val rcmSort = RCMSort(
+        linkEntity = linkEntity,
+        cellEntity = cellEntity,
+        neuralLinkEntity = neuralLinkEntity
+    )
+
+    /**
+     * Выгрузка топологии выращенного тела в текстовый файл. Как и запекание, живёт только
+     * в редакторе и срабатывает в тот же момент — при сохранении генома.
+     */
+    val bodyExport = BodyExport(
+        cellEntity = cellEntity,
+        linkEntity = linkEntity
+    )
+
     override val substancesEntity = SubstancesEntity(
         startMaxAmount = 1,
         particleEntity = particleEntity,
@@ -156,6 +196,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         organEntity = organEntity,
         cellEntity = cellEntity,
         linkEntity = linkEntity,
+        neuralLinkEntity = neuralLinkEntity,
         particleEntity = particleEntity,
         substrateSettings = DIGameGlobalContainer.substrateSettings,
         genomeManager = genomeManager,
@@ -186,6 +227,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     val mutateManager = MutateManager(
         cellEntity = cellEntity,
         linkEntity = linkEntity,
+        neuralLinkEntity = neuralLinkEntity,
         worldCommandsManager = worldCommandsManager,
         particleEntity = particleEntity,
         gridManager = gridManager,
@@ -212,9 +254,9 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         cellEntity = cellEntity
     )
 
-    val linkReplay = LinkReplay(
-        startCapacity = 1_000,
-        linkEntity = linkEntity
+    val neuralLinkReplay = NeuralLinkReplay(
+        startCapacity = 300,
+        neuralLinkEntity = neuralLinkEntity
     )
 
     val eyeReplay = EyeReplay(
@@ -238,6 +280,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         specialEntity,
         cellEntity,
         linkEntity,
+        neuralLinkEntity,
         substancesEntity,
         producerEntity,
         pheromoneEntity,
@@ -246,7 +289,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
 
     private val replays = listOf(
         cellReplay,
-        linkReplay,
+        neuralLinkReplay,
         eyeReplay,
         neuralReplay
     )
@@ -259,7 +302,8 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         simulationData = simulationData,
         gridManager = gridManager,
         particleEntity = particleEntity,
-        zygote = zygote
+        zygote = zygote,
+        isEditor = true
     )
 
     val editorSimulationSystem = EditorSimulationSystem(
@@ -271,13 +315,13 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         replays = replays,
         cellSystem = cellSystem,
         gridManager = gridManager,
+        particleEntity = particleEntity,
         zygote = zygote,
         entityList = entityList,
         userCommandManager = userCommandManager
     )
 
-    val nextStageTick
-        get() = editorSimulationSystem.tickByStage[(currentStage + 1).coerceIn(0, lastStage)]
+    val nextStageTick get() = (currentTick + 1).coerceIn(0, lastTick)
 
     val commandEditorStackManager = CommandEditorStackManager()
 
@@ -285,7 +329,9 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         cellEntity = cellEntity,
         cellReplay = cellReplay,
         editorSimulationSystem = editorSimulationSystem,
-        particleEntity = particleEntity
+        particleEntity = particleEntity,
+        neuralReplay = neuralReplay,
+        eyeReplay = eyeReplay
     )
 
     val cellSearchManager = CellSearchManager(
@@ -300,15 +346,35 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         cellSearchManager = cellSearchManager
     )
 
+    val tryActionManager = TryActionManager(
+        commandEditorStackManager = commandEditorStackManager,
+        editorSimulationSystem = editorSimulationSystem,
+        cellEntity = cellEntity,
+        linkEntity = linkEntity,
+        cellSearchManager = cellSearchManager,
+        toEditorDataMapper = toEditorDataMapper,
+    )
+
     val leftRightClickManager = LeftRightClickManager(
         commandEditorStackManager = commandEditorStackManager,
         editorSimulationSystem = editorSimulationSystem,
-        cellReplay = cellReplay,
-        linkReplay = linkReplay,
-        eyeReplay = eyeReplay,
-        neuralReplay = neuralReplay,
         cellEntity = cellEntity,
         linkEntity = linkEntity,
+        neuralLinkEntity = neuralLinkEntity,
+        neuralLinkReplay = neuralLinkReplay,
+        symmetryManager = symmetryManager,
+        cellSearchManager = cellSearchManager,
+        toEditorDataMapper = toEditorDataMapper,
+        tryActionManager = tryActionManager
+    )
+
+    var uiScreenCommands: UiScreenCommands? = null
+
+    val moveCellManager = MoveCellManager(
+        commandEditorStackManager = commandEditorStackManager,
+        editorSimulationSystem = editorSimulationSystem,
+        cellEntity = cellEntity,
+        particleEntity = particleEntity,
         symmetryManager = symmetryManager,
         cellSearchManager = cellSearchManager,
         toEditorDataMapper = toEditorDataMapper
@@ -321,24 +387,31 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         cellEntity = cellEntity,
         particleEntity = particleEntity,
         linkEntity = linkEntity,
-        symmetryManager = symmetryManager,
         gridManager = gridManager,
         cellSearchManager = cellSearchManager,
         toEditorDataMapper = toEditorDataMapper,
-        leftRightClickManager = leftRightClickManager
+        leftRightClickManager = leftRightClickManager,
+        moveCellManager = moveCellManager,
+        tryActionManager = tryActionManager
     )
 
-    val editorRenderSystem = EditorRenderSystem(
-        shaderManager = DIGameGlobalContainer.shaderManager,
+    val drawingHelperElements = DrawingHelperElements(
         cellReplay = cellReplay,
-        linkReplay = linkReplay,
-        editorLogicSystem = editorLogicSystem,
+        neuralLinkReplay = neuralLinkReplay,
         cellEntity = cellEntity,
         particleEntity = particleEntity,
         editorSimulationSystem = editorSimulationSystem,
         symmetryManager = symmetryManager,
         cellList = cellList,
-        cellSearchManager = cellSearchManager
+        cellSearchManager = cellSearchManager,
+    )
+
+    val editorRenderSystem = EditorRenderSystem(
+        worldRenderer = DIGameGlobalContainer.worldRenderer,
+        cellReplay = cellReplay,
+        particleEntity = particleEntity,
+        editorSimulationSystem = editorSimulationSystem,
+        drawingHelperElements = drawingHelperElements
     )
 
     override fun dispose() {

@@ -8,28 +8,31 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
-import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.utils.drawTriangleMiddle
-import io.github.some_example_name.old.entities.CellEntity
-import io.github.some_example_name.old.entities.LinkEntity
-import io.github.some_example_name.old.entities.ParticleEntity
-import io.github.some_example_name.old.entities.PheromoneEntity
-import io.github.some_example_name.old.systems.pheromone.PheromoneShaderManager
-import io.github.some_example_name.old.ui.screens.isRenderUi
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import io.github.some_example_name.old.systems.pheromone.PheromonesManager
+import io.github.some_example_name.render.RenderFrame
+import io.github.some_example_name.render.RenderSettings
+import io.github.some_example_name.render.WorldRenderer
+import io.github.some_example_name.render.debug.RenderSceneDump
+import io.github.some_example_name.render.pack.CellInstanceBuffer
+import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
 import kotlin.math.sqrt
 
+/**
+ * Сторона симуляции в отрисовке кадра: взять снимок мира и перевести его на язык,
+ * который понимает модуль рендера.
+ *
+ * Границу проводит просто: всё, что знает про клетки, связи и UPS, живёт здесь; всё,
+ * что говорит с GPU, живёт в :render. Поэтому здесь нет ни одного вызова Gdx.gl,
+ * кроме переключения состояний вокруг отладочных фигур, а там — ни одного упоминания
+ * клетки.
+ */
 class RenderSystem(
-    val cellEntity: CellEntity,
-    val linkEntity: LinkEntity,
-    val particleEntity: ParticleEntity,
-    val shaderManager: ShaderManager,
-    val pheromoneShaderManager: PheromoneShaderManager,
-    val renderBufferManager: RenderBufferManager,
-    val diContext: DIContext,
-    val pheromoneEntity: PheromoneEntity
+    val worldRenderer: WorldRenderer,
+    val renderBufferManager: RenderBufferManager
 ) {
+
+    var isRenderUi = true
 
     private lateinit var fontMatrix: Matrix4
     private lateinit var spriteBatch: SpriteBatch
@@ -42,6 +45,11 @@ class RenderSystem(
     private var cameraY = 0f
     private var blurLevel = 0f
 
+    /** Всё переиспользуется между кадрами: аллокаций на кадр быть не должно. */
+    private val cellBuffer = CellInstanceBuffer()
+    private val pheromoneBuffer = PheromoneInstanceBuffer()
+    private val frame = RenderFrame()
+
     fun create(
         fontMatrix: Matrix4,
         spriteBatch: SpriteBatch,
@@ -49,8 +57,7 @@ class RenderSystem(
         shapeRenderer: ShapeRenderer,
         camera: OrthographicCamera
     ) {
-        shaderManager.create()
-        pheromoneShaderManager.create()
+        worldRenderer.checkResize()
         this.fontMatrix = fontMatrix
         this.spriteBatch = spriteBatch
         this.font = font
@@ -64,18 +71,26 @@ class RenderSystem(
         camera.update()
     }
 
-    private var bufferCell = allocateBuffer(INITIAL_PARTICLE_CAPACITY)
-    private var bufferPheromone = allocateBuffer(INITIAL_PHEROMONE_CAPACITY)
-
     fun resize(width: Int, height: Int) {
-        shaderManager.resize(width, height)
+        worldRenderer.resize(width, height)
     }
 
     fun render() {
-        val cellBuf = renderBufferManager.getCurrentCellBuffer()
+        // Индекс кадра читается ОДИН раз, и оба буфера берутся по нему.
+        //
+        // Буфер связей хранит позиции внутри буфера клеток, поэтому они обязаны быть из
+        // одной сборки. Два отдельных геттера этого не гарантировали: симуляция успевала
+        // переключить буферы между вызовами, и связи рисовались по позициям от другого
+        // кадра — на экране это линии между чужими организмами и уходящие в ноль.
+        val frameIndex = renderBufferManager.frontFrameIndex()
+        val cellBuf = renderBufferManager.cellBuffer(frameIndex)
+        val linkBuf = renderBufferManager.linkBuffer(frameIndex)
+
         val pheromoneBuf = renderBufferManager.getCurrentPheromoneBuffer()
-        val linkBuf = renderBufferManager.getCurrentLinkBuffer()
         val spec = renderBufferManager.getCurrentSpecificBufferData()
+
+        val usePostProcess = RenderSettings.usePostProcess
+
         if (zoom != camera.zoom || cameraX != camera.position.x || cameraY != camera.position.y) {
             if (!spec.isCellSelected) {
                 blurLevel = 4.0f
@@ -85,13 +100,23 @@ class RenderSystem(
             }
         }
 
-        ensureCellBufferCapacityForWrite(particleEntity.aliveList.size)
-        drawCellShader(cellBuf)
+        packCells(cellBuf)
+        packPheromones(pheromoneBuf, usePostProcess)
 
-        ensurePheromoneBufferCapacityForWrite(pheromoneEntity.aliveList.size)
-        if (usePostProcess) {
-            drawPheromoneShader(pheromoneBuf)
+        frame.apply {
+            cameraProjection = camera.combined
+            cells = cellBuffer.end()
+            uploadCells = true
+            pheromones = pheromoneBuffer.end()
+            pheromoneK = PheromonesManager.K
+            pheromoneP = PheromonesManager.P
+            blurAmount = blurLevel
+            zoom = camera.zoom
+            vignetteEnabled = 1f
+            this.usePostProcess = usePostProcess
         }
+        worldRenderer.render(frame)
+
         if (!usePostProcess) {
             drawDebug(cellBuf, linkBuf, pheromoneBuf)
         }
@@ -102,7 +127,6 @@ class RenderSystem(
         Gdx.gl.glDepthMask(false)
         Gdx.gl.glEnable(GL20.GL_BLEND)
 
-
         if (isRenderUi) {
             drawTextSimInfo(spec)
         }
@@ -112,76 +136,44 @@ class RenderSystem(
         }
     }
 
-    private fun allocateBuffer(numParticles: Int): ByteBuffer {
-        return ByteBuffer
-            .allocateDirect(numParticles * PARTICLE_STRUCT_SIZE)
-            .order(ByteOrder.nativeOrder())
-    }
-
-    private fun ensureCellBufferCapacityForWrite(neededParticles: Int) {
-        val currentCapacity = bufferCell.capacity() / PARTICLE_STRUCT_SIZE
-        if (neededParticles <= currentCapacity) return
-
-        var newCapacity = currentCapacity.toDouble()
-        do { newCapacity *= 1.5 } while (newCapacity < neededParticles)
-
-        val finalCapacity = newCapacity.toInt().coerceAtLeast(neededParticles)
-        bufferCell = allocateBuffer(finalCapacity)
-    }
-
-
-    private fun ensurePheromoneBufferCapacityForWrite(neededPheromones: Int) {
-        val currentCapacity = bufferPheromone.capacity() / PHEROMONE_STRUCT_SIZE
-        if (neededPheromones <= currentCapacity) return
-
-        var newCapacity = currentCapacity.toDouble()
-        do { newCapacity *= 1.5 } while (newCapacity < neededPheromones)
-
-        val finalCapacity = newCapacity.toInt().coerceAtLeast(neededPheromones)
-        bufferPheromone = allocateBuffer(finalCapacity)
-    }
-
-    private fun drawPheromoneShader(pheromoneBuffer: PheromoneBufferData) {
-        (bufferPheromone as java.nio.Buffer).clear()
-        with(pheromoneBuffer) {
-            for (i in 0..<pheromoneBufferSize) {
-                bufferPheromone.putFloat(x[i])
-                bufferPheromone.putFloat(y[i])
-                bufferPheromone.putFloat(a[i])
-                bufferPheromone.putInt(color[i])
-            }
-        }
-        (bufferPheromone as java.nio.Buffer).flip()
-        pheromoneShaderManager.renderPheromones(camera.combined, bufferPheromone)
-    }
-
-    private fun drawCellShader(cellBuf: RenderCellBufferData) {
-        (bufferCell as java.nio.Buffer).clear()
+    /**
+     * Ёмкость считается по СНИМКУ, который сейчас будет записан, а не по живому
+     * aliveList: список принадлежит потоку симуляции и меняется прямо во время кадра.
+     * Если в снимке частиц больше, чем в списке на момент чтения (а так бывает при
+     * массовой гибели — снимок старше), запись уходила за границу буфера и кадр падал
+     * с BufferOverflowException.
+     *
+     * shape/type уже посчитаны потоком симуляции — здесь только перекладывание
+     * байт, без арифметики. См. пояснение в CellInstanceBuffer.
+     */
+    private fun packCells(cellBuf: RenderCellBufferData) {
+        cellBuffer.begin(cellBuf.renderCellBufferSize)
         with(cellBuf) {
             for (i in 0..<renderCellBufferSize) {
-                bufferCell.putFloat(x[i])
-                bufferCell.putFloat(y[i])
-                bufferCell.putInt(color[i])
-                bufferCell.putInt(packed1[i])
-                bufferCell.putInt(packed2[i])
-                bufferCell.putInt(0)
+                cellBuffer.put(
+                    x = x[i],
+                    y = y[i],
+                    color = color[i],
+                    shape = shape[i],
+                    type = type[i]
+                )
             }
         }
-        (bufferCell as java.nio.Buffer).flip()
+    }
 
-        val worldX = camera.position.x
-        val worldY = camera.position.y
-        shaderManager.render(
-            currentRead = bufferCell,
-            cameraProjection = camera.combined,
-            isNewFrame = true,
-            isClear = false,
-            worldX = worldX,
-            worldY = worldY,
-            blurAmount = blurLevel,
-            zoom = camera.zoom,
-            vignetteEnabled = 1f
-        )
+    private fun packPheromones(pheromoneBuf: PheromoneBufferData, usePostProcess: Boolean) {
+        pheromoneBuffer.begin(pheromoneBuf.pheromoneBufferSize)
+        if (!usePostProcess) return
+        with(pheromoneBuf) {
+            for (i in 0..<pheromoneBufferSize) {
+                pheromoneBuffer.put(
+                    x = x[i],
+                    y = y[i],
+                    a = a[i],
+                    color = color[i]
+                )
+            }
+        }
     }
 
     fun drawDebug(cellBuf: RenderCellBufferData, linkBuf: RenderLinkBufferData, pheromoneBuffer: PheromoneBufferData) {
@@ -251,70 +243,89 @@ class RenderSystem(
         shapeRenderer.end()
     }
 
-    private fun moveCameraAndDrawSelected(spec: RenderSpecificBufferData) = with(renderBufferManager) {
-        if (spec.isCellSelected) {
-            shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
+    private fun moveCameraAndDrawSelected(spec: RenderSpecificBufferData) {
+        if (!spec.isCellSelected) return
 
-            shapeRenderer.color = Color.GOLD
-            Gdx.gl.glLineWidth(5f)
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
 
-            with(renderBufferManager) {
-                if (spec.isCellSelected) {
-                    shapeRenderer.circle(
-                        spec.grabbedCellX ?: 0f,
-                        spec.grabbedCellY ?: 0f,
-                        0.55f,
-                        64
-                    )
-                }
-            }
+        shapeRenderer.color = Color.GOLD
+        Gdx.gl.glLineWidth(5f)
 
-            shapeRenderer.end()
+        shapeRenderer.circle(
+            spec.grabbedCellX ?: 0f,
+            spec.grabbedCellY ?: 0f,
+            0.55f,
+            64
+        )
 
-            val targetX = spec.grabbedCellX ?: return
-            val targetY = spec.grabbedCellY ?: return
+        shapeRenderer.end()
 
-            val lerpSpeed = 1f
-            val delta = Gdx.graphics.deltaTime
+        val targetX = spec.grabbedCellX ?: return
+        val targetY = spec.grabbedCellY ?: return
 
-            camera.position.x += (targetX - camera.position.x) * lerpSpeed * delta
-            camera.position.y += (targetY - camera.position.y) * lerpSpeed * delta
+        val lerpSpeed = 1f
+        val delta = Gdx.graphics.deltaTime
 
-            camera.update()
-        }
+        camera.position.x += (targetX - camera.position.x) * lerpSpeed * delta
+        camera.position.y += (targetY - camera.position.y) * lerpSpeed * delta
+
+        camera.update()
     }
 
-    private fun drawTextSimInfo(spec: RenderSpecificBufferData) = with(renderBufferManager) {
+    private fun drawTextSimInfo(spec: RenderSpecificBufferData) {
         spriteBatch.begin()
         font.draw(
             spriteBatch,
             """
-                    FPS: ${Gdx.graphics.framesPerSecond}
-                    UPS: ${spec.ups}
-                    Update Time: ${spec.updateTime} ms
-                    Cells: ${spec.cellsAmount}
-                    Particles: ${spec.particleAmount}
-                    Links ${spec.linksAmount}
-                    NeuronImpulseInput ${spec.neuronImpulseInput}
-                    NeuronImpulseOutput ${spec.neuronImpulseOutput}
-                    Cell type ${spec.cellName}
-                    Selected cell index ${spec.selectedCellIndex}
+FPS: ${Gdx.graphics.framesPerSecond}
+UPS: ${spec.ups}
+Update Time: ${spec.updateTime} ms
+Cells: ${spec.cellsAmount}
+Particles: ${spec.particleAmount}
+Links ${spec.linksAmount}
+NeuronImpulseInput ${spec.neuronImpulseInput}
+NeuronImpulseOutput ${spec.neuronImpulseOutput}
+Cell type ${spec.cellName}
+
+Selected cell index ${spec.selectedCellIndex}
+${spec.detailedPerformance}
                 """.trimIndent(),
             30f,
-            200f
+            450f
         )
         font.data.setScale(1f)
         spriteBatch.end()
     }
 
-    fun dispose() {
-        //TODO
+    /**
+     * Выгрузить последний отрисованный кадр в файл — вход рендера, а не картинку.
+     *
+     * Звать только ПОСЛЕ [render] в том же кадре: пишется тот самый [frame], который
+     * только что ушёл в GPU, поэтому дамп и живой кадр совпадают побайтово.
+     *
+     * Дальше этот файл открывается стендом RenderLab, и шейдеры можно крутить, пересобирая
+     * один только :render — без симуляции, потоков и загрузки геномов.
+     */
+    fun dumpScene(file: com.badlogic.gdx.files.FileHandle) {
+        RenderSceneDump.write(
+            file = file,
+            frame = frame,
+            viewportWidth = camera.viewportWidth.toInt(),
+            viewportHeight = camera.viewportHeight.toInt(),
+            cameraX = camera.position.x,
+            cameraY = camera.position.y,
+            zoom = camera.zoom,
+            texturePaths = worldRenderer.texturePaths
+        )
     }
 
-    companion object {
-        const val INITIAL_PARTICLE_CAPACITY = 30_000
-        const val INITIAL_PHEROMONE_CAPACITY = 1_000
-        const val PARTICLE_STRUCT_SIZE = 24
-        const val PHEROMONE_STRUCT_SIZE = 16
+    /**
+     * GL-ресурсы принадлежат [worldRenderer], а он один на всю игру и переживает смену
+     * экранов — поэтому здесь его НЕ трогаем. Диспозить его должен тот, кто им владеет
+     * (DIGameGlobalContainer), при завершении игры.
+     *
+     * Собственных GL-ресурсов у этого класса нет: буферы инстансов — обычная память.
+     */
+    fun dispose() {
     }
 }

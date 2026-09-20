@@ -24,7 +24,7 @@ class CellReplay(
     var pheromoneType = IntArray(startCapacity)
 
     val replayCellsCounterInTick = IntArrayList(10)
-    val tickStartIndices = IntArrayList(10)   // ← НОВОЕ: стартовые индексы для каждого тика
+    val tickStartIndices = IntArrayList(10)
 
     private fun ensureCapacity(minCapacity: Int) {
         if (minCapacity > capacity) {
@@ -52,9 +52,8 @@ class CellReplay(
     override fun copy() {
         val cellsAmount = particleEntity.aliveList.size
 
-        // Запоминаем количество клеток и стартовую позицию этого тика
         replayCellsCounterInTick.add(cellsAmount)
-        tickStartIndices.add(size)                    // ← сохраняем начало текущего тика
+        tickStartIndices.add(size)
 
         ensureCapacity(size + cellsAmount)
 
@@ -95,7 +94,7 @@ class CellReplay(
         val start = tickStartIndices.getInt(tick)
         val count = replayCellsCounterInTick.getInt(tick)
 
-        if (indexInTick < 0 || indexInTick >= count) return null
+        if (indexInTick !in 0..<count) return null
 
         val pos = start + indexInTick
 
@@ -107,7 +106,7 @@ class CellReplay(
         indexInTick: Int
     ): Int? {
         val index = getPositionInReplay(tick, indexInTick)
-        return index?.let { this.index[it] } //?: throw Exception("clickedIndex out of range")
+        return index?.let { this.index[it] }
     }
 
     fun getCellType(tick: Int, indexInTick: Int): Byte {

@@ -2,16 +2,14 @@ package io.github.some_example_name.old.systems.genomics
 
 import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.cells.NonWorkingCell1
-import io.github.some_example_name.old.cells.ControllerData
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
-import io.github.some_example_name.old.core.utils.collectParticles
 import io.github.some_example_name.old.entities.CellEntity
+import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
+import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
-import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -122,8 +120,13 @@ class DivideManager(
                         colorDifferentiation,
                         activationFuncType,
                         pheromoneType,
-                        -1
+                        -1,
 //                        specialModDataIndex
+                        // Поколение родителя на момент постановки команды. Между этим
+                        // моментом и применением родитель может умереть, а его индекс —
+                        // достаться новой клетке: тогда isAlive снова true, но это уже
+                        // другая клетка, и потомок унаследовал бы чужую карту тела.
+                        getGeneration(parentIndex)
                     )
                 )
 
@@ -133,55 +136,87 @@ class DivideManager(
                 )
             }
 
-            if (action.physicalLink.isNotEmpty()) {
-                val gridX = x.toInt()
-                val gridY = y.toInt()
-                val closestCells = gridManager.collectParticles(gridX, gridY)
-                val idToIndexAssociation = closestCells
-                        .filter { particleEntity.isCell[it] }
-                        .map { particleEntity.holderEntityIndex[it] }
-                        .filter { organIndex[it] == organIndex[index]}
-                        .associateBy { this.cellGenomeId[it] }
-
-                action.physicalLink.forEach { (cellGenomeIdToConnectWith, linkData) ->
-                    val otherCellIndex = idToIndexAssociation[cellGenomeIdToConnectWith]
+            if (action.physicalLinkMirroredForCell.isNotEmpty()) {
+                action.physicalLinkMirroredForCell.forEach { (cellGenomeIdToConnectWith, linkData) ->
+                    val otherCellIndex = organToIdToIndex.get(organIndex[index], cellGenomeIdToConnectWith)
                     if (linkData != null) {
-
                         val cellIndex: Int = -1
                         val linksLength: Float = linkData.length ?: -1f
-                        val degreeOfShortening: Float = 1f
-                        val isStickyLink: Boolean = false
                         val isNeuronLink: Boolean = linkData.isNeuronal
                         val isLink1NeuralDirected: Boolean = linkData.directedNeuronLink == action.id
                         val linkColor = (linkData.color ?: if (linkData.isNeuronal) Color.CYAN else Color.RED).toIntBits()
 
-                        if (otherCellIndex != null) {
-                            if (linkData.isNeuronal && linkData.directedNeuronLink != action.id
-                                && linkData.directedNeuronLink != cellGenomeIdToConnectWith
-                            ) {
-                                throw Exception("Incorrect logic in the neural-link")
-                            }
+                        if (otherCellIndex != -1) {
+                            // Поколение соседа снимается ЗДЕСЬ, в момент постановки команды:
+                            // между этим тиком и её применением клетка может умереть, а её
+                            // индекс — достаться новой клетке. По поколению addLink отличит
+                            // "та же самая клетка" от "другая клетка на том же индексе".
+                            //
+                            // Для cellIndex поколения нет и быть не может: он равен -1, то
+                            // есть означает "клетка, созданная этой же фазой применения",
+                            // и на данный момент ещё не существует.
+                            val otherCellGeneration = getGeneration(otherCellIndex)
 
-                            worldCommandsManager.worldCommandBuffer[threadId].push(
-                                type = WorldCommandType.ADD_LINK,
-                                booleans = booleanArrayOf(
-                                    isStickyLink,
-                                    isNeuronLink,
-                                    isLink1NeuralDirected
-                                ),
-                                floats = floatArrayOf(linksLength, degreeOfShortening),
-                                ints = intArrayOf(cellIndex, otherCellIndex, linkColor)
-                            )
+                            if (!isNeuronLink) {
+                                worldCommandsManager.worldCommandBuffer[threadId].push(
+                                    type = WorldCommandType.ADD_LINK,
+                                    floats = floatArrayOf(linksLength),
+                                    ints = intArrayOf(
+                                        cellIndex,
+                                        otherCellIndex,
+                                        LinkEntity.NO_GENERATION_CHECK,
+                                        otherCellGeneration
+                                    )
+                                )
+                            } else {
+                                worldCommandsManager.worldCommandBuffer[threadId].push(
+                                    type = WorldCommandType.ADD_NEURAL_LINK,
+                                    booleans = booleanArrayOf(isLink1NeuralDirected),
+                                    ints = intArrayOf(
+                                        cellIndex,
+                                        otherCellIndex,
+                                        linkColor,
+                                        LinkEntity.NO_GENERATION_CHECK,
+                                        otherCellGeneration
+                                    )
+                                )
+                                if (linksLength > 0) {
+                                    worldCommandsManager.worldCommandBuffer[threadId].push(
+                                        type = WorldCommandType.ADD_LINK,
+                                        floats = floatArrayOf(linksLength),
+                                        ints = intArrayOf(
+                                            cellIndex,
+                                            otherCellIndex,
+                                            LinkEntity.NO_GENERATION_CHECK,
+                                            otherCellGeneration
+                                        )
+                                    )
+                                }
+                            }
                         } else {
                             val cellId: Int = cellGenomeId
                             val otherCellId: Int = cellGenomeIdToConnectWith
 
-                            worldCommandsManager.worldCommandSecondBuffer[threadId].push(
-                                type = WorldCommandType.ADD_LINK_BY_ID,
-                                booleans = booleanArrayOf(isNeuronLink, isLink1NeuralDirected),
-                                floats = floatArrayOf(linksLength),
-                                ints = intArrayOf(cellId, otherCellId, parentOrganIndex, linkColor)
-                            )
+                            if (!isNeuronLink) {
+                                worldCommandsManager.worldCommandSecondBuffer[threadId].push(
+                                    type = WorldCommandType.ADD_LINK_BY_ID,
+                                    floats = floatArrayOf(linksLength),
+                                    ints = intArrayOf(cellId, otherCellId, parentOrganIndex)
+                                )
+                            } else {
+                                worldCommandsManager.worldCommandSecondBuffer[threadId].push(
+                                    type = WorldCommandType.ADD_NEURAL_LINK_BY_ID,
+                                    booleans = booleanArrayOf(isLink1NeuralDirected),
+                                    ints = intArrayOf(cellId, otherCellId, parentOrganIndex, linkColor)
+                                )
+                                if (linksLength > 0) {
+                                    worldCommandsManager.worldCommandSecondBuffer[threadId].push(
+                                        type = WorldCommandType.ADD_LINK_BY_ID,
+                                        floats = floatArrayOf(linksLength),
+                                        ints = intArrayOf(cellId, otherCellId, parentOrganIndex)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

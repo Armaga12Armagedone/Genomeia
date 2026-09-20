@@ -1,24 +1,17 @@
 package io.github.some_example_name.old.core
 
-import com.badlogic.gdx.Application
-import com.badlogic.gdx.Gdx
-import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.Texture
-import com.badlogic.gdx.graphics.g2d.NinePatch
-import com.badlogic.gdx.scenes.scene2d.utils.NinePatchDrawable
 import com.badlogic.gdx.utils.Disposable
-import com.kotcrab.vis.ui.VisUI
-import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.cells.base.CellListBuilder
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
-import io.github.some_example_name.old.core.DIGameGlobalContainer.shaderManager
+import io.github.some_example_name.old.core.DIGameGlobalContainer.worldRenderer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.EyeEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralEntity
+import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEmitterEntity
@@ -35,26 +28,23 @@ import io.github.some_example_name.old.systems.genomics.DivideManager
 import io.github.some_example_name.old.systems.genomics.MutateManager
 import io.github.some_example_name.old.systems.genomics.OrganManager
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
-import io.github.some_example_name.old.systems.pheromone.PheromoneShaderManager
-import io.github.some_example_name.old.systems.pheromone.PheromoneShaderManagerLibgdx
 import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.physics.LinkPhysicsSystem
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem
 import io.github.some_example_name.old.systems.render.RenderBufferManager
 import io.github.some_example_name.old.systems.render.RenderSystem
-import io.github.some_example_name.old.systems.render.ShaderManager
 import io.github.some_example_name.old.systems.simulation.SimulationSystem
 import io.github.some_example_name.old.systems.simulation.ThreadManager
-import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_HEIGHT
-import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_WIDTH
-import io.github.some_example_name.old.ui.screens.androidPheromoneRendererFactory
-import io.github.some_example_name.old.ui.screens.androidRendererFactory
+import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
+import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
+import io.github.some_example_name.old.systems.physics.CollisionManager
+import io.github.some_example_name.old.systems.physics.MovementManager
 import kotlin.getValue
 
-object DISimulationContainer:  DIContext, Disposable {
+object DISimulationContainer : DIContext, Disposable {
 
-    override var gridWidth = 128
-    override var gridHeight = 128
+    override var gridWidth = 256
+    override var gridHeight = 256
     const val HALF_CHUNK_HEIGHT = 4 // Also max particle speed
     var chunkHeight = HALF_CHUNK_HEIGHT * 2
     var heightMultiplier = chunkHeight * 2
@@ -63,46 +53,14 @@ object DISimulationContainer:  DIContext, Disposable {
     override var totalChunks = threadCount * 2
     override var chunkSize = gridSize / totalChunks
 
-    var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks
+    var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks * 8f
     var linkMaxLength2 = 3f * 3f
     var cellsSettings = substrateSettings.cellsSettings
-    var roundStyle: VisTextButton.VisTextButtonStyle
-    var roundStyleToggle: VisTextButton.VisTextButtonStyle
-
 
     init {
         if (gridHeight % heightMultiplier != 0) throw Exception("gridHeight should be a multiple of (halfChunkHeight * 2 * 2)")
         println("thread count: $threadCount")
         println("thread count: $heightMultiplier")
-        val patch = NinePatch(Texture(Gdx.files.internal("button.png")), 20, 20, 20, 20)
-
-        //разрабочтик привет, я тут тебе пару подсказок оставлю
-        //общие стили
-        val roundUp = NinePatchDrawable(patch).tint(Color(0.44f, 0.40f, 0.40f, 1f))
-        val roundDown = NinePatchDrawable(patch).tint(Color(0.2f,0.2f,0.2f,1f))
-        val roundOver = NinePatchDrawable(patch).tint(Color(0f, 0.9f, 1f, 1f))
-
-        val baseStyle = VisUI.getSkin().get("blue", VisTextButton.VisTextButtonStyle::class.java)
-//        val toggleRoundChecked = NinePatchDrawable(patch).tint(Color(0f, 0.9f, 1f, 1f))
-
-        //Стиль для обычных кнопок
-        roundStyle = VisTextButton.VisTextButtonStyle(baseStyle).apply {
-            up = roundUp
-            down = roundDown
-            over = roundOver
-        }
-
-        //
-        val toggleBaseStyle = VisUI.getSkin().get("toggle", VisTextButton.VisTextButtonStyle::class.java)
-        roundStyleToggle = VisTextButton.VisTextButtonStyle(toggleBaseStyle).apply {
-            up = roundUp
-            over = roundOver
-            down = roundDown
-
-            // Перезаписываем прямоугольные текстуры toggle на наши скругленные
-            checked = roundOver
-            checkedOver = roundOver
-        }
     }
 
     override val gridManager = GridManager(
@@ -111,7 +69,9 @@ object DISimulationContainer:  DIContext, Disposable {
         diContext = this,
         maxAmountOfParticles = 4
     )
-    private val cellListBuilder = CellListBuilder(this)
+    private val cellListBuilder = CellListBuilder().apply {
+        bindToDIContext(this@DISimulationContainer)
+    }
     val cellList = cellListBuilder.instances
     val zygote = cellListBuilder.zygote
 
@@ -158,15 +118,29 @@ object DISimulationContainer:  DIContext, Disposable {
         substrateSettings = substrateSettings,
         cellList = cellList,
         neuralEntity = neuralEntity,
-        specialEntity = specialEntity
+        specialEntity = specialEntity,
+        organEntity = organEntity
     )
     override val linkEntity = LinkEntity(
         20_000,
         cellEntity = cellEntity,
         gridManager = gridManager,
         particleEntity = particleEntity,
-        diContext = this
+        diContext = this,
+        organEntity = organEntity
     )
+    override val neuralLinkEntity = NeuralLinkEntity(
+        5_000,
+        cellEntity = cellEntity,
+        isEditor = false
+    )
+
+    init {
+        // Связывается здесь, а не конструктором: organEntity создаётся раньше всех,
+        // потому что CellEntity/LinkEntity/NeuralLinkEntity уже зависят от него.
+        // Без этого вызова арены просто не выдаются, и всё идёт прежним путём.
+        organEntity.bindEntities(cellEntity, particleEntity, linkEntity)
+    }
     override val pheromoneEntity = PheromoneEntity(
         gridManager = gridManager
     )
@@ -186,6 +160,7 @@ object DISimulationContainer:  DIContext, Disposable {
         specialEntity,
         cellEntity,
         linkEntity,
+        neuralLinkEntity,
         pheromoneEntity,
         substancesEntity,
         producerEntity,
@@ -194,9 +169,7 @@ object DISimulationContainer:  DIContext, Disposable {
 
     override val genomeManager = GenomeManager(
         genomeJsonReader = genomeJsonReader,
-        simulationData = simulationData,
-        isGenomeEditor = false,
-        genomeName = null
+        simulationData = simulationData
     )
 
     override val organManager = OrganManager(
@@ -205,19 +178,6 @@ object DISimulationContainer:  DIContext, Disposable {
         cellEntity = cellEntity
     )
 
-
-    var androidPheromoneRenderer: PheromoneShaderManager? = androidPheromoneRendererFactory?.invoke()
-    val pheromoneShaderManager: PheromoneShaderManager = when (Gdx.app.type) {
-        Application.ApplicationType.Desktop -> PheromoneShaderManagerLibgdx()
-        Application.ApplicationType.Android -> androidPheromoneRenderer!!
-        Application.ApplicationType.HeadlessDesktop -> TODO()
-        Application.ApplicationType.Applet -> TODO()
-        Application.ApplicationType.WebGL -> TODO()
-        Application.ApplicationType.iOS -> TODO()
-    }
-
-
-
     val renderBufferManager = RenderBufferManager(
         simulationData = simulationData,
         cellEntity = cellEntity,
@@ -225,18 +185,13 @@ object DISimulationContainer:  DIContext, Disposable {
         linkEntity = linkEntity,
         cellList = cellList,
         specialEntity = specialEntity,
-        pheromoneEntity = pheromoneEntity
+        pheromoneEntity = pheromoneEntity,
+        neuralLinkEntity = neuralLinkEntity
     )
 
     val renderSystem = RenderSystem(
-        cellEntity = cellEntity,
-        linkEntity = linkEntity,
-        shaderManager = shaderManager,
-        pheromoneShaderManager = pheromoneShaderManager,
-        particleEntity = particleEntity,
-        renderBufferManager = renderBufferManager,
-        diContext = this,
-        pheromoneEntity = pheromoneEntity
+        worldRenderer = worldRenderer,
+        renderBufferManager = renderBufferManager
     )
 
     val userCommandManager = UserCommandManager(
@@ -247,7 +202,8 @@ object DISimulationContainer:  DIContext, Disposable {
         simulationData = simulationData,
         gridManager = gridManager,
         particleEntity = particleEntity,
-        zygote = zygote
+        zygote = zygote,
+        isEditor = false
     )
 
     override val worldCommandsManager = WorldCommandsManager(
@@ -256,6 +212,7 @@ object DISimulationContainer:  DIContext, Disposable {
         organEntity = organEntity,
         cellEntity = cellEntity,
         linkEntity = linkEntity,
+        neuralLinkEntity = neuralLinkEntity,
         particleEntity = particleEntity,
         pheromoneEntity = pheromoneEntity,
         substrateSettings = substrateSettings,
@@ -275,6 +232,19 @@ object DISimulationContainer:  DIContext, Disposable {
         particleEntity = particleEntity,
         cellEntity = cellEntity
     )
+    val worldTerrainManager = WorldTerrainManager(
+        particleEntity = particleEntity,
+        substancesEntity = substancesEntity
+    )
+
+    val collisionManager = CollisionManager(
+        entity = particleEntity,
+        worldCommandsManager = worldCommandsManager,
+        linkEntity = linkEntity,
+        cellList = cellList,
+        cellEntity = cellEntity,
+        substancesEntity = substancesEntity,
+    )
 
     val particlePhysicsSystem = ParticlePhysicsSystem(
         entity = particleEntity,
@@ -286,7 +256,8 @@ object DISimulationContainer:  DIContext, Disposable {
         cellList = cellList,
         cellEntity = cellEntity,
         substancesEntity = substancesEntity,
-        pheromonesManager = pheromonesManager
+        pheromonesManager = pheromonesManager,
+        collisionManager = collisionManager
     )
 
     val threadManager = ThreadManager(
@@ -304,6 +275,7 @@ object DISimulationContainer:  DIContext, Disposable {
     val mutateManager = MutateManager(
         cellEntity = cellEntity,
         linkEntity = linkEntity,
+        neuralLinkEntity = neuralLinkEntity,
         worldCommandsManager = worldCommandsManager,
         particleEntity = particleEntity,
         gridManager = gridManager,
@@ -331,7 +303,26 @@ object DISimulationContainer:  DIContext, Disposable {
         cellEntity = cellEntity,
         worldCommandsManager = worldCommandsManager,
         cellSystem = cellSystem,
+        simulationData = simulationData,
         diContext = this
+    )
+
+    val neuralLinkManager = NeuralLinkManager(
+        neuralLinkEntity = neuralLinkEntity,
+        cellEntity = cellEntity
+    )
+
+    val movementManager = MovementManager(
+        entity = particleEntity,
+        gridManager = gridManager,
+        substrateSettings = substrateSettings,
+        worldCommandsManager = worldCommandsManager,
+        simulationData = simulationData,
+        linkEntity = linkEntity,
+        cellList = cellList,
+        cellEntity = cellEntity,
+        substancesEntity = substancesEntity,
+        pheromonesManager = pheromonesManager
     )
 
 
@@ -343,9 +334,10 @@ object DISimulationContainer:  DIContext, Disposable {
             organEntity = organEntity,
             cellEntity = cellEntity,
             linkEntity = linkEntity,
+            neuralLinkEntity = neuralLinkEntity,
+            neuralLinkManager = neuralLinkManager,
             particleEntity = particleEntity,
             pheromoneEntity = pheromoneEntity,
-            substancesEntity = substancesEntity,
             substrateSettings = substrateSettings,
             threadManager = threadManager,
             genomeManager = genomeManager,
@@ -354,11 +346,11 @@ object DISimulationContainer:  DIContext, Disposable {
             simulationData = simulationData,
             cellSystem = cellSystem,
             userCommandManager = userCommandManager,
-            shaderManager = shaderManager,
-            renderSystem = renderSystem,
             entityList = entityList,
             renderBufferManager = renderBufferManager,
-            pheromonesManager = pheromonesManager
+            pheromonesManager = pheromonesManager,
+            movementManager = movementManager,
+            worldTerrainManager = worldTerrainManager
         )
     }
 
@@ -367,10 +359,6 @@ object DISimulationContainer:  DIContext, Disposable {
     }
 
     fun resizeWorld() {
-        if (GRID_WIDTH == gridWidth && GRID_HEIGHT == gridHeight) return
-        gridWidth = GRID_WIDTH
-        gridHeight = GRID_HEIGHT
-
         chunkHeight = HALF_CHUNK_HEIGHT * 2
         heightMultiplier = chunkHeight * 2
         gridSize = gridWidth * gridHeight

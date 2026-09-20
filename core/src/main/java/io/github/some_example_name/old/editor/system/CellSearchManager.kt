@@ -4,7 +4,6 @@ import io.github.some_example_name.old.core.utils.distanceTo
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.nextStageTick
 import io.github.some_example_name.old.editor.entities.CellReplay
-import io.github.some_example_name.old.editor.system.logic.EditorLogicSystem
 import io.github.some_example_name.old.editor.system.logic.ToEditorDataMapper
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.physics.GridManager
@@ -114,7 +113,7 @@ class CellSearchManager(
         return allCells.filter { it != clickedCellIndex }
     }
 
-    fun tryToDivideCell(
+    fun getPositionForNewCell(
         clickedCellIndex: Int,
         symmetryManager: SymmetryManager,
     ): Pair<Float, Float>? {

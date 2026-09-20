@@ -5,8 +5,8 @@ import io.github.some_example_name.old.editor.system.logic.RestartSimulationCall
 import java.util.Stack
 
 class CommandEditorStackManager() {
-    private val undoStack = Stack<UndoRedoCommand>()
-    private val redoStack = Stack<UndoRedoCommand>()
+    val undoStack = Stack<UndoRedoCommand>()
+    val redoStack = Stack<UndoRedoCommand>()
     private val MAX_COMMANDS = 32
     lateinit var restartSimulationCallBack: RestartSimulationCallBack
 

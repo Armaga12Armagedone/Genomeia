@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.commands.WorldCommandType
+import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.utils.pinkColors
 
 // Dies when it receives an impulse
@@ -8,7 +9,12 @@ import io.github.some_example_name.old.core.utils.pinkColors
 class Breakaway(cellTypeId: Int): Cell(
     defaultColor = pinkColors[1],
     cellTypeId = cellTypeId,
-    isNeural = true
+    isNeural = true,
+    defaultCellSettings = CellSettings(
+        maxEnergy = 3f,
+        cellStiffness = 0.02f,
+        linkStiffness = 0.025f,
+    )
 ) {
 
     override fun doOnTick(cellIndex: Int, threadId: Int) {

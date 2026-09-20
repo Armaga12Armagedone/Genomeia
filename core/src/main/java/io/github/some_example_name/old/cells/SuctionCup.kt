@@ -5,6 +5,7 @@ import io.github.some_example_name.old.core.utils.leafColors
 class SuctionCup(cellTypeId: Int): Cell(
     defaultColor = leafColors[5],
     cellTypeId = cellTypeId,
+    textureName = "SuctionCup.png",
     isNeural = true
 ) {
 

@@ -15,6 +15,9 @@ class NeuralEntity(
     var dTime = FloatArray(maxAmount) { -1f }
     var remember = FloatArray(maxAmount)
     var isSum = BooleanArray(maxAmount)
+    var tickPain = IntArray(maxAmount)
+    var tickRed = IntArray(maxAmount)
+    var weight = FloatArray(maxAmount)
 
     fun addNeural(
         cellType: Int,
@@ -34,6 +37,9 @@ class NeuralEntity(
         this.dTime[neuralIndex] = -1f
         this.remember[neuralIndex]  = 0f
         this.isSum[neuralIndex] = isSum
+        this.tickPain[neuralIndex] = -1
+        this.tickRed[neuralIndex] = -1
+        this.weight[neuralIndex] = 0.5f
         return neuralIndex
     }
 
@@ -48,6 +54,9 @@ class NeuralEntity(
         dTime[neuralIndex] = -1f
         remember[neuralIndex] = 0f
         isSum[neuralIndex] = true
+        tickPain[neuralIndex] = -1
+        tickRed[neuralIndex] = -1
+        weight[neuralIndex] = 0.5f
     }
 
     override fun onCopy() {
@@ -67,6 +76,9 @@ class NeuralEntity(
         dTime.clear(-1f)
         remember.clear()
         isSum.clear(true)
+        tickPain.clear()
+        tickRed.clear()
+        weight.clear(0.5f)
     }
 
     override fun onResize(oldMax: Int) {
@@ -78,5 +90,8 @@ class NeuralEntity(
         dTime = dTime.resize(-1f)
         remember = remember.resize()
         isSum = isSum.resize(true)
+        tickPain = tickPain.resize()
+        tickRed = tickRed.resize()
+        weight = weight.resize(0.5f)
     }
 }

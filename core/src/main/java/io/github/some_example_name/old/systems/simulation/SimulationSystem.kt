@@ -1,17 +1,23 @@
 package io.github.some_example_name.old.systems.simulation
 
-import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.UserCommandManager
+import io.github.some_example_name.old.commands.WorldCommandType
+import io.github.some_example_name.old.core.DEBUG_CHECKS
+import io.github.some_example_name.old.core.PlatformTuning
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.Entity
 import io.github.some_example_name.old.entities.LinkEntity
+import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
-import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.OrganManager
@@ -20,11 +26,9 @@ import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.systems.physics.LinkPhysicsSystem
 import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem
 import io.github.some_example_name.old.systems.render.RenderBufferManager
-import io.github.some_example_name.old.systems.render.RenderSystem
-import io.github.some_example_name.old.systems.render.ShaderManager
-import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_HEIGHT
-import io.github.some_example_name.old.ui.screens.GlobalSettings.GRID_WIDTH
-import kotlin.random.Random
+import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
+import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
+import io.github.some_example_name.old.systems.physics.MovementManager
 
 class SimulationSystem(
     val gridManager: GridManager,
@@ -33,9 +37,10 @@ class SimulationSystem(
     val organEntity: OrganEntity,
     val cellEntity: CellEntity,
     val linkEntity: LinkEntity,
+    val neuralLinkEntity: NeuralLinkEntity,
+    val neuralLinkManager: NeuralLinkManager,
     val particleEntity: ParticleEntity,
     val pheromoneEntity: PheromoneEntity,
-    val substancesEntity: SubstancesEntity,
     val substrateSettings: SubstrateSettings,
     val threadManager: ThreadManager,
     val genomeManager: GenomeManager,
@@ -44,21 +49,27 @@ class SimulationSystem(
     val simulationData: SimulationData,
     val cellSystem: CellSystem,
     val userCommandManager: UserCommandManager,
-    val shaderManager: ShaderManager,
-    val renderSystem: RenderSystem,
     val entityList: List<Entity>,
     val renderBufferManager: RenderBufferManager,
-    val pheromonesManager: PheromonesManager
+    val pheromonesManager: PheromonesManager,
+    val movementManager: MovementManager,
+    val worldTerrainManager: WorldTerrainManager
 ) {
 
     private var simulationThread: Thread? = null
-    private var map: Array<BooleanArray>? = null
 
     fun startThread() {
         if (!threadManager.isRunning) {
+            threadManager.ensureStarted()
             threadManager.isRunning = true
 
-            simulationThread = Thread { threadManager.runUpdateLoop { updateTick() } }.apply {
+            // Поток симуляции — это воркер 0, он разбирает чанки наравне с остальными,
+            // поэтому получает ровно тот же приоритет. Разъехавшиеся приоритеты на
+            // спин-барьере дороже, чем низкий приоритет у всех сразу.
+            simulationThread = Thread {
+                PlatformTuning.onWorkerThreadStart(0)
+                threadManager.runUpdateLoop { updateTick() }
+            }.apply {
                 isDaemon = true
                 name = "Simulation-Main-Thread"
             }
@@ -66,63 +77,244 @@ class SimulationSystem(
         }
     }
 
+    // --- Performance Profiler ---
+    //
+    // Замер идёт всегда (два nanoTime на фазу — ~0.6 мкс на тик), вывод в CSV включается
+    // флагом PROFILE_LOG. Накопители — обычные LongArray по номеру фазы: ни строк,
+    // ни хэш-мапы, ни боксинга Double в цикле симуляции.
+    private val profiler = PhaseProfiler()
+    private val worldStats = WorldStats()
+
+    /** Только для отладочного стресс-теста, см. applyDebugStress. */
+    private val debugRandom = java.util.Random()
+
     fun updateTick() {
+        val tickStart = System.nanoTime()
+
         if (simulationData.isFinish) {
             dispose()
+            return
         }
         if (simulationData.isRestart) {
             restartSim()
+            return
         }
 
         simulationData.tickCounter++
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
 
-        linkPhysicsSystem.iterateLinks()
-        processParticleCollision()
-        cellSystem.iterateCell()
-        pheromonesManager.iterate()
-        arrangementOfPositionsInTheGrid()
+        if (DEBUG_CHECKS) applyDebugStress()
 
-        worldCommandsManager.executingCommandsFromTheWorld()
-        organManager.performOrgansNextStage()
-        userCommandManager.processingCommandsFromUser()
-        worldCommandsManager.executingLastCommandsFromTheWorld()
+        // --- Измерения ---
+        profiler.measure(Phase.LINKS) { linkPhysicsSystem.iterateLinksInParallel() }
+        profiler.measure(Phase.NEURAL) { neuralLinkManager.iterate() }
+        profiler.measure(Phase.COLLIDE) { processParticleCollision() }
+        profiler.measure(Phase.CELLS) { cellSystem.iterateCellInParallel() }
+        profiler.measure(Phase.PHEROMONE) { pheromonesManager.iterate() }
+        profiler.measure(Phase.ARRANGE) { arrangementOfPositionsInTheGrid() }
+        profiler.measure(Phase.WORLD_CMD) { worldCommandsManager.executingCommandsFromTheWorld() }
+        profiler.measure(Phase.ORGANS) { organManager.performOrgansNextStage() }
+        profiler.measure(Phase.USER_CMD) { userCommandManager.processingCommandsFromUser() }
+        profiler.measure(Phase.LAST_WORLD_CMD) { worldCommandsManager.executingLastCommandsFromTheWorld() }
+        // Единственное место, где меняется структура пространственной сетки. Стоит здесь,
+        // потому что к этому моменту уже применены все перемещения (фаза 6) и все
+        // создания/удаления частиц (фазы 7-10), то есть сетка собирается один раз по
+        // финальному состоянию тика. Фазы 1-6 следующего тика читают её только на чтение,
+        // поэтому многопоточным фазам не нужно ни блокировок, ни чётно-нечётных ограничений
+        // из-за мутации сетки.
+        profiler.measure(Phase.REBUILD) { gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId, particleEntity.isInGrid) }
 
-        renderBufferManager.updateBuffer()
+        // Ловит расхождение «частица есть в aliveList, но её нет в сетке или она лежит не
+        // в своей клетке» — то самое состояние, в котором частица рисуется, но не
+        // сталкивается и не берётся курсором. Стоит здесь, потому что сразу после
+        // перестройки инвариант обязан выполняться точно.
+        // Клетки организма обязаны лежать в его арене — на этом будет держаться обход
+        // организма по диапазону в параллельных фазах. Стоит здесь, вместе с проверкой
+        // сетки: обе ловят «сущность есть, но её никто не обсчитывает».
+        if (DEBUG_CHECKS) cellEntity.verifyArenaIntegrity()
+
+        if (DEBUG_CHECKS) {
+            gridManager.verifyIntegrity(
+                isAlive = particleEntity.isAlive,
+                particleCell = particleEntity.gridId,
+                inGrid = particleEntity.isInGrid,
+                px = particleEntity.x,
+                py = particleEntity.y
+            )
+        }
+
+        profiler.measure(Phase.RENDER) { renderBufferManager.updateBuffer(profiler.text) }
+
+        // Полный тик меряется отдельно, а не суммой фаз: разница между ним и суммой —
+        // это неучтённое время (паузы GC, вытеснение потока планировщиком), и она сама
+        // по себе диагностична.
+        profiler.record(Phase.TICK, System.nanoTime() - tickStart)
+
+        if (profiler.endTick()) {
+            fillWorldStats()
+            profiler.flush(worldStats)
+            // Раз в окно профиля, а не каждый тик: отчёт стоит проход по всем связям.
+            if (DEBUG_CHECKS) println(linkPhysicsSystem.describeLinkLocality())
+        }
+    }
+
+    /**
+     * Отладочный стресс-тест жизненного цикла клеток.
+     *
+     * Пока зажата A — несколько случайных клеток за тик умирают; пока зажата D — несколько
+     * получают предельную скорость в случайном направлении и улетают, разрывая свои связи.
+     *
+     * Смысл в том, чтобы гонки и битые ссылки в связях воспроизводились сами: они всплывают
+     * именно при активной смерти клеток и разрыве связей, а руками такой сценарий держать
+     * долго и ненадёжно.
+     *
+     * Стоит в самом начале тика, до всех фаз: команда DELETE_CELL попадёт в буфер и будет
+     * применена этим же тиком в фазе 7, а запись скорости идёт в однопоточном участке,
+     * пока ни один воркер не запущен.
+     */
+    private fun applyDebugStress() {
+        if (simulationData.debugKillCells) {
+            repeat(DEBUG_STRESS_CELLS_PER_TICK) { killRandomCell() }
+        }
+        if (simulationData.debugFlingCells) {
+            repeat(DEBUG_STRESS_CELLS_PER_TICK) { flingRandomCell() }
+        }
+    }
+
+    private fun killRandomCell() {
+        val alive = cellEntity.aliveList
+        if (alive.isEmpty()) return
+
+        val cellIndex = alive.getInt(debugRandom.nextInt(alive.size))
+        // Через обычную команду, а не напрямую: удаление клетки тянет за собой снятие
+        // связей, освобождение частицы и органа, и всё это должно пройти штатным путём.
+        worldCommandsManager.worldCommandBuffer[0].push(
+            WorldCommandType.DELETE_CELL,
+            cellIndex,
+            cellEntity.getGeneration(cellIndex)
+        )
+    }
+
+    private fun flingRandomCell() {
+        val alive = cellEntity.aliveList
+        if (alive.isEmpty()) return
+
+        val cellIndex = alive.getInt(debugRandom.nextInt(alive.size))
+        val particleIndex = cellEntity.getParticleIndex(cellIndex)
+        if (particleIndex == -1) return
+
+        // Ровно предел скорости: больше ставить бессмысленно, seedBump всё равно зажмёт.
+        // При MAX_SPEED смещение за тик равно HALF_CHUNK_HEIGHT, то есть связи длиной до
+        // sqrt(linkMaxLength2) рвутся за пару тиков.
+        val angle = debugRandom.nextFloat() * 2f * PI.toFloat()
+        particleEntity.vx[particleIndex] = cos(angle) * MovementManager.MAX_SPEED
+        particleEntity.vy[particleIndex] = sin(angle) * MovementManager.MAX_SPEED
+    }
+
+    /**
+     * Снимок объёма мира на момент закрытия окна усреднения.
+     *
+     * Считается раз в PROFILE_WINDOW_TICKS тиков, поэтому дороговизна не важна — но всё
+     * равно это только вычитания и сумма по 16 спискам.
+     *
+     * Количества живых сущностей берутся так же, как их считает оверлей: lastId минус
+     * размер стека переиспользуемых индексов.
+     */
+    private fun fillWorldStats() {
+        val stats = worldStats
+
+        stats.tick = simulationData.tickCounter.toLong()
+        stats.ups = simulationData.ups
+
+        // По aliveList, а не по lastId.
+        //
+        // Раньше считалось как lastId - deadStack.size + 1, и это работало, пока индексы
+        // выдавались подряд. С аренами lastId сдвигается за конец КАЖДОЙ брони сразу при
+        // рождении организма (Entity.reserveRange), задолго до того, как тело её заполнит,
+        // поэтому формула начала возвращать зарезервированную ёмкость вместо числа живых.
+        // На замере это выглядело как 11655 клеток и 31194 связи при реальных 8523 и 23553,
+        // то есть все производные метрики "на клетку" врали в полтора раза.
+        stats.cells = cellEntity.aliveList.size
+        stats.particles = particleEntity.aliveList.size
+        stats.links = linkEntity.aliveList.size
+
+        stats.gridSize = gridManager.gridSize
+        stats.occupiedCells = gridManager.occupiedCells
+        stats.maxParticlesInCell = gridManager.maxParticlesInCell
+
+        stats.workers = threadManager.executor.workerCount
+
+        stats.pairCandidatesTotal = SimCounters.take(SimCounters.PAIR_CANDIDATES)
+        stats.collisionsTotal = SimCounters.take(SimCounters.COLLISIONS)
+        stats.linkedSkipsTotal = SimCounters.take(SimCounters.LINKED_SKIPS)
+        stats.contactsTotal = SimCounters.take(SimCounters.CONTACTS)
+        stats.linkBreaksTotal = SimCounters.take(SimCounters.LINK_BREAKS)
+        stats.linkAnglesTotal = SimCounters.take(SimCounters.LINK_ANGLES)
+
+        // Занятость снимается по всем фазам разом: takeStage* обнуляет накопители,
+        // поэтому пропущенная фаза копила бы данные до следующего окна и врала.
+        val executor = threadManager.executor
+        for (phase in 0 until Phase.COUNT) {
+            stats.stageBusyNanos[phase] = executor.takeStageBusyNanos(phase)
+            stats.stageWallNanos[phase] = executor.takeStageWallNanos(phase)
+        }
+
+        // Все живые связи обходятся по аренам организмов, поэтому "обработано" и "живо" —
+        // теперь одно и то же число. Поле оставлено, чтобы не ломать формат CSV.
+        stats.linksProcessed = linkEntity.aliveList.size
     }
 
     fun processParticleCollision() {
-        threadManager.runChunkStage(isOdd = true) { start, end, threadId ->
-            particlePhysicsSystem.processGridChunkPhysics(start, end, threadId, isOdd = true)
+        threadManager.runChunkStage(isOdd = true, stageId = Phase.COLLIDE) { start, end, threadId ->
+            particlePhysicsSystem.processGridRangePhysics(start, end, threadId)
         }
-        threadManager.runChunkStage(isOdd = false) { start, end, threadId ->
-            particlePhysicsSystem.processGridChunkPhysics(start, end, threadId, isOdd = false)
+        threadManager.runChunkStage(isOdd = false, stageId = Phase.COLLIDE) { start, end, threadId ->
+            particlePhysicsSystem.processGridRangePhysics(start, end, threadId)
         }
     }
 
+    /**
+     * Интегрирование позиций. Работы здесь мало (позиция += скорость, ограничение
+     * по границам мира, пересчёт gridId), поэтому фаза почти целиком состояла из
+     * накладных расходов: два барьера на ExecutorService по ~8 submit + 8 Future.get
+     * каждый — это десятки микросекунд на десяток микросекунд полезной работы.
+     * Теперь барьер спиновый, а слоты раздаются динамически: в стеке одного чанка
+     * могут быть тысячи частиц, в соседнем — единицы.
+     *
+     * Две стадии (odd/even) пока сохранены, потому что буферы отложенных команд
+     * индексируются номером чанка, и слот odd-чанка совпал бы со слотом even-чанка.
+     * Само движение сетку больше не мутирует, так что после разведения буферов по
+     * чанкам обе стадии можно будет слить в одну.
+     */
     fun arrangementOfPositionsInTheGrid() {
-        for (chunk in 0..<threadCount) {
-            threadManager.futures.add(threadManager.executor.submit {
-                for (i in 0..<worldCommandsManager.oddCellCounter[chunk]) {
-                    particlePhysicsSystem.moveParticle(worldCommandsManager.oddCellChunkPositionStack[chunk][i], chunk)
-                }
-            })
-        }
-        threadManager.futures.forEach { it.get() }
-        threadManager.futures.clear()
+        val alive = particleEntity.aliveList
+        val size = alive.size
+        if (size == 0) return
 
-        for (chunk in 0..<threadCount) {
-            threadManager.futures.add(threadManager.executor.submit {
-                for (i in 0..<worldCommandsManager.evenCellCounter[chunk]) {
-                    particlePhysicsSystem.moveParticle(worldCommandsManager.evenCellChunkPositionStack[chunk][i], chunk)
-                }
-            })
-        }
-        threadManager.futures.forEach { it.get() }
-        threadManager.futures.clear()
+        // Ровные блоки aliveList, а не стеки, набитые обходом сетки.
+        //
+        // Раньше список частиц для движения набирался ПОБОЧНЫМ ЭФФЕКТОМ фазы коллизий:
+        // проходя сетку, она складывала встреченные индексы в стеки чанков, и двигалось
+        // ровно то, что попало в сетку. Пока в сетке были все частицы, это работало и
+        // экономило отдельный обход. Как только из сетки убрали внутренние клетки
+        // (ParticleEntity.isInGrid), они перестали и двигаться — стояли на месте, потому
+        // что их никто не клал в стек.
+        //
+        // Связывать движение с сеткой не было причины и раньше: moveParticle трогает
+        // только свою же частицу, никакой пространственной изоляции ему не нужно.
+        // Чётность существовала лишь потому, что буферы команд индексировались номером
+        // чанка; теперь номер воркера приходит отдельно, и обе стадии слились в одну —
+        // на барьер меньше.
+        val blockCount = threadCount
+        val blockSize = (size + blockCount - 1) / blockCount
 
-        worldCommandsManager.oddCellCounter.fill(0)
-        worldCommandsManager.evenCellCounter.fill(0)
+        threadManager.runWorkStage(blockCount, Phase.ARRANGE) { block, workerId ->
+            val start = block * blockSize
+            val end = minOf(start + blockSize, size)
+            for (i in start until end) {
+                movementManager.moveParticle(alive.getInt(i), workerId)
+            }
+        }
     }
 
     fun stopUpdateThread() {
@@ -136,8 +328,6 @@ class SimulationSystem(
                 e.printStackTrace()
             }
         }
-
-        threadManager.futures.clear()
     }
 
     fun dispose() {
@@ -150,115 +340,23 @@ class SimulationSystem(
     private fun restartSim() {
         dispose()
         simulationData.isRestart = false
-        initWorld(map)
+        worldTerrainManager.initWorld(
+            gridWith = DISimulationContainer.gridWidth,
+            gridHeight = DISimulationContainer.gridHeight
+        )
     }
 
-    fun getColor(random: Random): Int {
-        val r = random.nextFloat() * 0.25f + 0.1f   // 0.1 - 0.35
-        val g = random.nextFloat() * 0.5f + 0.5f    // 0.5 - 1.0
-        val b = random.nextFloat() * 0.2f + 0.05f   // 0.05 - 0.25
-
-        return Color(r, g, b, 1f).toIntBits()
+    fun initMap() {
+        worldTerrainManager.initWorld(
+            gridWith = DISimulationContainer.gridWidth,
+            gridHeight = DISimulationContainer.gridHeight
+        )
     }
-//    fun getColor(random: Random) = leafColors[random.nextInt(6)].toIntBits()
-
-    fun initWorld(map: Array<BooleanArray>?) {
-        this.map = map
-        val random = Random(3)
-        if (map != null) {
-            for (y in 0 until map.size) {
-                for (x in 0 until map[y].size) {
-
-                    val scalex = x.toFloat() / 1.5f
-                    val scaley = y.toFloat() / 1.5f
-                    if (x == 0 || x == map.size - 1 || y == 0 || y == map[y].size - 1) continue
-                    if (map[y][x]) {
-                        if (scalex < GRID_WIDTH && scaley < GRID_HEIGHT) {
-                            particleEntity.addParticle(
-                                x = scalex,
-                                y = scaley,
-                                radius = 0.5f,
-                                color = getColor(random),
-                                isCell = false,
-                                isSub = false,
-                                holderEntityIndex = -1,
-                                dragCoefficient = 0.4f
-                            )
-                        }
-
-                    } else {
-//                    if (random.nextInt(60) == 1) {
-////                        subManager.addCell(
-////                            x * WorldEditorScreen.SCALE_FACTOR + WorldEditorScreen.OFFSET + random.nextDouble(-10.0, 10.0).toFloat(),
-////                            y * WorldEditorScreen.SCALE_FACTOR + WorldEditorScreen.OFFSET + random.nextDouble(-10.0, 10.0).toFloat(),
-////                            0f, 0f
-////                        )
-//
-//                        substancesEntity.addSubstance(
-//                            x = scalex,
-//                            y = scaley,
-//                            color = Color.RED.toIntBits(),
-//                            radius = 0.25f,
-//                            subType = 0.toByte(),
-//                        )
-//                    }
-                    }
-                }
-            }
-        }
-        for (i in 1..<(GRID_WIDTH / 2 * 3)) {
-            particleEntity.addParticle(
-                x = i.toFloat() / 1.5f,
-                y = 0.5f,
-                radius = 0.5f,
-                color = getColor(random),
-                isCell = false,
-                isSub = false,
-                holderEntityIndex = -1,
-                dragCoefficient = 1.0f
-            )
-        }
-        for (i in 1..<(GRID_HEIGHT / 2 * 3)) {
-            particleEntity.addParticle(
-                x = 0.5f,
-                y = i.toFloat() / 1.5f,
-                radius = 0.5f,
-                color = getColor(random),
-                isCell = false,
-                isSub = false,
-                holderEntityIndex = -1,
-                dragCoefficient = 1.0f
-            )
-        }
-
-        for (i in 1..<(GRID_HEIGHT / 2 * 3)) {
-            particleEntity.addParticle(
-                x = GRID_WIDTH - 0.5f,
-                y = i.toFloat() / 1.5f,
-                radius = 0.5f,
-                color = getColor(random),
-                isCell = false,
-                isSub = false,
-                holderEntityIndex = -1,
-                dragCoefficient = 1.0f
-            )
-        }
-        for (i in 1..<(GRID_WIDTH / 2 * 3)) {
-            particleEntity.addParticle(
-                x = i.toFloat() / 1.5f,
-                y = GRID_HEIGHT - 0.5f,
-                radius = 0.5f,
-                color = getColor(random),
-                isCell = false,
-                isSub = false,
-                holderEntityIndex = -1,
-                dragCoefficient = 1.0f
-            )
-        }
-    }
-
 
     companion object {
         const val DELTA_SIM_TICK_TIME = 0.016666666f
+
+        /** Сколько клеток за тик убивает / разгоняет отладочный стресс-тест. */
+        private const val DEBUG_STRESS_CELLS_PER_TICK = 55
     }
 }

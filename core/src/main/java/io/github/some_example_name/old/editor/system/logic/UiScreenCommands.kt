@@ -5,16 +5,23 @@ import io.github.some_example_name.old.editor.entities.EditorCell
 sealed interface UiScreenCommands
 
 class ShowDivideDialog(
-    clickedCell: EditorCell,
-    clickedIndex: Int,
-    newDividedCellPosition: Pair<Float, Float>
+    val clickedCell: EditorCell,
+    val newDividedCellPosition: Pair<Float, Float>
 ): UiScreenCommands
 
 class ShowMutateDialog(
-    clickedCell: EditorCell,
-    clickedIndex: Int
+    val clickedCell: EditorCell,
+    val parentCell: EditorCell?,
+    val currentTick: Int
 ): UiScreenCommands
 
-class MutateOrDivideDialog(
+class ShowMutateOrDivideDialog(
+    val clickedCell: EditorCell,
+    val parentCell: EditorCell?,
+    val newDividedCellPosition: Pair<Float, Float>,
+    val currentTick: Int
+): UiScreenCommands
 
-):UiScreenCommands
+class ShowChangeRemoveDialog(
+    val clickedCell: EditorCell,
+): UiScreenCommands

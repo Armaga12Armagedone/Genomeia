@@ -1,19 +1,16 @@
 package io.github.some_example_name.old.systems.physics
 
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
-import io.github.some_example_name.old.core.DISimulationContainer.HALF_CHUNK_HEIGHT
+import io.github.some_example_name.old.core.PROFILE_COUNTERS
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.entities.ParticleEntity
-import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
+import io.github.some_example_name.old.systems.simulation.SimCounters
 import io.github.some_example_name.old.systems.simulation.SimulationData
-import io.github.some_example_name.old.ui.screens.GlobalSettings.GRAVITATION
-import kotlin.math.sqrt
 
 class ParticlePhysicsSystem(
     val entity: ParticleEntity,
@@ -25,280 +22,173 @@ class ParticlePhysicsSystem(
     val linkEntity: LinkEntity,
     val cellList: List<Cell>,
     val substancesEntity: SubstancesEntity,
-    val pheromonesManager: PheromonesManager
+    val pheromonesManager: PheromonesManager,
+    val collisionManager: CollisionManager
 ) {
 
-    val halfChunkHeight2 = HALF_CHUNK_HEIGHT * HALF_CHUNK_HEIGHT
+    /**
+     * Ядро широкой фазы.
+     *
+     * Ключевые моменты по производительности:
+     *  - НЕТ аллокаций: частицы клетки читаются прямо из CSR-массива gridManager.particleIdx,
+     *    без copyOfRange (раньше это было ~150k аллокаций массивов за тик).
+     *  - НЕТ разреженной сетки: частицы лежат подряд (34 КБ), а не в 256 КБ слотов по 4
+     *    на клетку, из которых заняты единицы. Меньше кэш-линий на тот же объём данных.
+     *  - НЕТ ветки на переполнение клетки и походов в хэш-мапу хвостов: путь всегда один.
+     *  - НЕТ повторного чтения границы клетки: правая граница предыдущей клетки — это
+     *    левая граница следующей, поэтому на клетку приходится одно чтение cellStart.
+     *  - НЕТ целочисленного деления на клетку: x/y ведутся инкрементально
+     *    (раньше было i % gridWidth и i / gridWidth = 2 idiv на каждую из 16k клеток).
+     *  - НЕТ раскладки частиц по стекам чанков: фаза больше ничего не собирает для
+     *    движения. Список для moveParticle берётся из aliveList (см.
+     *    SimulationSystem.arrangementOfPositionsInTheGrid), потому что движению
+     *    пространственная изоляция не нужна, а привязка к сетке молча выключала
+     *    движение у частиц, которых в сетке нет.
+     *  - Ссылки на массивы подняты в локальные переменные: поля cellStart/particleIdx
+     *    объявлены как var, поэтому JIT обязан перечитывать их после каждой записи в память.
+     *
 
-    fun processGridChunkPhysics(start: Int, end: Int, threadId: Int, isOdd: Boolean) {
-        for (i in start until end) {
-            val x = i % gridManager.gridWidth
-            val y = i / gridManager.gridWidth
+     * Прямой обход сетки безопасен, потому что в этой фазе сетка не мутирует:
+     * repulse и onContact пишут только в vx/vy/energy/radius и в отложенные команды.
+     */
+    fun processGridRangePhysics(start: Int, end: Int, threadId: Int) {
+        val starts = gridManager.cellStart
+        val indices = gridManager.particleIdx
+        val width = gridManager.gridWidth
 
-            if (gridManager.particleCounts[i] > 0) {
-                val particles = gridManager.getParticlesIndex(i)
-                processCollisionsInTheSameCell(particles, threadId)
-                for (particleIndex in particles) {
-                    processNeighborsCellsCollision(particleIndex, x, y, threadId)
-                    distributeParticleIndicesAcrossChunks(particleIndex, threadId, isOdd)
-                }
-            }
-        }
-    }
+        // Двойной цикл по ряду/столбцу вместо i % width и i / width на каждую клетку.
+        // gridWidth — это var, поэтому JIT не может свернуть деление в сдвиг: раньше на
+        // каждую из ~16k клеток приходилось два настоящих idiv (20-40 циклов, divider не
+        // пайплайнится и блокирует порт). Теперь деление считается один раз на весь чанк,
+        // дальше только инкременты, и заодно исчезла проверка "x == width" на клетку.
+        var cellIndex = start
+        var y = start / width
+        var x = start - y * width
 
-    private fun distributeParticleIndicesAcrossChunks(
-        cellIndex: Int,
-        threadId: Int,
-        isOdd: Boolean
-    ) {
-        val stacks = if (isOdd) worldCommandsManager.oddCellChunkPositionStack
-        else worldCommandsManager.evenCellChunkPositionStack
-        val counters = if (isOdd) worldCommandsManager.oddCellCounter
-        else worldCommandsManager.evenCellCounter
+        // Накопитель пар-кандидатов держится в регистре и уезжает в разделяемый массив
+        // один раз в конце чанка — тот же приём, что и со счётчиком стека.
+        var pairCandidates = 0L
 
-        val index = counters[threadId]
-        var arr = stacks[threadId]
+        // Левая граница первой клетки чанка. Дальше она не перечитывается: правая граница
+        // клетки — это левая граница следующей, а клетки внутри чанка идут подряд.
+        var from = starts[cellIndex]
 
-        if (index >= arr.size) {
-            arr = arr.copyOf(arr.size + (arr.size shr 1))
-            stacks[threadId] = arr
-        }
+        while (cellIndex < end) {
+            // Конец текущего ряда сетки. Внутри ряда индексы клеток идут подряд, так что
+            // внутренний цикл — это линейный проход по cellStart и по particleIdx,
+            // идеальный для аппаратного префетчера.
+            var rowEnd = (y + 1) * width
+            if (rowEnd > end) rowEnd = end
 
-        arr[index] = cellIndex
-        counters[threadId] = index + 1
-    }
+            while (cellIndex < rowEnd) {
+                val to = starts[cellIndex + 1]
 
-    private fun processNeighborsCellsCollision(cellId: Int, gridX: Int, gridY: Int, threadId: Int) {
-        gridManager.getParticles(gridX - 1, gridY + 1).also { ids ->
-            for (id in ids) repulse(cellId, id, threadId)
-        }
-        gridManager.getParticles(gridX, gridY + 1).also { ids ->
-            for (id in ids) repulse(cellId, id, threadId)
-        }
-        gridManager.getParticles(gridX + 1, gridY + 1).also { ids ->
-            for (id in ids) repulse(cellId, id, threadId)
-        }
-
-        gridManager.getParticles(gridX + 1, gridY).also { ids ->
-            for (id in ids) repulse(cellId, id, threadId)
-        }
-    }
-
-    private fun processCollisionsInTheSameCell(cells: IntArray, threadId: Int) {
-        for (i in cells.indices) {
-            for (j in i + 1 until cells.size) {
-                repulse(cells[i], cells[j], threadId)
-            }
-        }
-    }
-
-    private fun repulse(particleAId: Int, particleBId: Int, threadId: Int) = with(entity) {
-        val dx = x[particleAId] - x[particleBId]
-        val dy = y[particleAId] - y[particleBId]
-        val dx2 = dx * dx
-        if (dx2 > MAX_RADIUS_SQUARED) return
-        val dy2 = dy * dy
-        if (dy2 > MAX_RADIUS_SQUARED) return
-
-        val particleRadius = radius[particleAId] + radius[particleBId]
-        val radiusSquared = particleRadius * particleRadius
-
-        val distanceSquared = dx2 + dy2
-        if (distanceSquared < radiusSquared) {
-
-            val isParticleAIsCell = isCell[particleAId]
-            val isParticleBIsCell = isCell[particleBId]
-            if (isParticleAIsCell && isParticleBIsCell ) {
-                val linkIndex = linkEntity.linkIndexMap.get(holderEntityIndex[particleAId], holderEntityIndex[particleBId])
-                if (linkIndex != -1 && !linkEntity.isLongNeuralLink[linkIndex]) {
-                    return@with
-                }
-            }
-
-            val distance = sqrt(distanceSquared)
-            if (isParticleAIsCell) {
-                if (effectOnContact[particleAId]) {
-                    val cellAIndex = holderEntityIndex[particleAId]
-                    val cellType = cellEntity.cellType[cellAIndex].toInt()
-                    cellList[cellType].onContact(
-                        cellIndex = cellAIndex,
-                        particleIndexCollided = particleBId,
-                        distance = distance,
-                        threadId = threadId
-                    )
-                }
-            }
-            if (isParticleBIsCell) {
-                if (effectOnContact[particleBId]) {
-                    val cellBIndex = holderEntityIndex[particleBId]
-                    val cellType = cellEntity.cellType[cellBIndex].toInt()
-                    cellList[cellType].onContact(
-                        cellIndex = cellBIndex,
-                        particleIndexCollided = particleAId,
-                        distance = distance,
-                        threadId = threadId
-                    )
-                }
-            }
-
-            if (!isParticleAIsCell && !isParticleBIsCell) {
-                //TODO вынести в SubManager
-                val rA2 = radius[particleAId] * radius[particleAId]
-                val rB2 = radius[particleBId] * radius[particleBId]
-                val radiusSumSquared = rA2 + rB2
-                if (radiusSumSquared < PARTICLE_MAX_RADIUS_SQUARED) {
-
-                    val maxRadius = maxOf(radius[particleAId], radius[particleBId])
-                    if (distance < maxRadius && isSub[particleAId] && isSub[particleBId]) {
-                        val subAIndex = holderEntityIndex[particleAId]
-                        val subBIndex = holderEntityIndex[particleBId]
-                        val radius = sqrt(radiusSumSquared)
-                        val deleteIndex = if (this.radius[particleAId] < this.radius[particleBId]) {
-                            this.radius[particleBId] = radius
-                            subAIndex
-                        } else {
-                            this.radius[particleAId] = radius
-                            subBIndex
-                        }
-
-                        worldCommandsManager.worldCommandBuffer[threadId].push(
-                            type = WorldCommandType.DELETE_SUBSTANCE,
-                            ints = intArrayOf(
-                                deleteIndex,
-                                substancesEntity.getGeneration(deleteIndex)
-                            )
-                        )
-                    } else {
-                        val force = 0.02f * rA2 * rB2 / distanceSquared
-                        val dirX = dx / distance
-                        val dirY = dy / distance
-                        val fx = force * dirX
-                        val fy = force * dirY
-                        vx[particleBId] += fx
-                        vy[particleBId] += fy
-                        vx[particleAId] -= fx
-                        vy[particleAId] -= fy
+                if (to > from) {
+                    if (PROFILE_COUNTERS) {
+                        // Ровно та же арифметика, что делают циклы ниже: C(n,2) пар внутри
+                        // клетки плюс n * (сколько частиц в просматриваемых соседях).
+                        // Считается по границам клеток, а не инкрементом в repulse:
+                        // на клетку это ~4 чтения из cellStart, который здесь и так
+                        // стримится через кэш, вместо миллиона инкрементов за тик.
+                        val n = (to - from).toLong()
+                        pairCandidates += n * (n - 1) / 2 + n * neighborCandidateCount(x, y)
                     }
-                } else {
 
-                    val stiffness = 0.009f
+                    // Пары внутри одной клетки сетки: каждая пара ровно один раз (i < j).
+                    // Частицы клетки лежат в particleIdx подряд, ограничения на их
+                    // количество больше нет.
+                    for (i in from until to) {
+                        val particleA = indices[i]
+                        for (j in i + 1 until to) {
+                            collisionManager.repulse(particleA, indices[j], threadId)
+                        }
+                    }
 
-                    if (distanceSquared < 0) throw Exception("distanceSquared < 0, distanceSquared = $distanceSquared")
-
-                    val force = (distance - 0.35f) * stiffness
-
-                    val dirX = dx / distance
-                    val dirY = dy / distance
-
-                    // Spring dampening
-                    val dvx = vx[particleAId] - vx[particleBId]
-                    val dvy = vy[particleAId] - vy[particleBId]
-
-                    val dampeningConstant = 0.3f
-                    val dampeningForce = dampeningConstant * (dvx * dirX + dvy * dirY)
-
-                    val cellStrengthAverage = 0.01f
-                    val forceRepulsion =
-                        cellStrengthAverage - cellStrengthAverage * distanceSquared / radiusSquared
-
-                    val fx = (force + dampeningForce - forceRepulsion) * dirX
-                    val fy = (force + dampeningForce - forceRepulsion) * dirY
-
-                    vx[particleBId] += fx
-                    vy[particleBId] += fy
-                    vx[particleAId] -= fx
-                    vy[particleAId] -= fy
+                    // Соседние клетки.
+                    for (i in from until to) {
+                        processNeighborsCellsCollision(indices[i], x, y, threadId)
+                    }
                 }
 
-                return@with
+                from = to
+                cellIndex++
+                x++
             }
 
-            if (isCollidable[particleAId] && isCollidable[particleBId]) {
-                // Квадратичная зависимость силы
-                val stiffnessA = cellStiffness[particleAId]
-                val stiffnessB = cellStiffness[particleBId]
-                val cellStrengthAverage = 2 * stiffnessA * stiffnessB / (stiffnessA + stiffnessB)
+            x = 0
+            y++
+        }
 
-                val force = cellStrengthAverage - cellStrengthAverage * distanceSquared / radiusSquared
-                // Нормализация вектора расстояния
-                val normX = dx / distance
-                val normY = dy / distance
-                val vectorX = normX * force
-                val vectorY = normY * force
 
-                vx[particleAId] += vectorX
-                vy[particleAId] += vectorY
-                vx[particleBId] -= vectorX
-                vy[particleBId] -= vectorY
+        if (PROFILE_COUNTERS) {
+            SimCounters.add(threadId, SimCounters.PAIR_CANDIDATES, pairCandidates)
+        }
+    }
+
+    /**
+     * Сколько частиц лежит в клетках, которые просматривает [processNeighborsCellsCollision]
+     * для клетки (x, y): верхний отрезок из трёх клеток плюс одна справа.
+     *
+     * Логика клампинга границ повторяет forEachParticleInRowSegment и forEachParticleAt
+     * один в один — если там что-то поменяется, здесь надо поменять тоже, иначе счётчик
+     * начнёт врать. Дублирование сознательное: звать сами обходы ради счёта означало бы
+     * лишний проход по particleIdx, а так это чистая арифметика по cellStart.
+     */
+    private fun neighborCandidateCount(gridX: Int, gridY: Int): Long {
+        val starts = gridManager.cellStart
+        val width = gridManager.gridWidth
+        var total = 0L
+
+        val upY = gridY + 1
+        if (upY < gridManager.gridHeight) {
+            val from = if (gridX - 1 < 0) 0 else gridX - 1
+            val to = if (gridX + 1 >= width) width - 1 else gridX + 1
+            if (from <= to) {
+                val rowBase = upY * width
+                total += (starts[rowBase + to + 1] - starts[rowBase + from]).toLong()
+            }
+        }
+
+        val rightX = gridX + 1
+        if (rightX < width) {
+            val right = gridY * width + rightX
+            total += (starts[right + 1] - starts[right]).toLong()
+        }
+
+        return total
+    }
+
+    /**
+     * Полуобход соседей: три клетки сверху (x-1, x, x+1) и одна справа.
+     * Так каждая пара соседних клеток обрабатывается ровно один раз.
+     *
+     * Верхний ряд идёт одним отрезком — индексы клеток там последовательные,
+     * это дешевле трёх независимых обращений и дружелюбнее к префетчеру.
+     */
+    fun processNeighborsCellsCollision(cellId: Int, gridX: Int, gridY: Int, threadId: Int = 0) {
+        gridManager.forEachParticleInRowSegment(gridY + 1, gridX - 1, gridX + 1) { id ->
+            collisionManager.repulse(cellId, id, threadId)
+        }
+        gridManager.forEachParticleAt(gridX + 1, gridY) { id ->
+            collisionManager.repulse(cellId, id, threadId)
+        }
+    }
+
+    /**
+     * Оставлено для совместимости: попарный перебор по готовому массиву индексов.
+     * В горячем пути не используется — там работает processGridRangePhysics.
+     */
+    fun processCollisionsInTheSameCell(cells: IntArray, threadId: Int = 0) {
+        processCollisionsInTheSameCell(cells, cells.size, threadId)
+    }
+
+    fun processCollisionsInTheSameCell(cells: IntArray, count: Int, threadId: Int = 0) {
+        for (i in 0 until count) {
+            val particleA = cells[i]
+            for (j in i + 1 until count) {
+                collisionManager.repulse(particleA, cells[j], threadId)
             }
         }
     }
 
-    private fun processWorldBorders(cellId: Int) = with(entity) {
-        if (x[cellId] < radius[cellId]) {
-            x[cellId] = radius[cellId]
-            vx[cellId] *= -0.8f
-        } else if (x[cellId] > gridManager.gridWidth - radius[cellId]) {
-            x[cellId] = gridManager.gridWidth - radius[cellId]
-            vx[cellId] *= -0.8f
-        }
-
-        if (y[cellId] < radius[cellId]) {
-            y[cellId] = radius[cellId]
-            vy[cellId] *= -0.8f
-        } else if (y[cellId] > gridManager.gridHeight - radius[cellId]) {
-            y[cellId] = gridManager.gridHeight - radius[cellId]
-            vy[cellId] *= -0.8f
-        }
-    }
-
-    fun moveParticle(particleIndex: Int, threadId: Int) = with(entity) {
-        val oldX = x[particleIndex].toInt()
-        val oldY = y[particleIndex].toInt()
-        val gridCellIndex = gridId[particleIndex]
-        vy[particleIndex] -= GRAVITATION
-
-        processCellFrictionOld(particleIndex)
-
-        //-= 0.04f * sin((500f - particleIndex) * simulationData.timeSimulation)
-//        vx[particleIndex] -= GRAVITATION //* cos((500f - particleIndex) * simulationData.timeSimulation)
-
-        val vxv = vx[particleIndex]
-        val vyv = vy[particleIndex]
-
-        val speed2 = vxv * vxv + vyv * vyv
-        if (speed2 > halfChunkHeight2) {
-            val invLen = HALF_CHUNK_HEIGHT * invSqrt(speed2)
-            vx[particleIndex] *= invLen
-            vy[particleIndex] *= invLen
-        }
-
-        x[particleIndex] += vx[particleIndex]
-        y[particleIndex] += vy[particleIndex]
-
-        processWorldBorders(particleIndex)
-        val x = x[particleIndex]
-        val y = y[particleIndex]
-
-        val newX = x.toInt()
-        val newY = y.toInt()
-        if (newX != oldX || newY != oldY) {
-            if (isPheromoneEmitter[particleIndex]) {
-                pheromonesManager.newGridCell(x, y, particleIndex, threadId)
-            }
-            gridManager.removeParticle(gridCellIndex, particleIndex)
-            gridId[particleIndex] = gridManager.addParticle(newX, newY, particleIndex)
-        }
-    }
-
-    private fun processCellFrictionOld(cellId: Int) = with(entity) {
-        vx[cellId] *= 1f - dragCoefficient[cellId]
-        vy[cellId] *= 1f - dragCoefficient[cellId]
-    }
-
-    companion object {
-        const val PARTICLE_MAX_RADIUS = 0.5f
-        const val PARTICLE_MAX_RADIUS_SQUARED = 0.25f
-        const val MAX_RADIUS_SQUARED = 4
-    }
 }

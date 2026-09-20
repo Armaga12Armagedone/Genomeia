@@ -3,16 +3,17 @@ package io.github.some_example_name.old.commands
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.cells.ControllerData
 import io.github.some_example_name.old.cells.SpecialModData
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.core.DIContext
+import io.github.some_example_name.old.core.SELF_REPRODUCTION_ENABLED
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.WorldResizable
 import io.github.some_example_name.old.core.utils.OrderedIntPairMap
 import io.github.some_example_name.old.core.utils.collectParticles
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
+import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
@@ -33,6 +34,7 @@ class WorldCommandsManager(
     val organEntity: OrganEntity,
     val cellEntity: CellEntity,
     val linkEntity: LinkEntity,
+    val neuralLinkEntity: NeuralLinkEntity,
     val specialEntity: SpecialEntity,
     val particleEntity: ParticleEntity,
     val pheromoneEntity: PheromoneEntity,
@@ -58,13 +60,7 @@ class WorldCommandsManager(
     private var lastAddedCellIndexBuffer = IntArray(diContext.threadCount) { -1 }
     private val organIndexCellIdMapIndex = OrderedIntPairMap()
 
-    var evenCellChunkPositionStack = Array(diContext.threadCount) { IntArray(5_000) }
-    var oddCellChunkPositionStack = Array(diContext.threadCount) { IntArray(5_000) }
-    var evenCellCounter = IntArray(diContext.threadCount)
-    var oddCellCounter = IntArray(diContext.threadCount)
 
-    var evenLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
-    var oddLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
 
     fun executingCommandsFromTheWorld() {
         worldCommandBuffer.forEachIndexed { threadId, worldCommandBuffer ->
@@ -87,28 +83,55 @@ class WorldCommandsManager(
 //                        )
                     }
                     WorldCommandType.ADD_LINK -> {
+                        // ints[0] == -1 означает "клетка, созданная предыдущей командой
+                        // этого же буфера". Но ADD_CELL мог отказаться её создавать
+                        // (морфогенез, если место уже занято), и тогда привязываться не
+                        // к чему: раньше здесь подхватывался ОСТАТОК от прошлого деления,
+                        // возможно вообще из другого тика, и связь уходила к посторонней
+                        // клетке. См. сброс lastAddedCellIndexBuffer в ADD_CELL.
                         val cellIndex = if (ints[0] == -1) {
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
 
-                        val otherCellIndex = ints[1]
+                        if (cellIndex == -1) return@consume
 
                         val linkIndex = linkEntity.addLink(
                             cellIndex = cellIndex,
-                            otherCellIndex = otherCellIndex,
+                            otherCellIndex = ints[1],
                             linksLength = floats[0],
-                            isStickyLink = booleans[0],
-                            isNeuronLink = booleans[1],
-                            isLink1NeuralDirected = booleans[2],
-                            color = ints[2]
+                            cellGeneration = ints[2],
+                            otherCellGeneration = ints[3],
                         )
-                        linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                        // -1 значит, что связь не создалась: либо у одной из клеток кончились
+                        // слоты (CellEntity.MAX_LINKS_PER_CELL), либо одна из них умерла
+                        // (или её индекс переиспользовала другая клетка) раньше, чем команда
+                        // дошла до применения.
+                        if (linkIndex != -1) {
+                        }
+                    }
+
+                    WorldCommandType.ADD_NEURAL_LINK -> {
+                        // Та же ловушка, что и в ADD_LINK: клетки могло не быть создано.
+                        val cellIndex = if (ints[0] == -1) {
+                            lastAddedCellIndexBuffer[threadId]
+                        } else ints[0]
+
+                        if (cellIndex == -1) return@consume
+
+                        neuralLinkEntity.addNeuralLink(
+                            cellIndex = cellIndex,
+                            otherCellIndex = ints[1],
+                            isLink1NeuralDirected = booleans[0],
+                            color = ints[2],
+                            cellGeneration = ints[3],
+                            otherCellGeneration = ints[4]
+                        )
+                    }
+                    WorldCommandType.DELETE_NEURAL_LINK -> {
+                        neuralLinkEntity.deleteNeuralLink(linkIndex = ints[0], linkGeneration = ints[1])
                     }
                     WorldCommandType.DELETE_LINK -> {
                         val linkIndex = ints[0]
-                        linkEntity.removeLinkFromLists(
-                            linkIndex, evenLinkLists, oddLinkLists
-                        )
                         linkEntity.deleteLink(linkIndex, linkGeneration = ints[1])
                     }
                     WorldCommandType.ADD_CELL -> {
@@ -121,7 +144,33 @@ class WorldCommandsManager(
                         var isDivide = true
                         var closestCells: IntArray? = null
 
-                        if (isMorphogenesis) {
+                        // Родитель мог умереть, пока команда ждала применения.
+                        //
+                        // ADD_CELL формируется в параллельной фазе, а применяется позже и по
+                        // буферам подряд: DELETE_CELL из буфера 1 выполнится раньше, чем
+                        // ADD_CELL из буфера 3. Делить уже нечего — контекст деления исчез.
+                        //
+                        // Если всё-таки создать клетку, она возьмёт свой якорь вместо
+                        // родительского (организм) и окажется новой системой
+                        // отсчёта посреди чужого организма. Все её связи с телом отвергнет
+                        // барьер в LinkEntity.addLink, и клетка молча повиснет отдельно.
+                        //
+                        // Одного isAlive мало: индексы клеток переиспользуются через deadStack,
+                        // поэтому умерший и заново занятый слот снова "жив", но это уже другая
+                        // клетка. Тогда потомок унаследовал бы ЧУЖУЮ карту тела и чужой якорь —
+                        // и присоединился бы не к тому организму, причём совершенно молча.
+                        // Отличает их поколение, снятое в момент постановки команды.
+                        //
+                        // Проверка стоит до морфогенеза: она заодно экономит collectParticles.
+                        val parentCellIndex = ints[4]
+                        val parentGeneration = ints[9]
+                        if (parentCellIndex != -1 &&
+                            !cellEntity.isAliveAndSameGen(parentCellIndex, parentGeneration)
+                        ) {
+                            isDivide = false
+                        }
+
+                        if (isDivide && isMorphogenesis) {
                             closestCells = gridManager.collectParticles(
                                 gridX = x.toInt(),
                                 gridY = y.toInt(),
@@ -185,6 +234,14 @@ class WorldCommandsManager(
                             //TODO сделать без алокаций
                             closestCells?.filter { particleEntity.isCell[it] }
                                 ?.map { particleEntity.holderEntityIndex[it] }
+                                // Связываться можно только со своим организмом.
+                                //
+                                // Это не косметика: слот связи назначается по СТАТИЧЕСКИМ
+                                // organIndex, а он осмыслен
+                                // сравнимы лишь внутри одного организма — у разных начала
+                                // отсчёта не связаны. Связь между организмами дала бы
+                                // произвольное статическое расстояние между её клетками,
+                                // а с ним вернулась бы гонка на vx/vy в фазе связей.
                                 ?.filter { cellEntity.organIndex[it] == cellEntity.organIndex[cellIndex] }
                                 ?.forEach {
                                         val dx = cellEntity.getX(it) - x
@@ -196,13 +253,11 @@ class WorldCommandsManager(
                                                 cellIndex = cellIndex,
                                                 otherCellIndex = it,
                                                 linksLength = sqrt(squareDist),
-                                                isStickyLink = false,
-                                                isNeuronLink = false,
-                                                isLink1NeuralDirected = false,
-                                                color = Color.RED.toIntBits()
                                             )
-                                            linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
+                                            if (linkIndex != -1) {
+                                            }
                                         }
+
                                 }
 
                             val genomeIndex = organEntity.genomeIndex[parentOrganIndex]
@@ -214,6 +269,22 @@ class WorldCommandsManager(
 
                             lastAddedCellIndexBuffer[threadId] = cellIndex
                             organIndexCellIdMapIndex.put(parentOrganIndex, cellGenomeId, cellIndex)
+                        } else {
+                            // Клетка не создана — значит и «последней созданной» для
+                            // следующих команд этого буфера нет.
+                            //
+                            // Без этого сброса ADD_LINK и ADD_NEURAL_LINK, идущие следом
+                            // и ссылающиеся на неё через -1, подхватывали ОСТАТОК от
+                            // прошлого деления: индекс живой, но совершенно посторонней
+                            // клетки, возможно из другого тика и другого места мира.
+                            // Связь при этом создавалась настоящая, считалась физикой и
+                            // писала в vx/vy чужих частиц.
+                            //
+                            // Ловилось это проверкой статических координат: посторонняя
+                            // клетка часто оказывалась из того же организма и физически
+                            // рядом (то есть проходила проверку расстояния в addLink),
+                            // но по карте тела стояла в другом месте.
+                            lastAddedCellIndexBuffer[threadId] = -1
                         }
                     }
                     WorldCommandType.DECREMENT_DIVIDE_COUNTER -> {
@@ -243,6 +314,12 @@ class WorldCommandsManager(
                             pheromoneEntity.addPheromone(x, y, emitterIndex = substancesEntity.particleIndex[newSubIndex], type = 0)
                             pheromoneEntity.addPheromone(x, y, emitterIndex = -1, type = 18, time = 0.3f)
                             organManager.cellDeleted(cellIndex)
+                            // Строго до deleteCell: detachAllLinks читает список соседей
+                            // умирающей клетки, а deleteCell его затирает. Здесь же
+                            // выжившие соседи получают isOnEdge и сброс parentIndex —
+                            // раньше это делал processLink, увидев мёртвую клетку.
+                            linkEntity.detachAllLinks(cellIndex)
+                            neuralLinkEntity.detachAllNeuralLinks(cellIndex)
                             cellEntity.deleteCell(cellIndex)
                             cellList[cellEntity.cellType[cellIndex].toInt()].onDie(cellIndex)
                         }
@@ -322,12 +399,19 @@ class WorldCommandsManager(
                     WorldCommandType.ADD_PHEROMONE_EMITTER -> {
                         specialEntity.addPheromoneEmitter(index = ints[0])
                     }
+                    WorldCommandType.MUTATE_ON_START -> {
+                        val index = ints[0]
+                        val threadId = ints[1]
+                        val genomeIndex = ints[2]
+                        val newCell = cellList[cellEntity.cellType[index].toInt()]
+                        newCell.onStart(index, threadId, genomeIndex)
+                    }
                     else -> {}
                 }
             }
         }
 
-        worldCommandSecondBuffer.forEachIndexed { threadId, worldCommandBuffer ->
+        worldCommandSecondBuffer.forEachIndexed { _, worldCommandBuffer ->
             worldCommandBuffer.consume { type, ints, floats, booleans ->
                 when (type) {
                     WorldCommandType.ADD_LINK_BY_ID -> {
@@ -335,23 +419,40 @@ class WorldCommandsManager(
                         val otherCellId = ints[1]
                         val organIndex = ints[2]
                         val linksLength = floats[0]
-                        val isNeuronLink = booleans[0]
-                        val isLink1NeuralDirected = booleans[1]
 
                         val cellIndex = organIndexCellIdMapIndex.get(organIndex, cellId)
                         val otherCellIndex = organIndexCellIdMapIndex.get(organIndex, otherCellId)
 
-                        if (cellIndex != -1 && otherCellIndex != -1 && linkEntity.linkIndexMap.get(cellIndex, otherCellIndex) == -1) {
+                        if (cellIndex != -1 && otherCellIndex != -1 &&
+                            !cellEntity.areCellsLinked(cellIndex, otherCellIndex)
+                        ) {
                             val linkIndex = linkEntity.addLink(
                                 cellIndex = cellIndex,
                                 otherCellIndex = otherCellIndex,
                                 linksLength = linksLength,
-                                isStickyLink = false,
-                                isNeuronLink = isNeuronLink,
+                            )
+                            if (linkIndex != -1) {
+                            }
+                        }
+
+                    }
+
+                    WorldCommandType.ADD_NEURAL_LINK_BY_ID -> {
+                        val cellId = ints[0]
+                        val otherCellId = ints[1]
+                        val organIndex = ints[2]
+                        val isLink1NeuralDirected = booleans[0]
+
+                        val cellIndex = organIndexCellIdMapIndex.get(organIndex, cellId)
+                        val otherCellIndex = organIndexCellIdMapIndex.get(organIndex, otherCellId)
+
+                        if (cellIndex != -1 && otherCellIndex != -1 && neuralLinkEntity.linkIndexMap.get(cellIndex, otherCellIndex) == -1) {
+                            neuralLinkEntity.addNeuralLink(
+                                cellIndex = cellIndex,
+                                otherCellIndex = otherCellIndex,
                                 isLink1NeuralDirected = isLink1NeuralDirected,
                                 color = ints[3]
                             )
-                            linkEntity.registerNewLink(linkIndex, evenLinkLists, oddLinkLists)
                         }
                     }
 
@@ -368,13 +469,30 @@ class WorldCommandsManager(
             when (type) {
                 WorldCommandType.ADD_ORGAN -> {
                     if (!isEditor) {
+                        // Сюда попадают только самозародившиеся организмы: ручной спавн
+                        // заводит организм напрямую в UserCommandManager, до первой клетки.
+                        //
+                        // Аренами этот путь пока не поддержан, и это осознанно: зигота
+                        // создаётся раньше своего организма, поэтому физически не может
+                        // оказаться в его арене (см. SELF_REPRODUCTION_ENABLED). Падаем
+                        // явно, а не заводим организм, у которого часть тела вне арены —
+                        // такое не упало бы вовсе, а просто выключило бы обход по диапазону.
+                        if (!SELF_REPRODUCTION_ENABLED) {
+                            throw IllegalStateException(
+                                "ADD_ORGAN при выключенном SELF_REPRODUCTION_ENABLED: " +
+                                    "кто-то создаёт организм в обход UserCommandManager"
+                            )
+                        }
+
                         val organStartCellOrganIndex = ints[0]
-                        cellEntity.organIndex[organStartCellOrganIndex] = organEntity.addOrgan(
+                        val newOrganIndex = organEntity.addOrgan(
                             genomeIndex = ints[1],
                             genomeSize = ints[2],
                             dividedTimes = ints[3],
                             mutatedTimes = ints[4]
                         )
+                        cellEntity.organIndex[organStartCellOrganIndex] = newOrganIndex
+//                        organEntity.allocateArenas(organIndex = newOrganIndex)
                     }
                 }
 
@@ -387,18 +505,8 @@ class WorldCommandsManager(
         worldCommandBuffer = Array(diContext.threadCount) { WorldCommandBuffer() }
         worldCommandSecondBuffer = Array(diContext.threadCount) { WorldCommandBuffer(100) }
         lastAddedCellIndexBuffer = IntArray(diContext.threadCount) { -1 }
-        evenCellChunkPositionStack = Array(diContext.threadCount) { IntArray(5_000) }
-        oddCellChunkPositionStack = Array(diContext.threadCount) { IntArray(5_000) }
-        evenCellCounter = IntArray(diContext.threadCount)
-        oddCellCounter = IntArray(diContext.threadCount)
-        evenLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
-        oddLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
     }
 
     override fun dispose() {
-        oddCellCounter.fill(0)
-        evenCellCounter.fill(0)
-        evenLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
-        oddLinkLists = Array(diContext.threadCount) { IntArrayList(5000) }
     }
 }

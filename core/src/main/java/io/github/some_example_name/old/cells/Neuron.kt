@@ -1,11 +1,13 @@
 package io.github.some_example_name.old.cells
 
+import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.core.utils.pinkColors
 
 class Neuron(cellTypeId: Int) : Cell(
     defaultColor = pinkColors.first(),
     cellTypeId = cellTypeId,
+    textureName = "neuron.png",
     isNeural = true
 ) {
 

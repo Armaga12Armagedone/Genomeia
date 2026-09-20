@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.cells
 
 import com.badlogic.gdx.graphics.Color
+import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import kotlin.reflect.KClass
@@ -8,6 +9,7 @@ import kotlin.reflect.KClass
 sealed class Cell(
     val defaultColor: Color,
     val cellTypeId: Int,
+    val textureName: String = "not_cell.png",
     val isDirected: Boolean = false,
     val isNeural: Boolean = false,
     val maxEnergy: Float = 5f,
@@ -16,6 +18,12 @@ sealed class Cell(
     val isCollidable: Boolean = true,
     val descriptionBundle: String? = null,
     val specialData: KClass<out SpecialModData> = Plug::class,
+    val defaultCellSettings: CellSettings = CellSettings(
+        maxEnergy = 5f,
+        cellStiffness = 0.02f,
+        linkStiffness = 0.025f,
+        energyActionCost = 0.0005f,
+    )
 ) {
     val name: String = this::class.simpleName ?: "UnknownCell"
     val description = descriptionBundle?.let { bundle.get(descriptionBundle) } ?: ""
@@ -27,6 +35,7 @@ sealed class Cell(
     val particleEntity get() = context.particleEntity
     val cellEntity get() = context.cellEntity
     val linkEntity get() = context.linkEntity
+    val neuralLinkEntity get() = context.neuralLinkEntity
     val substancesEntity get() = context.substancesEntity
     val specialEntity get() = context.specialEntity
     val worldCommandsManager get() = context.worldCommandsManager
@@ -46,9 +55,26 @@ sealed class Cell(
 
     }
 
+    /**
+     * Вызывается из фазы коллизий (CollisionManager.repulse), т.е. изнутри обхода сетки.
+     *
+     * ЗАПРЕЩЕНО менять содержимое сетки: никаких gridManager.addParticle / addCell /
+     * removeParticle и ничего, что меняет particleCounts, grid или mapMoreThenMax.
+     * ParticlePhysicsSystem обходит слоты сетки напрямую, без копирования в промежуточный
+     * массив, поэтому мутация сетки во время обхода приведёт к пропуску/дублированию
+     * частиц, а при переполнении клетки — к рассинхрону particleCounts со списком-хвостом.
+     *
+     * Можно: писать в vx/vy/energy/radius/цвет и складывать отложенные команды в
+     * worldCommandsManager.worldCommandBuffer[threadId] — они исполнятся после фаз физики.
+     *
+     * Также помни, что метод вызывается из нескольких потоков: писать можно только по
+     * индексам участников контакта (cellIndex / particleIndexCollided) и в буфер своего
+     * threadId, без общего изменяемого состояния.
+     */
     open fun onContact(cellIndex: Int, particleIndexCollided: Int, distance: Float, threadId: Int) {
 
     }
+
 
     open fun onDie(cellIndex: Int) {
 

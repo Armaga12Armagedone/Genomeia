@@ -5,11 +5,12 @@ import io.github.some_example_name.old.core.utils.blueColors
 class Tail(cellTypeId: Int): Cell(
     defaultColor = blueColors.first(),
     cellTypeId = cellTypeId,
+    textureName = "tail.png",
     isNeural = true,
     isDirected = true
 ) {
 
-    override fun doOnTick(cellIndex: Int, threadId: Int) = with(cellEntity) {
+    override fun doOnTick(cellIndex: Int, threadId: Int): Unit = with(cellEntity) {
         if (energy[cellIndex] > 0) {
             var impulse = neuronImpulseOutput[cellIndex]
             if (impulse < 0f) impulse = 0f

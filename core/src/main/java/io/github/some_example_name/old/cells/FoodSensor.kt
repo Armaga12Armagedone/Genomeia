@@ -5,6 +5,7 @@ import io.github.some_example_name.old.core.utils.purpleColors
 class FoodSensor(cellTypeId: Int): Cell(
     defaultColor = purpleColors.first(),
     cellTypeId = cellTypeId,
+    textureName = "sensor.png",
     isNeuronTransportable = false,
     isNeural = true
 ) {

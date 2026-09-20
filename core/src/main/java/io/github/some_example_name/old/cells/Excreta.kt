@@ -6,6 +6,7 @@ import io.github.some_example_name.old.core.utils.brownColors
 class Excreta(cellTypeId: Int): Cell(
     defaultColor = brownColors.first(),
     cellTypeId = cellTypeId,
+    textureName = "excreta.png",
     isDirected = true
 ) {
 

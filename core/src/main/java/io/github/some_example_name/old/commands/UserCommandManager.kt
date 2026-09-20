@@ -7,6 +7,7 @@ import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.DISimulationContainer.worldCommandsManager
+import io.github.some_example_name.old.core.log.ActionLog
 import io.github.some_example_name.old.core.utils.collectParticles
 import io.github.some_example_name.old.core.utils.distanceTo
 import io.github.some_example_name.old.entities.CellEntity
@@ -14,10 +15,9 @@ import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
+import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
-import io.github.some_example_name.old.systems.physics.ParticlePhysicsSystem.Companion.PARTICLE_MAX_RADIUS
 import java.util.concurrent.ConcurrentLinkedQueue
-import kotlin.collections.forEach
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -31,7 +31,8 @@ class UserCommandManager(
     val simulationData: SimulationData,
     val gridManager: GridManager,
     val particleEntity: ParticleEntity,
-    val zygote: Zygote
+    val zygote: Zygote,
+    val isEditor: Boolean
 ): Disposable {
 
     private val commandQueue = ConcurrentLinkedQueue<PlayerCommand>()
@@ -42,6 +43,10 @@ class UserCommandManager(
     @Volatile var isDragging = false
 
     fun push(cmd: PlayerCommand) {
+        // Единственный вход для действий игрока в мире — значит и единственное место,
+        // где их надо журналировать. Drag сыпется на каждое движение мыши, но подряд
+        // идущие однотипные записи ActionLog схлопывает в одну со счётчиком.
+        ActionLog.record(LOG_SOURCE, cmd.name, cmd.detail)
         commandQueue.offer(cmd)
     }
 
@@ -123,7 +128,7 @@ class UserCommandManager(
                     if (simulationData.selectedCellIndex == -1) {
                         if (cmd.isLeftButton) {
                             if (cmd.x > 0 && cmd.x < gridManager.gridWidth && cmd.y > 0 && cmd.y < gridManager.gridHeight) {
-                                val genomeIndex = simulationData.currentGenomeIndex
+                                val genomeIndex = cmd.genomeIndex ?: simulationData.currentGenomeIndex
                                 val genome = genomeManager.genomes[genomeIndex]
                                 val organIndex = organEntity.addOrgan(
                                     genomeIndex = genomeIndex,
@@ -131,7 +136,31 @@ class UserCommandManager(
                                     dividedTimes = genome.dividedTimes[0],
                                     mutatedTimes = genome.mutatedTimes[0]
                                 )
-                                val randomAngle = 0f//MathUtils.random(0f, MathUtils.PI2)
+                                // Строго до первой addCell: зигота уже должна брать слот
+                                // из арены, иначе тело начнётся вне своего диапазона.
+                                //
+                                // Размеры берутся из генома, снятые при запекании, а не из
+                                // констант: константа на все геномы сразу — это либо
+                                // перерасход на мелких телах, либо падение на крупных.
+                                // У незапечённого генома там нули, и тогда работают
+                                // прежние значения по умолчанию.
+                                if (genome.cellsAmount > 0) {
+                                    organEntity.allocateArenas(
+                                        organIndex = organIndex,
+                                        layout = genome.sortedGraph,
+                                        maxCells = genome.cellsAmount,
+                                        maxLinks = genome.linksAmount
+                                    )
+                                } else {
+                                    organEntity.allocateArenas(
+                                        organIndex = organIndex,
+                                        layout = genome.sortedGraph,
+                                        maxCells = genome.cellsAmount,
+                                        maxLinks = genome.linksAmount
+                                    )
+//                                    throw Exception("Пустой геном без клеток")
+                                }
+                                val randomAngle = if (isEditor) 0f else 0f//MathUtils.random(0f, MathUtils.PI2)
                                 cellEntity.addCell(
                                     x = cmd.x,
                                     y = cmd.y,
@@ -201,6 +230,10 @@ class UserCommandManager(
                 vy[grabbedParticleIndex] = vy[grabbedParticleIndex] * grabDrag + (tapY - y[grabbedParticleIndex]) * 0.02f
             }
         }
+    }
+
+    private companion object {
+        const val LOG_SOURCE = "Player"
     }
 
     override fun dispose() {

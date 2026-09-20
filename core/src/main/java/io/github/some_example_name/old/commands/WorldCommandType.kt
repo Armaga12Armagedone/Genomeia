@@ -1,20 +1,44 @@
 package io.github.some_example_name.old.commands
 
-enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, val booleanParamsCount: Int) {
-    ADD_CELL(
-        intParamsCount = 9,
+enum class WorldCommandType(
+    val intParamsCount: Int,
+    val floatParamsCount: Int,
+    val booleanParamsCount: Int
+) {
+    ADD_CELL( // ..., parentIndex(4), ..., specialModDataIndex(8), parentGeneration(9)
+        intParamsCount = 10,
         floatParamsCount = 11,
         booleanParamsCount = 2
     ),
-    ADD_LINK(
-        intParamsCount = 3,
-        floatParamsCount = 2,
-        booleanParamsCount = 3
-    ),
-    ADD_LINK_BY_ID(
+    ADD_LINK( // cellIndex, otherCellIndex, cellGeneration, otherCellGeneration
         intParamsCount = 4,
         floatParamsCount = 1,
-        booleanParamsCount = 2
+        booleanParamsCount = 0
+    ),
+    ADD_LINK_BY_ID(
+        intParamsCount = 3,
+        floatParamsCount = 1,
+        booleanParamsCount = 0
+    ),
+    DELETE_LINK( // linkIndex
+        intParamsCount = 2,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
+    ),
+    ADD_NEURAL_LINK( // cellIndex, otherCellIndex, color, cellGeneration, otherCellGeneration
+        intParamsCount = 5,
+        floatParamsCount = 0,
+        booleanParamsCount = 1
+    ),
+    ADD_NEURAL_LINK_BY_ID(
+        intParamsCount = 4,
+        floatParamsCount = 0,
+        booleanParamsCount = 1
+    ),
+    DELETE_NEURAL_LINK(
+        intParamsCount = 2,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
     ),
     ADD_SUBSTANCE(
         intParamsCount = 2, //color, subType
@@ -52,11 +76,6 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         booleanParamsCount = 0
     ),
     DELETE_CELL( // cellIndex, entityGeneration
-        intParamsCount = 2,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
-    DELETE_LINK( // linkIndex
         intParamsCount = 2,
         floatParamsCount = 0,
         booleanParamsCount = 0
@@ -144,11 +163,19 @@ enum class WorldCommandType(val intParamsCount: Int, val floatParamsCount: Int, 
         intParamsCount = 1,
         floatParamsCount = 0,
         booleanParamsCount = 0
+    ),
+    MUTATE_ON_START(
+        intParamsCount = 3,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
     );
 
     companion object {
-        const val MAX_INT_PARAMS = 9    // Максимум int на команду (покрывает все)
-        const val MAX_FLOAT_PARAMS = 11  // Максимум float
+        // Максимум int на команду: задаёт шаг в intParams всех буферов, поэтому увеличение
+        // стоит памяти во всех буферах сразу, а не только у самой длинной команды.
+        // Держать равным максимальному intParamsCount среди всех типов (сейчас ADD_CELL).
+        const val MAX_INT_PARAMS = 10
+        const val MAX_FLOAT_PARAMS = 11 // Максимум float
         const val MAX_BOOLEAN_PARAMS = 3 // Максимум boolean
     }
 }

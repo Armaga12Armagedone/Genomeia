@@ -5,6 +5,7 @@ import io.github.some_example_name.old.core.utils.blueColors
 class PheromoneSensor(cellTypeId: Int) : Cell(
     defaultColor = blueColors[2],
     cellTypeId = cellTypeId,
+    textureName = "PheromoneSensor.png",
     isNeural = true,
     isNeuronTransportable = false
 ) {

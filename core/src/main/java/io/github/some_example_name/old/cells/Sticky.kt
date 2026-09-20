@@ -5,6 +5,7 @@ import io.github.some_example_name.old.core.utils.pinkColors
 class Sticky(cellTypeId: Int) : Cell(
     defaultColor = pinkColors[3],
     cellTypeId = cellTypeId,
+    textureName = "sticky.png",
     isNeural = true,
     effectOnContact = true
 ) {

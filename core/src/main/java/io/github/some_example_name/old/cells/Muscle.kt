@@ -5,6 +5,7 @@ import io.github.some_example_name.old.core.utils.redColors
 class Muscle(cellTypeId: Int) : Cell(
     defaultColor = redColors[3],
     cellTypeId = cellTypeId,
+    textureName = "muscle.png",
     isNeural = true
 ) {
 
