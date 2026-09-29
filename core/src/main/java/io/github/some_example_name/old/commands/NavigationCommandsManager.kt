@@ -9,6 +9,7 @@ import io.github.some_example_name.old.features.editor.GenomeEditorScreen
 import io.github.some_example_name.old.features.settings.SettingsScreen
 import io.github.some_example_name.old.features.simulation.SimulationScreen
 import io.github.some_example_name.old.features.worldeditor.WorldEditorScreen
+import io.github.some_example_name.old.features.worldeditor.LogicUI
 
 class NavigationCommandsManager {
     private val navigationStack = ArrayDeque<Screen>()
@@ -29,6 +30,7 @@ class NavigationCommandsManager {
                     GoSupport -> SupportScreen()
                     EcoSystemScreenCellsSettings -> TODO()
                     EcoSystemScreenGlobalSettings -> TODO()
+                    GoLogic -> LogicUI()
                     is GoSimulation -> SimulationScreen(navigationCommands.map, navigationCommands.genomeName)
                 }
             }

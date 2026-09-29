@@ -11,6 +11,7 @@ sealed class Menu: NavigationCommands()
 object GoWorldEditor: Menu()
 class GoGenomeEditor(val genomeName: String?): Menu()
 object GoSettings: Menu()
+object GoLogic: Menu()
 object GoEcoSystem: Menu()
 object GoSupport: Menu()
 class GoSimulation(

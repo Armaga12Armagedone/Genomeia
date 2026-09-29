@@ -17,6 +17,7 @@ import io.github.some_example_name.old.systems.genomics.Morphogenesis
 import io.github.some_example_name.old.systems.genomics.genome_deprecated.GenomeJsonReader
 import io.github.some_example_name.old.systems.render.ShaderManager
 import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.systems.logic.Parser
 import java.util.Locale
 
 object DIGameGlobalContainer {
@@ -60,6 +61,8 @@ object DIGameGlobalContainer {
     val genomeJsonReader = GenomeJsonReader()
 
     private val cellListBuilder = CellListBuilder()
+
+    val logicParser = Parser() //парсер для обработки языка, который в последующем будет испольняться в симуляции.
 
     val particleTexturePaths: List<String> = cellListBuilder.instances.map {
         "cell_textures/" + it.textureName
