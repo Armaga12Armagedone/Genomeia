@@ -138,6 +138,14 @@ class SettingsScreen : VisDslScreen(
         visLabel(bundle.get("settings.graphics.todo")) {
             pad(16f)
         }
+        row()
+
+        // TODO: Change from constant name to bundle
+        visToggleButton(
+            text = "Debug Mode",
+            checked = GlobalSettings.DEBUG_MODE,
+            onCheckedChange = { GlobalSettings.DEBUG_MODE = it }
+        )
     }
 
     fun VisTable.language() {

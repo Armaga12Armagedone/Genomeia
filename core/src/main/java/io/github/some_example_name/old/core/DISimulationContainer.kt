@@ -40,6 +40,9 @@ import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
 import io.github.some_example_name.old.systems.physics.CollisionManager
 import io.github.some_example_name.old.systems.physics.MovementManager
 import kotlin.getValue
+import com.badlogic.gdx.math.MathUtils
+import io.github.some_example_name.old.systems.debug.LogReplay
+import io.github.some_example_name.old.systems.debug.LogSaver
 
 object DISimulationContainer : DIContext, Disposable {
 
@@ -56,8 +59,13 @@ object DISimulationContainer : DIContext, Disposable {
     var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks * 8f
     var linkMaxLength2 = 3f * 3f
     var cellsSettings = substrateSettings.cellsSettings
+    var logSaver: LogSaver = LogSaver()
+    var logReplay: LogReplay = LogReplay()
+    val seed: Long = MathUtils.random(0L, 1000L)
 
     init {
+        MathUtils.random.setSeed(seed)
+
         if (gridHeight % heightMultiplier != 0) throw Exception("gridHeight should be a multiple of (halfChunkHeight * 2 * 2)")
         println("thread count: $threadCount")
         println("thread count: $heightMultiplier")
@@ -204,7 +212,10 @@ object DISimulationContainer : DIContext, Disposable {
         particleEntity = particleEntity,
         zygote = zygote,
         isEditor = false
-    )
+    ).also {
+        it.random.setSeed(seed)
+        println("seed seted on manager: ${seed}")
+    }
 
     override val worldCommandsManager = WorldCommandsManager(
         gridManager = gridManager,

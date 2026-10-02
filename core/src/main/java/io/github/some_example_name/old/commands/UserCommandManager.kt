@@ -2,9 +2,11 @@ package io.github.some_example_name.old.commands
 
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.math.MathUtils
+import com.badlogic.gdx.math.RandomXS128
 import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.cells.Zygote
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
 import io.github.some_example_name.old.core.DISimulationContainer.worldCommandsManager
 import io.github.some_example_name.old.core.log.ActionLog
@@ -17,6 +19,7 @@ import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
+import io.github.some_example_name.old.features.settings.GlobalSettings.DEBUG_MODE
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.cos
 import kotlin.math.sin
@@ -42,6 +45,8 @@ class UserCommandManager(
     @Volatile var tapY = 0f
     @Volatile var isDragging = false
 
+    val random: RandomXS128 = RandomXS128()
+
     fun push(cmd: PlayerCommand) {
         // Единственный вход для действий игрока в мире — значит и единственное место,
         // где их надо журналировать. Drag сыпется на каждое движение мыши, но подряд
@@ -55,6 +60,10 @@ class UserCommandManager(
 
         while (true) {
             val cmd = commandQueue.poll() ?: break
+
+            if (DEBUG_MODE && !isEditor) {
+                DISimulationContainer.logSaver.saveUserCommand(cmd)
+            }
 
             when (cmd) {
                 PlayerCommand.StopDrag -> {
@@ -175,9 +184,9 @@ class UserCommandManager(
                         } else {
                             val radius = 7.0f
                             repeat(10) {
-                                val angle = MathUtils.random(0f, MathUtils.PI2)
+                                val angle = random.nextFloat(0f, MathUtils.PI2)
 
-                                val r = radius * sqrt(MathUtils.random())
+                                val r = radius * sqrt(random.nextFloat())
 
                                 val x = cmd.x + MathUtils.cos(angle) * r
                                 val y = cmd.y + MathUtils.sin(angle) * r
@@ -200,9 +209,9 @@ class UserCommandManager(
 
                                     if (neighborIndex == null) {
                                         val color = Color.RED.toIntBits()
-                                        val radius = Random.nextFloat() * (0.5f - 0.1f) + 0.1f
+                                        val radius = random.nextFloat() * (0.5f - 0.1f) + 0.1f
 
-                                        worldCommandsManager.worldCommandBuffer[Random.nextInt(
+                                        worldCommandsManager.worldCommandBuffer[random.nextInt(
                                             0,
                                             threadCount
                                         )].push(

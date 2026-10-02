@@ -141,4 +141,5 @@ object GlobalSettings {
     var MUSIC_VOLUME = 0
     var SOUND_VOLUME = 50
     var currentLanguageTag: String = Locale.getDefault().toLanguageTag()
+    var DEBUG_MODE = false
 }

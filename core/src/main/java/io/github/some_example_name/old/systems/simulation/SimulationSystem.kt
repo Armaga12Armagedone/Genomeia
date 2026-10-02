@@ -29,6 +29,7 @@ import io.github.some_example_name.old.systems.render.RenderBufferManager
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
 import io.github.some_example_name.old.systems.physics.MovementManager
+import io.github.some_example_name.old.features.settings.GlobalSettings.DEBUG_MODE
 
 class SimulationSystem(
     val gridManager: GridManager,
@@ -102,6 +103,10 @@ class SimulationSystem(
 
         simulationData.tickCounter++
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
+
+        if (!DEBUG_MODE) {
+            DISimulationContainer.logReplay.updateReplay()
+        }
 
         if (DEBUG_CHECKS) applyDebugStress()
 
@@ -335,6 +340,7 @@ class SimulationSystem(
         entityList.forEach { it.clear() }
         simulationData.clear()
         worldCommandsManager.dispose()
+        DISimulationContainer.logSaver.close()
     }
 
     private fun restartSim() {

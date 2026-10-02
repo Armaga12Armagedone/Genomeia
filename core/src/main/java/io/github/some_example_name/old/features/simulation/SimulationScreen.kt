@@ -146,6 +146,8 @@ class SimulationScreen(
         DISimulationContainer.worldTerrainManager.map = world?.buildMap()
         simulationSystem.initMap()
 
+        DISimulationContainer.logSaver.initLog()
+
         // Поток симуляции стартует ТОЛЬКО после того, как мир создан.
         //
         // Раньше startThread() стоял выше по show(), а initMap() — здесь, и оба вызова
@@ -403,15 +405,17 @@ class SimulationScreen(
             )
         controllerKeysToggle.isChecked = simulationSystem.simulationData.showControllerKeys
 
+        val logReplay = makeStyledButton("log Replay", DIGameGlobalContainer.game, extraTextures)
+
         val buttons = if (genomeName == null) {
             listOf(
                 menuButton, putOrganismToggle, selectGenomeButton, speedUpSimToggle,
-                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle
+                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle, logReplay
             )
         } else {
             listOf(
                 menuButton, putOrganismToggle, speedUpSimToggle, pauseSimToggle,
-                restartSimulationButton, drawRaysToggle, controllerKeysToggle
+                restartSimulationButton, drawRaysToggle, controllerKeysToggle, logReplay
             )
         }
 
@@ -722,6 +726,12 @@ class SimulationScreen(
         putOrganismToggle.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 putOrgs = putOrganismToggle.isChecked
+            }
+        })
+
+        logReplay.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                DISimulationContainer.logReplay.play()
             }
         })
 
