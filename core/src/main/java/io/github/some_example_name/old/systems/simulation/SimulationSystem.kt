@@ -29,7 +29,10 @@ import io.github.some_example_name.old.systems.render.RenderBufferManager
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
 import io.github.some_example_name.old.systems.physics.MovementManager
-import io.github.some_example_name.old.features.settings.GlobalSettings.DEBUG_MODE
+import io.github.some_example_name.old.features.settings.GlobalSettings
+import io.github.some_example_name.old.systems.debug.LogReplay
+import io.github.some_example_name.old.systems.debug.LogSaver
+import io.github.some_example_name.old.systems.debug.ReplayFormat
 
 class SimulationSystem(
     val gridManager: GridManager,
@@ -54,7 +57,9 @@ class SimulationSystem(
     val renderBufferManager: RenderBufferManager,
     val pheromonesManager: PheromonesManager,
     val movementManager: MovementManager,
-    val worldTerrainManager: WorldTerrainManager
+    val worldTerrainManager: WorldTerrainManager,
+    val logSaver: LogSaver,
+    val logReplay: LogReplay
 ) {
 
     private var simulationThread: Thread? = null
@@ -69,6 +74,9 @@ class SimulationSystem(
             // спин-барьере дороже, чем низкий приоритет у всех сразу.
             simulationThread = Thread {
                 PlatformTuning.onWorkerThreadStart(0)
+                // Мир к этому моменту уже построен (см. SimulationScreen.show), а сессия
+                // начинается в потоке симуляции, как и все последующие (рестарт, replay).
+                startSession()
                 threadManager.runUpdateLoop { updateTick() }
             }.apply {
                 isDaemon = true
@@ -100,13 +108,23 @@ class SimulationSystem(
             restartSim()
             return
         }
+        logReplay.takePending()?.let {
+            startReplay(it)
+            return
+        }
+        if (logReplay.isActive && simulationData.tickCounter >= logReplay.endTick) {
+            // Дошли до места, где игрок остановился (или где игра упала): встаём на паузу,
+            // чтобы это состояние можно было рассмотреть.
+            logReplay.stop()
+            simulationData.isPlay = false
+            println("LogReplay: запись закончилась на тике ${simulationData.tickCounter}, пауза")
+            return
+        }
 
         simulationData.tickCounter++
         simulationData.timeSimulation += DELTA_SIM_TICK_TIME
 
-        if (!DEBUG_MODE) {
-            DISimulationContainer.logReplay.updateReplay()
-        }
+        latchControllerKeys()
 
         if (DEBUG_CHECKS) applyDebugStress()
 
@@ -121,6 +139,7 @@ class SimulationSystem(
         profiler.measure(Phase.ORGANS) { organManager.performOrgansNextStage() }
         profiler.measure(Phase.USER_CMD) { userCommandManager.processingCommandsFromUser() }
         profiler.measure(Phase.LAST_WORLD_CMD) { worldCommandsManager.executingLastCommandsFromTheWorld() }
+        logSaver.endTick(simulationData.tickCounter)
         // Единственное место, где меняется структура пространственной сетки. Стоит здесь,
         // потому что к этому моменту уже применены все перемещения (фаза 6) и все
         // создания/удаления частиц (фазы 7-10), то есть сетка собирается один раз по
@@ -336,11 +355,13 @@ class SimulationSystem(
     }
 
     fun dispose() {
+        // До simulationData.clear(): в конец записи идёт номер последнего тика сессии.
+        logSaver.close(simulationData.tickCounter)
+        logReplay.stop()
         gridManager.clearAll()
         entityList.forEach { it.clear() }
         simulationData.clear()
         worldCommandsManager.dispose()
-        DISimulationContainer.logSaver.close()
     }
 
     private fun restartSim() {
@@ -350,6 +371,81 @@ class SimulationSystem(
             gridWith = DISimulationContainer.gridWidth,
             gridHeight = DISimulationContainer.gridHeight
         )
+        startSession()
+    }
+
+    /**
+     * Начало сессии в только что построенном мире (tickCounter = 0): новый seed для
+     * случайностей команд игрока и, если включено в настройках, новая запись.
+     */
+    private fun startSession() {
+        // RandomXS128 сам перемешивает seed, так что близкие значения nanoTime не страшны.
+        val seed = System.nanoTime()
+        resetSessionInput(seed)
+        if (GlobalSettings.DEBUG_MODE) logSaver.begin(sessionHeader(seed))
+    }
+
+    /** Пересоздаёт мир и проигрывает в нём записанную сессию. Сам ничего не пишет. */
+    private fun startReplay(recording: LogReplay.Recording) {
+        dispose()
+        worldTerrainManager.initWorld(
+            gridWith = DISimulationContainer.gridWidth,
+            gridHeight = DISimulationContainer.gridHeight
+        )
+        resetSessionInput(recording.header.seed)
+        val current = sessionHeader(recording.header.seed)
+        logReplay.start(
+            recording = recording,
+            gridWidth = current.gridWidth,
+            gridHeight = current.gridHeight,
+            threadCount = current.threadCount,
+            genomeNames = current.genomeNames,
+            initialParticles = current.initialParticles
+        )
+        simulationData.isPlay = true
+    }
+
+    private fun resetSessionInput(seed: Long) {
+        userCommandManager.startSession(seed)
+        simulationData.controllerKeys.fill(false)
+        lastControllerKeysMask = 0
+    }
+
+    private fun sessionHeader(seed: Long) = ReplayFormat.Header(
+        seed = seed,
+        gridWidth = DISimulationContainer.gridWidth,
+        gridHeight = DISimulationContainer.gridHeight,
+        threadCount = threadCount,
+        genomeNames = genomeManager.genomes.map { it.name },
+        initialParticles = particleEntity.aliveList.size
+    )
+
+    private var lastControllerKeysMask = 0
+
+    /**
+     * Клавиши контроллера на этот тик. Поток рендера пишет controllerKeyTouched когда
+     * угодно, поэтому симуляция читает не его, а снимок, сделанный здесь, в однопоточном
+     * начале тика. Снимок и записывается в сессию (только при изменении), и подменяется
+     * записанным при воспроизведении.
+     */
+    private fun latchControllerKeys() {
+        val keys = simulationData.controllerKeys
+        if (logReplay.isActive) {
+            logReplay.applyKeys(simulationData.tickCounter, keys)
+            return
+        }
+
+        val input = simulationData.controllerKeyTouched
+        var mask = 0
+        for (i in keys.indices) {
+            val pressed = input[i]
+            keys[i] = pressed
+            if (pressed) mask = mask or (1 shl i)
+        }
+        if (mask != lastControllerKeysMask) {
+            lastControllerKeysMask = mask
+            logSaver.recordKeys(simulationData.tickCounter, mask)
+        }
     }
 
     fun initMap() {

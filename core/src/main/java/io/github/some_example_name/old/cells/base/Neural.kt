@@ -92,7 +92,7 @@ fun CellEntity.activation(cellIndex: Int, nonSafeX: Float): Float {
 
         15 -> energy[cellIndex] / maxEnergy[cellIndex]
 
-        16 -> if (simulationData.controllerKeyTouched[getA(cellIndex).toInt()]) 1f else 0f + x
+        16 -> if (simulationData.controllerKeys[getA(cellIndex).toInt()]) 1f else 0f + x
 
         17 -> {
             val decay = getA(cellIndex)

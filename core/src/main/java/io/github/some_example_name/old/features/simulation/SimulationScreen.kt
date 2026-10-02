@@ -17,6 +17,7 @@ import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.kotcrab.vis.ui.util.dialog.Dialogs
 import io.github.some_example_name.old.commands.GoGenomeEditor
 import io.github.some_example_name.old.commands.GoMenu
 import io.github.some_example_name.old.commands.GoReplace
@@ -145,8 +146,6 @@ class SimulationScreen(
 
         DISimulationContainer.worldTerrainManager.map = world?.buildMap()
         simulationSystem.initMap()
-
-        DISimulationContainer.logSaver.initLog()
 
         // Поток симуляции стартует ТОЛЬКО после того, как мир создан.
         //
@@ -328,6 +327,11 @@ class SimulationScreen(
         renderSystem.dispose()
         simulationSystem.simulationData.isFinish = true
         simulationSystem.stopUpdateThread()
+        // isFinish обрабатывает тик, но цикл мог остановиться раньше, чем до него дошёл
+        // (на паузе — наверняка). Тогда флаг пережил бы экран, и первый тик следующего
+        // захода снёс бы только что построенный мир, а запись сессии осталась бы
+        // незакрытой. Поток уже остановлен, так что дочищаем отсюда.
+        if (simulationSystem.simulationData.isFinish) simulationSystem.dispose()
         // Пул воркеров живёт в синглтоне контейнера и раньше не останавливался никогда.
         // На десктопе это сходило с рук: потоки daemon, и они умирали вместе с JVM. На
         // Android процесс переживает Activity, поэтому после выхода в меню пул продолжал
@@ -405,17 +409,21 @@ class SimulationScreen(
             )
         controllerKeysToggle.isChecked = simulationSystem.simulationData.showControllerKeys
 
-        val logReplay = makeStyledButton("log Replay", DIGameGlobalContainer.game, extraTextures)
+        val logReplayButton = makeStyledButton(
+            DIGameGlobalContainer.bundle.get("button.logReplay"),
+            DIGameGlobalContainer.game,
+            extraTextures
+        )
 
         val buttons = if (genomeName == null) {
             listOf(
                 menuButton, putOrganismToggle, selectGenomeButton, speedUpSimToggle,
-                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle, logReplay
+                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle, logReplayButton
             )
         } else {
             listOf(
                 menuButton, putOrganismToggle, speedUpSimToggle, pauseSimToggle,
-                restartSimulationButton, drawRaysToggle, controllerKeysToggle, logReplay
+                restartSimulationButton, drawRaysToggle, controllerKeysToggle, logReplayButton
             )
         }
 
@@ -729,9 +737,16 @@ class SimulationScreen(
             }
         })
 
-        logReplay.addListener(object : ClickListener() {
+        logReplayButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                DISimulationContainer.logReplay.play()
+                // Файл читается здесь, а мир перезапускается уже потоком симуляции
+                // в начале следующего тика.
+                val error = DISimulationContainer.logReplay.request() ?: run {
+                    simEntity.isPlay = true
+                    pauseSimToggle.isChecked = false
+                    return
+                }
+                Dialogs.showOKDialog(stage, DIGameGlobalContainer.bundle.get("button.logReplay"), error)
             }
         })
 

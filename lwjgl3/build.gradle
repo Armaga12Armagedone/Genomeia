@@ -395,6 +395,19 @@ tasks.register('playerLogSelfTest', JavaExec) {
   jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
 }
 
+// Самопроверка записи сессии игры (LogSaver / LogReplay): входы возвращаются в свои тики.
+tasks.register('replaySelfTest', JavaExec) {
+  group = 'verification'
+  description = 'Запись сессии игры читается обратно без потерь и сдвигов по тикам'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.some_example_name.lwjgl3.demo.ReplaySelfTestKt'
+  // Свой каталог: тест пишет debug.bin и не должен трогать настоящую запись в корне.
+  def dir = layout.buildDirectory.dir('replaySelfTest').get().asFile
+  workingDir = dir
+  doFirst { dir.mkdirs() }
+  jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+}
+
 tasks.register('realBodyDemo', JavaExec) {
   group = 'application'
   description = 'Окно физического стенда: сцены столкновений на N/M'

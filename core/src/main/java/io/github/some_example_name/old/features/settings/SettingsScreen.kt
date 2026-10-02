@@ -140,9 +140,11 @@ class SettingsScreen : VisDslScreen(
         }
         row()
 
-        // TODO: Change from constant name to bundle
+        // Пишет команды игрока в debug.bin, чтобы баг можно было воспроизвести кнопкой
+        // «Повтор сессии» на экране симуляции. Действует со следующей сессии (вход в
+        // симуляцию или «Перезапустить»).
         visToggleButton(
-            text = "Debug Mode",
+            text = bundle.get("settings.debug_mode"),
             checked = GlobalSettings.DEBUG_MODE,
             onCheckedChange = { GlobalSettings.DEBUG_MODE = it }
         )
