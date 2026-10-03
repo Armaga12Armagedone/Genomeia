@@ -17,6 +17,10 @@ class ProducerEntity(
         this.reproductionRestriction[producerIndex] = 0
     }
 
+    override fun persistFields(state: EntityState) {
+        state.ints(::reproductionRestriction)
+    }
+
     override fun onCopy() {
 
     }

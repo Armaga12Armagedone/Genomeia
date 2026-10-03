@@ -350,6 +350,14 @@ class LinkEntity(
         angleCompensationSin[cellIndex] = angleSin[cellIndex] * dirCos - angleCos[cellIndex] * dirSin
     }
 
+    override fun persistFields(state: EntityState) {
+        state.ints(::links1)
+        state.ints(::links2)
+        state.ints(::linksGeneration1)
+        state.ints(::linksGeneration2)
+        state.floats(::linksNaturalLength)
+    }
+
     override fun onCopy() {
         TODO("Not yet implemented")
     }

@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.Camera
 import com.badlogic.gdx.math.MathUtils
 import io.github.some_example_name.old.commands.GoExit
 import io.github.some_example_name.old.commands.GoGenomeEditor
+import io.github.some_example_name.old.commands.GoSimulation
 import io.github.some_example_name.old.commands.GoSettings
 import io.github.some_example_name.old.commands.GoSupport
 import io.github.some_example_name.old.commands.GoWorldEditor
@@ -16,6 +17,8 @@ import io.github.some_example_name.old.core.log.ActionLog
 import io.github.some_example_name.old.features.worldeditor.WorldGenerator
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
+import io.github.some_example_name.old.systems.maps.MapSave
+import io.github.some_example_name.old.systems.maps.SavedMap
 import io.github.some_example_name.old.systems.render.RenderSystem
 import io.github.some_example_name.old.systems.simulation.SingleThreadSimulationSystem
 
@@ -26,6 +29,16 @@ sealed interface MenuIntent {
 
     data object OpenWorldEditor : MenuIntent {
         override val name get() = "OpenWorldEditor"
+    }
+
+    /** Нажали «Запуск симуляции» — дальше или список сохранённых миров, или сразу редактор мира. */
+    data object BrowseWorlds : MenuIntent {
+        override val name get() = "BrowseWorlds"
+    }
+
+    data class OpenSavedWorld(val slot: String) : MenuIntent {
+        override val name get() = "OpenSavedWorld"
+        override val detail get() = slot
     }
 
     /** Нажали «Редактор» — дальше или список геномов, или сразу пустой редактор. */
@@ -57,6 +70,9 @@ sealed interface MenuEffect {
 
     /** Показать диалог выбора генома — это чистая вёрстка, ViewModel её не открывает. */
     data class ShowGenomeList(val genomes: List<String>) : MenuEffect
+
+    /** Показать список сохранённых миров. */
+    data class ShowWorldList(val worlds: List<SavedMap>) : MenuEffect
 }
 
 class MenuViewModel(
@@ -90,6 +106,22 @@ class MenuViewModel(
         return when (intent) {
             is MenuIntent.OpenWorldEditor -> {
                 navigation.performCommand(GoWorldEditor)
+                MenuEffect.None
+            }
+
+            is MenuIntent.BrowseWorlds -> {
+                val worlds = MapSave.listMaps()
+                if (worlds.isEmpty()) {
+                    handle(MenuIntent.OpenWorldEditor)
+                } else {
+                    MenuEffect.ShowWorldList(worlds)
+                }
+            }
+
+            is MenuIntent.OpenSavedWorld -> {
+                navigation.performCommand(
+                    GoSimulation(world = null, genomeName = null, savedWorld = intent.slot)
+                )
                 MenuEffect.None
             }
 

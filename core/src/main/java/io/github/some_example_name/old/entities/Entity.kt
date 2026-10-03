@@ -193,6 +193,55 @@ abstract class Entity(startMaxAmount: Int) {
         onResize(oldMax)
     }
 
+    // ===================================================================================
+    // СОХРАНЕНИЕ МИРА
+    // ===================================================================================
+
+    fun saveState(state: EntityState) {
+        persist(state)
+    }
+
+    /**
+     * Заменить содержимое сущности сохранённым.
+     *
+     * Массивы не подменяются, а растятся штатным [ensureCapacity] и заполняются на месте:
+     * так растут и те массивы, которых нет в сохранении, и ссылки на сущность у систем
+     * остаются верными.
+     */
+    fun loadState(state: EntityState) {
+        clear()
+        persist(state)
+    }
+
+    private fun persist(state: EntityState) {
+        // lastId читается первым: от него зависит, сколько места нужно под массивы.
+        val savedLastId = state.int("lastId", lastId)
+        if (state.isReading) {
+            if (savedLastId >= 0) ensureCapacity(savedLastId)
+            lastId = savedLastId
+        }
+
+        state.ints(::generation)
+        state.booleans(::isAlive)
+        state.ints(::positionInAlive)
+        state.ints(::arenaOwner)
+        state.intList(::aliveList)
+        state.intList(::deadStack)
+
+        persistFields(state)
+    }
+
+    /** Свои поля сущности, см. [EntityState]. */
+    protected open fun persistFields(state: EntityState) {}
+
+    /**
+     * Пересобрать после загрузки то, что выводится из сохранённых данных.
+     *
+     * Зовётся, когда загружены ВСЕ сущности мира: часть индексов собирается по соседним
+     * сущностям (у клетки — по её организму).
+     */
+    open fun restoreAfterLoad() {}
+
     protected abstract fun onCopy()
     protected abstract fun onPaste()
     protected abstract fun onClear(bound: Int)

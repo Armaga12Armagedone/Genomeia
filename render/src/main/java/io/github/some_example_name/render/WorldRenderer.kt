@@ -198,6 +198,68 @@ class WorldRenderer(
         Gdx.gl.glUseProgram(0)
     }
 
+    /**
+     * Квадратное превью кадра мира размером [size]×[size], строки сверху вниз.
+     *
+     * Звать сразу после [render] в том же кадре, до интерфейса: в бэкбуфере сейчас ровно
+     * то, что нарисовали проходы конвейера, без кнопок и текста поверх. Берётся центральный
+     * квадрат кадра, и он уменьшается усреднением по блокам, а не выборкой через пиксель:
+     * при уменьшении в 8-10 раз выборка дала бы мерцающую «лесенку» на границах клеток.
+     *
+     * Pixmap принадлежит вызывающему.
+     */
+    fun capturePreview(size: Int): Pixmap {
+        val width = Gdx.graphics.backBufferWidth
+        val height = Gdx.graphics.backBufferHeight
+        val side = minOf(width, height)
+        val frame = Pixmap.createFromFrameBuffer((width - side) / 2, (height - side) / 2, side, side)
+        try {
+            return downscaleFlipped(frame, side, size)
+        } finally {
+            frame.dispose()
+        }
+    }
+
+    private fun downscaleFlipped(frame: Pixmap, side: Int, size: Int): Pixmap {
+        val preview = Pixmap(size, size, Pixmap.Format.RGBA8888)
+        val src = frame.pixels
+        val dst = preview.pixels
+
+        for (outY in 0 until size) {
+            val y0 = outY * side / size
+            val y1 = maxOf(y0 + 1, (outY + 1) * side / size)
+            // Кадровый буфер читается снизу вверх, превью пишется сверху вниз.
+            val dstRow = (size - 1 - outY) * size
+
+            for (outX in 0 until size) {
+                val x0 = outX * side / size
+                val x1 = maxOf(x0 + 1, (outX + 1) * side / size)
+
+                var r = 0
+                var g = 0
+                var b = 0
+                for (y in y0 until y1) {
+                    var offset = (y * side + x0) * 4
+                    for (x in x0 until x1) {
+                        r += src.get(offset).toInt() and 0xFF
+                        g += src.get(offset + 1).toInt() and 0xFF
+                        b += src.get(offset + 2).toInt() and 0xFF
+                        offset += 4
+                    }
+                }
+                val count = (y1 - y0) * (x1 - x0)
+                val out = (dstRow + outX) * 4
+                dst.put(out, (r / count).toByte())
+                dst.put(out + 1, (g / count).toByte())
+                dst.put(out + 2, (b / count).toByte())
+                // Альфа в бэкбуфере после смешивания проходов не обязана быть единицей,
+                // а прозрачное превью в PNG выглядело бы дырой.
+                dst.put(out + 3, 0xFF.toByte())
+            }
+        }
+        return preview
+    }
+
     fun dispose() {
         components.forEach { it.dispose() }
         components.clear()

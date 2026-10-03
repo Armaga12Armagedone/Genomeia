@@ -29,6 +29,8 @@ import io.github.some_example_name.old.systems.render.RenderBufferManager
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
 import io.github.some_example_name.old.systems.physics.MovementManager
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class SimulationSystem(
     val gridManager: GridManager,
@@ -88,7 +90,26 @@ class SimulationSystem(
     /** Только для отладочного стресс-теста, см. applyDebugStress. */
     private val debugRandom = java.util.Random()
 
-    fun updateTick() {
+    /**
+     * Тик целиком выполняется под этим локом, см. [betweenTicks].
+     *
+     * Честный: на максимальной скорости поток симуляции отпускает лок и тут же берёт снова,
+     * и нечестный лок мог бы раз за разом доставаться ему, а не ждущему сохранению.
+     */
+    private val tickLock = ReentrantLock(true)
+
+    /**
+     * Выполнить [block], пока мир стоит между тиками.
+     *
+     * Для сохранения и загрузки мира из потока рендера. Пауза через isPlay здесь не годится:
+     * цикл обновления крутит несколько тиков подряд, не проверяя её, и снимок мог попасть
+     * в середину следующего тика — координаты из одного, списки живых из другого.
+     */
+    fun <T> betweenTicks(block: () -> T): T = tickLock.withLock(block)
+
+    fun updateTick() = tickLock.withLock { tick() }
+
+    private fun tick() {
         val tickStart = System.nanoTime()
 
         if (simulationData.isFinish) {

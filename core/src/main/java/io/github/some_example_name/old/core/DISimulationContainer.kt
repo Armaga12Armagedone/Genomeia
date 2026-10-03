@@ -37,6 +37,7 @@ import io.github.some_example_name.old.systems.simulation.SimulationSystem
 import io.github.some_example_name.old.systems.simulation.ThreadManager
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
+import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.physics.CollisionManager
 import io.github.some_example_name.old.systems.physics.MovementManager
 import kotlin.getValue
@@ -351,6 +352,35 @@ object DISimulationContainer : DIContext, Disposable {
             pheromonesManager = pheromonesManager,
             movementManager = movementManager,
             worldTerrainManager = worldTerrainManager
+        )
+    }
+
+    val mapSave by lazy {
+        MapSave(
+            // Имена — это имена файлов в сохранении, их нельзя менять и брать из имён
+            // классов: минификатор переименует классы, и старые сохранения перестанут читаться.
+            entities = listOf(
+                "tails" to tailEntity,
+                "organs" to organEntity,
+                "particles" to particleEntity,
+                "neurals" to neuralEntity,
+                "eyes" to eyeEntity,
+                "specialModData" to specialModDataEntity,
+                "specials" to specialEntity,
+                "cells" to cellEntity,
+                "links" to linkEntity,
+                "neuralLinks" to neuralLinkEntity,
+                "pheromones" to pheromoneEntity,
+                "substances" to substancesEntity,
+                "producers" to producerEntity,
+                "pheromoneEmitters" to pheromoneEmitterEntity
+            ),
+            cellEntity = cellEntity,
+            organEntity = organEntity,
+            genomeManager = genomeManager,
+            simulationData = simulationData,
+            simulationSystem = simulationSystem,
+            diContext = this
         )
     }
 

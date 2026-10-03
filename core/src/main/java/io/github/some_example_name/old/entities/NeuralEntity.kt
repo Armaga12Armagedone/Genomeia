@@ -59,6 +59,20 @@ class NeuralEntity(
         weight[neuralIndex] = 0.5f
     }
 
+    override fun persistFields(state: EntityState) {
+        state.booleans(::isNeuronTransportable)
+        state.bytes(::activationFuncType)
+        state.floats(::a)
+        state.floats(::b)
+        state.floats(::c)
+        state.floats(::dTime)
+        state.floats(::remember)
+        state.booleans(::isSum)
+        state.ints(::tickPain)
+        state.ints(::tickRed)
+        state.floats(::weight)
+    }
+
     override fun onCopy() {
 
     }

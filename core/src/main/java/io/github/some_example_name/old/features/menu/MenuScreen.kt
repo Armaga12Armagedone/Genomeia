@@ -61,7 +61,7 @@ class MenuScreen : VisDslScreen(
             row()
 
             visTextButton(bundle.get("button.empty"), onClick = {
-                menuViewModel.handle(MenuIntent.OpenWorldEditor)
+                showEffect(menuViewModel.handle(MenuIntent.BrowseWorlds))
             }) { growX() }
             row()
 
@@ -110,6 +110,16 @@ class MenuScreen : VisDslScreen(
                 game = game,
                 onResize = { h -> onResize = if (h == {}) null else h },
                 isMenu = true
+            ).show(stage)
+
+            is MenuEffect.ShowWorldList -> MapSelect(
+                game = game,
+                title = bundle.get("dialog.worlds"),
+                worlds = effect.worlds,
+                newWorld = bundle.get("button.newWorld"),
+                onLoad = { slot -> menuViewModel.handle(MenuIntent.OpenSavedWorld(slot)) },
+                onNew = { menuViewModel.handle(MenuIntent.OpenWorldEditor) },
+                onResize = { h -> onResize = if (h == {}) null else h }
             ).show(stage)
         }
     }
