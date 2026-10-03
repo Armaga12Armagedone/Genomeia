@@ -4,8 +4,11 @@ class Lexer { //поменять object на class
 
     init {
         println("work")
-        val lexes = lexer("24>=0.1 || 3>1 && (varab < 0 || 0+1>virib)")
-        ASTBuilder().buildAST(lexes)
+        val lexes = lexer("(2 + ")
+        val ast = ASTBuilder().buildAST(lexes)
+        val result = Evaulator().run(ast)
+
+        println(result)
     }
 
     fun lexer(text: String): List<Lex> { //по идее должен превращать входные параметры в полноценные выполняемые выражения.
