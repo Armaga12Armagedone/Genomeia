@@ -4,7 +4,8 @@ class Lexer { //поменять object на class
 
     init {
         println("work")
-        lexer("24>=0.1 || 3>1 && varab < 0")
+        val lexes = lexer("24>=0.1 || 3>1 && (varab < 0 || 0+1>virib)")
+        ASTBuilder().buildAST(lexes)
     }
 
     fun lexer(text: String): List<Lex> { //по идее должен превращать входные параметры в полноценные выполняемые выражения.
@@ -36,7 +37,7 @@ class Lexer { //поменять object на class
                     pos +=1
                 }
 
-                index += (pos-index)-1
+                index = pos-1 //если не работает то idnex += (pos-index)-1
                 lexs.addLast(Lex(totalVar, type=0, intType = if (hasDot) 2 else 1, 0))
 
             }
@@ -50,14 +51,25 @@ class Lexer { //поменять object на class
                         println(pairChars)
                         index += 1
 
-                        lexs.addLast(Lex(pairChars, type=1, intType = 0, order = 0))//потом определим им order'а
+                        lexs.addLast(Lex(pairChars, type=4, intType = 0, order = 0))//потом определим им order'а
                     }
                     else {
                         println("one operator")
-                        lexs.addLast(Lex(miniLex.toString(), type=1, intType = 0, order = 0))//определить
+
+                        val isEqualOperator = if (miniLex in "><") 4 else 1
+
+                        lexs.addLast(Lex(miniLex.toString(), type=isEqualOperator, intType = 0, order = 0))//определить
                     }
 
                 }
+                else {
+                    val isEqualOperator = if (miniLex in "><") 4 else 1
+                    lexs.addLast(Lex(miniLex.toString(), type=isEqualOperator, intType = 0, order = 0))
+                }
+            }
+
+            if (miniLex in "()") {
+                lexs.addLast(Lex(lexChar = miniLex.toString(), type=6, intType = 0, order = 0))
             }
 
             if (miniLex.isLetter()) {
@@ -65,13 +77,13 @@ class Lexer { //поменять object на class
 
                 var pos = index
 
-                while (pos+1<text.length && (text[pos].isLetter() || text[pos].isDigit() )) {
+                while (pos<text.length && (text[pos].isLetter() || text[pos].isDigit() )) {
                     totalVar += text[pos]
 
                     pos += 1
                 }
 
-                index += (pos+index)-1
+                index = pos-1
                 lexs.addLast(Lex(totalVar,2, 0, 0))
             }
 
@@ -87,7 +99,7 @@ class Lexer { //поменять object на class
 
 data class Lex(
     val lexChar: String,
-    val type: Int, //0-int, 1-знак(+-*/ и тд), 2-переменная 3-строка 4-оператор выражения: And, Or, Not
+    val type: Int, //0-int, 1-знак(+-*/ и тд), 2-переменная 3-строка 4-оператор выражения: And, Or, Not, Equals, 5-изменятель числа !, -; 6-скобки
     val intType: Int, //0-не Int, 1-Int, 2-Float
     val order: Int //важность, чем выше тем больше приоритет выполнения
 )
