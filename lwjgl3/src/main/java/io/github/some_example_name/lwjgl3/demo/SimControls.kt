@@ -26,8 +26,9 @@ import kotlin.math.sqrt
 class SimControls {
 
     /** Множитель скорости проигрывания. 0 — стоп, 1 — реальное время. */
+    /** Скорость показа. Внутренний сеттер нужен воспроизведению в окне. */
     var timeScale = 1.0
-        private set
+        internal set
 
     var isOpen = false
         private set
@@ -154,7 +155,10 @@ class SimControls {
         font.color = TEXT
         font.draw(batch, "SIMULATION SPEED", px + PAD, py + H - 14f)
         font.color = if (timeScale == 0.0) WARN else TEXT
-        font.draw(batch, "x%.2f".format(timeScale), px + W - 82f, py + H - 14f)
+        // Мелкие значения печатаются иначе: на сверхзамедлении 0.001 формат с двумя
+        // знаками показывал бы «x0.00», то есть неотличимо от остановки.
+        font.draw(batch, if (timeScale > 0.0 && timeScale < 0.1) "x%.3f".format(timeScale)
+                         else "x%.2f".format(timeScale), px + W - 92f, py + H - 14f)
 
         font.color = MUTED
         for (v in TICKS) {

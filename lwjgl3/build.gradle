@@ -384,6 +384,25 @@ tasks.register('playerReplay', JavaExec) {
 }
 
 // Самопроверка журнала: пишет сессию без окна, воспроизводит и сверяет побитово.
+// ОХОТА НА ПРОНИКНОВЕНИЕ: столкновения всем перебором, падение на каждом прорыве.
+//   gradlew :lwjgl3:trapHunt
+//   gradlew :lwjgl3:trapHunt -Pplan=quick
+//   gradlew :lwjgl3:trapHunt -Pcase=57
+tasks.register('trapHunt', JavaExec) {
+  group = 'verification'
+  description = 'Stalkivaet tela i padaet na kazhdom proniknovenii kletki v chuzhuyu tkan'
+  dependsOn 'classes'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.some_example_name.lwjgl3.demo.TrapHuntKt'
+  workingDir = rootProject.projectDir
+  jvmArgs = ['-Xss16m']
+  args = [
+    project.hasProperty('plan') ? project.property('plan').toString() : '',
+    project.hasProperty('case') ? project.property('case').toString() : '',
+    project.hasProperty('trace') ? project.property('trace').toString() : '',
+  ]
+}
+
 tasks.register('playerLogSelfTest', JavaExec) {
   group = 'verification'
   description = 'Запись и воспроизведение журнала игрока сходятся побитово; порча ловится'
@@ -401,6 +420,16 @@ tasks.register('realBodyDemo', JavaExec) {
   classpath = sourceSets.main.runtimeClasspath
   mainClass = 'io.github.some_example_name.lwjgl3.demo.RealBodyDemoKt'
   workingDir = rootProject.projectDir
-  args = [project.findProperty('body') ?: 'body-export.txt']
+  // -Pplay=player-log.txt — воспроизвести журнал В ОКНЕ: тело и параметры берутся из его
+  // заголовка, живой ввод не читается, итог проверки контрольных сумм виден в HUD.
+  args = [project.findProperty('body') ?: 'body-export.txt', project.findProperty('play') ?: '', project.findProperty('speed') ?: '']
   jvmArgs '-Dfile.encoding=UTF-8'
+  // ВЫЛЕТ НА ПРОНИКНОВЕНИИ ВКЛЮЧЁН В ОКНЕ: пока проникновение не побеждено, окно падает
+  // на первой же клетке, попавшей в чужую ткань, с полным описанием места. Журнал перед
+  // падением сбрасывается на диск (см. trapCrashScan), поэтому запись остаётся пригодной
+  // для побитового воспроизведения.
+  // Выключить: gradlew :lwjgl3:realBodyDemo -Pnocrash=1
+  // Вылет на проникновении по умолчанию ВЫКЛЮЧЕН: он не даёт поставить метку на
+  // проникшую клетку. Включить: -Pcrash=1
+  if (project.hasProperty('crash')) environment 'RB_TRAP_CRASH', '1'
 }

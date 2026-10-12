@@ -132,6 +132,20 @@ internal class BakedTopology(body: BodyFile) {
         return true
     }
 
+    /**
+     * ЕДИНСТВЕННЫЙ ЖИВОЙ ТРЕУГОЛЬНИК НА РЕБРЕ, или -1, если их нет или больше одного
+     * живого не нужно различать. Нужен ВНЕШНЕЙ НОРМАЛИ КОНТУРА: у граничного ребра
+     * треугольник один, и его третья вершина лежит ВНУТРИ тела — значит направление
+     * «наружу» определяется локально, без обхода контура и без знания его намотки.
+     */
+    fun liveTri(e: Int): Int {
+        for (s in edgeTriStart[e] until edgeTriStart[e + 1]) {
+            val t = edgeTris[s]
+            if (triAlive[t]) return t
+        }
+        return -1
+    }
+
     /** Меньшая клетка ребра. */
     fun edgeU(e: Int): Int = (edgeKeys[e] ushr 32).toInt()
 

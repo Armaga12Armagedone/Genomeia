@@ -231,6 +231,8 @@ class BoundaryContacts(
     /** Граничные рёбра каждой клетки: bndStart[i]..bndStart[i+1] — номера в bndOther. */
     private var bndStart = IntArray(0)
     private var bndOther = IntArray(0)
+    /** Внутренняя вершина ребра, параллельно bndOther. -1 у голого ребра. */
+    private var bndOpp = IntArray(0)
 
     /** Хозяин тела разобрал пробои — список можно чистить. */
     fun clearPierce() { pierceN = 0 }
@@ -266,6 +268,102 @@ class BoundaryContacts(
     }
 
     /**
+     * ПРОВЕРКА ПРОБОЯ ПОСЛЕ КАЖДОЙ ИТЕРАЦИИ РЕШАТЕЛЯ, а не только на нулевой.
+     *
+     * Поиск пробоя живёт в prepare, а prepare зовётся раз в подшаг, на нулевой итерации.
+     * Значит проверяется только движение, которое клетка успела сделать к этому моменту:
+     * интегрирование плюс стадии нулевой итерации. Смещение остальных трёх итераций —
+     * связей, площадей, изгиба, проекции кости и контактов — не проверялось вовсе, а на
+     * таране именно решатель и заводит клетку внутрь, расталкивая сжатую ткань.
+     *
+     * Список пар-кандидатов тот же, что собрал prepare в этом подшаге, поэтому проверка
+     * ничего не строит заново и стоит столько же, сколько стоила одна.
+     */
+    fun scanPierce(px: DoubleArray, py: DoubleArray, qx: DoubleArray, qy: DoubleArray) {
+        if (PIERCE_TEAR) findPierce(px, py, qx, qy)
+    }
+
+    /**
+     * ПЕРЕСЕЧЕНИЕ ТОЛЬКО СНАРУЖИ ВНУТРЬ. Именно этого правилу пробоя и не хватало.
+     *
+     * Голое пересечение отрезков не различает сторон, и на покоящемся стыке двух кусков
+     * срабатывало постоянно: клетки стоят вплотную к чужому контуру (круги соседей по
+     * контуру обязаны перекрываться, см. CONTACT_SEAL), то есть почти НА линии соседнего
+     * ребра, и дрожание в последнем знаке переставляет их с одной стороны прямой на
+     * другую. Проверка «тело не трогают, оно не должно ехать» падала на 127 при пороге 1 —
+     * мембрана шинковала сама себя. Лечили это порогом по глубине, и он одновременно и не
+     * спасал (1.37 при пороге 1), и терял настоящие пробои.
+     *
+     * Сторона известна локально: у граничного ребра ровно один живой треугольник, и его
+     * третья вершина лежит ВНУТРИ тела (boundOpp). Значит внешняя нормаль берётся без
+     * обхода контура и без намотки, а пробоем считается только переход с внешней стороны
+     * на внутреннюю ЗА ОДИН ПОДШАГ — то есть по свёрнутому пути, как и просит CCD.
+     * Дрожание около линии такого перехода не даёт: оно симметрично, а это условие нет.
+     */
+    private fun inward(qx: DoubleArray, qy: DoubleArray, px: DoubleArray, py: DoubleArray,
+                       i: Int, a: Int, b: Int, opp: Int): Boolean {
+        // Голое ребро: ни одного треугольника, внутренней стороны нет вовсе.
+        if (opp < 0) return false
+        // ЗНАК СЧИТАЕТСЯ В СИСТЕМЕ САМОГО РЕБРА, ОТДЕЛЬНО НА НАЧАЛО И НА КОНЕЦ ПОДШАГА.
+        //
+        // Сначала я брал нормаль по КОНЕЧНОМУ положению ребра и сравнивал с ним обе точки
+        // пути клетки. На таране это почти не срабатывает: там не клетка влетает в ткань,
+        // а ТКАНЬ НАБЕГАЕТ НА КЛЕТКУ, и собственный путь клетки конечного положения ребра
+        // может не пересекать вовсе. Замер: 23 срабатывания за 90 тиков при семистах
+        // проникших клетках. В системе ребра движение становится относительным, и
+        // набегающая мембрана ловится так же, как влетающая клетка.
+        val ex0 = qx[b] - qx[a]; val ey0 = qy[b] - qy[a]
+        val ex1 = px[b] - px[a]; val ey1 = py[b] - py[a]
+        if (ex0 * ex0 + ey0 * ey0 < 1e-18 || ex1 * ex1 + ey1 * ey1 < 1e-18) return false
+        var n0x = -ey0; var n0y = ex0
+        if (n0x * (qx[opp] - qx[a]) + n0y * (qy[opp] - qy[a]) > 0.0) { n0x = -n0x; n0y = -n0y }
+        var n1x = -ey1; var n1y = ex1
+        if (n1x * (px[opp] - px[a]) + n1y * (py[opp] - py[a]) > 0.0) { n1x = -n1x; n1y = -n1y }
+        val s0 = n0x * (qx[i] - qx[a]) + n0y * (qy[i] - qy[a])
+        val s1 = n1x * (px[i] - px[a]) + n1y * (py[i] - py[a])
+        val el2 = ex1 * ex1 + ey1 * ey1
+        val t = ((px[i] - px[a]) * ex1 + (py[i] - py[a]) * ey1) / el2
+        // РАЗБОР: по какой именно причине ребро не считается пробитым. Без разделения
+        // «не дошла» и «уже была внутри» починить нечего — это разные болезни.
+        if (i == pierceWatch) {
+            pwEdges++
+            if (s1 < 0.0) {
+                pwEndedIn++
+                if (t <= -0.1 || t >= 1.1) pwOffEnd++
+                else if (s0 <= 0.0) pwWasIn++
+            }
+        }
+        // Было снаружи, стало внутри — и ровно это пробой.
+        if (s0 <= 0.0 || s1 >= 0.0) return false
+        // Поперёк ребра, а не мимо его концов: иначе рвалось бы ребро, через которое
+        // клетка и не проходила. Запас по десятой доле — на наклон ребра за подшаг.
+        return t > -0.1 && t < 1.1
+    }
+
+    /**
+     * ПРОБОЙ КЛЕТКИ [i] ПО РЁБРАМ ВОКРУГ КЛЕТКИ КОНТУРА [j] И ЕЁ СОСЕДЕЙ. См. findPierce.
+     */
+    private fun pierceAround(qx: DoubleArray, qy: DoubleArray, px: DoubleArray, py: DoubleArray,
+                             i: Int, j: Int, org: IntArray) {
+        if (org[i] == org[j]) return
+        for (s2 in bndStart[j] until bndStart[j + 1]) {
+            val o = bndOther[s2]
+            if (o != i && org[o] == org[j] && inward(qx, qy, px, py, i, j, o, bndOpp[s2])) {
+                pierce(j, o); if (i == pierceWatch) pwHits++
+            }
+            // Второй шаг: рёбра соседа по контуру.
+            if (org[o] != org[j]) continue
+            for (s3 in bndStart[o] until bndStart[o + 1]) {
+                val o2 = bndOther[s3]
+                if (o2 == i || o2 == j || org[o2] != org[o]) continue
+                if (inward(qx, qy, px, py, i, o, o2, bndOpp[s3])) {
+                    pierce(o, o2); if (i == pierceWatch) pwHits++
+                }
+            }
+        }
+    }
+
+    /**
      * ПОИСК ПРОБОЯ. Идёт по УЖЕ ГОТОВОМУ списку пар-кандидатов, поэтому почти ничего не
      * стоит: у клетки контура не больше пары граничных рёбер, то есть на пару приходится
      * до четырёх проверок отрезков по двадцать операций каждая.
@@ -295,23 +393,78 @@ class BoundaryContacts(
             if (org[i] == org[j]) continue
             val mi = (px[i] - qx[i]) * (px[i] - qx[i]) + (py[i] - qy[i]) * (py[i] - qy[i])
             val mj = (px[j] - qx[j]) * (px[j] - qx[j]) + (py[j] - qy[j]) * (py[j] - qy[j])
-            if (mi > minMove2) for (s2 in bndStart[j] until bndStart[j + 1]) {
-                val o = bndOther[s2]
-                if (o == i || org[o] != org[j]) continue
-                if (segCross(qx[i], qy[i], px[i], py[i], px[j], py[j], px[o], py[o],
-                        PIERCE_DEPTH * contactRadius[i])) pierce(j, o)
-            }
-            if (mj > minMove2) for (s2 in bndStart[i] until bndStart[i + 1]) {
-                val o = bndOther[s2]
-                if (o == j || org[o] != org[i]) continue
-                if (segCross(qx[j], qy[j], px[j], py[j], px[i], py[i], px[o], py[o],
-                        PIERCE_DEPTH * contactRadius[j])) pierce(i, o)
+            // ДВА ШАГА ПО КОНТУРУ, А НЕ ОДИН.
+            //
+            // Раньше клетка проверялась только против рёбер СВОЕГО партнёра по паре, и
+            // покрытие выходило 6%: 78 пробоев на 1004 входа в ткань. Пересечь она может
+            // ребро, оба конца которого ей не партнёры — достаточно оказаться ближе к
+            // третьей клетке. Второй шаг по соседям контура это закрывает, а стоит он
+            // по-прежнему ничего: у клетки контура не больше двух граничных рёбер, то
+            // есть добавляется до четырёх проверок на пару.
+            if (mi > minMove2) pierceAround(qx, qy, px, py, i, j, org)
+            if (mj > minMove2) pierceAround(qx, qy, px, py, j, i, org)
+            if (i == pierceWatch || j == pierceWatch) pwPairs++
+        }
+        // ОДНА СТРОКА НА ПОДШАГ, И ТОЛЬКО КОГДА КЛЕТКА РЕАЛЬНО ШЛА: «чужих пар 0»
+        // означает, что пробой её даже не смотрел, а «уже была внутри» — что смотрел и
+        // отказался, потому что начало подшага она встретила уже за линией.
+        if (pierceWatch >= 0 && pwLeft > 0) {
+            val mw = sqrt((px[pierceWatch] - qx[pierceWatch]) * (px[pierceWatch] - qx[pierceWatch]) +
+                (py[pierceWatch] - qy[pierceWatch]) * (py[pierceWatch] - qy[pierceWatch])) / meanLink
+            if (mw > pwMinMove) {
+                pwLeft--
+                // ПОЛНЫЙ ПЕРЕБОР ПО ОДНОЙ КЛЕТКЕ: нашёл бы пробой тот же знаковый фильтр,
+                // если бы смотрел ВСЕ рёбра контура, а не только рёбра вокруг партнёров по
+                // паре? Это и есть проверка на покрытие. Счётчики причин на время перебора
+                // сохраняются, иначе разбор сам себя затопчет.
+                val sE = pwEdges; val sI = pwEndedIn; val sW = pwWasIn; val sO = pwOffEnd
+                var full = 0; var fa = -1; var fb = -1
+                val iw = pierceWatch
+                for (a in 0 until n) {
+                    if (bndStart[a + 1] <= bndStart[a] || org[a] == org[iw]) continue
+                    for (s2 in bndStart[a] until bndStart[a + 1]) {
+                        val b = bndOther[s2]
+                        if (a > b || a == iw || b == iw) continue
+                        if (inward(qx, qy, px, py, iw, a, b, bndOpp[s2])) {
+                            full++; if (fa < 0) { fa = a; fb = b }
+                        }
+                    }
+                }
+                pwEdges = sE; pwEndedIn = sI; pwWasIn = sW; pwOffEnd = sO
+                if (full > 0) {
+                    val dla = sqrt((px[iw] - px[fa]) * (px[iw] - px[fa]) + (py[iw] - py[fa]) * (py[iw] - py[fa])) / meanLink
+                    val dlb = sqrt((px[iw] - px[fb]) * (px[iw] - px[fb]) + (py[iw] - py[fb]) * (py[iw] - py[fb])) / meanLink
+                    val el = sqrt((px[fa] - px[fb]) * (px[fa] - px[fb]) + (py[fa] - py[fb]) * (py[fa] - py[fb])) / meanLink
+                    println(("[полный] тик %d #%d: ПОЛНЫЙ ПЕРЕБОР НАШЁЛ %d, ребро #%d-#%d длиной %.2f св, " +
+                        "до концов %.2f и %.2f св, радиусы %.2f/%.2f/%.2f (своё/конец/конец)")
+                        .format(tickNo, iw, full, fa, fb, el, dla, dlb,
+                            contactRadius[iw] / meanLink, contactRadius[fa] / meanLink, contactRadius[fb] / meanLink))
+                }
+                println("[пробой] тик %d #%d ход %.3f св, чужих пар %d, рёбер %d, кончила внутри %d (мимо концов %d, была внутри %d), пробоев %d"
+                    .format(tickNo, pierceWatch, mw, pwPairs, pwEdges, pwEndedIn, pwOffEnd, pwWasIn, pwHits))
             }
         }
+        pwPairs = 0; pwEdges = 0; pwEndedIn = 0; pwWasIn = 0; pwOffEnd = 0; pwHits = 0
     }
 
     /** Кто в каком организме — ставит хозяин тела. Нужно поиску пробоя. */
     var organismOf: IntArray? = null
+
+    // --- РАЗБОР ПРОБОЯ ПО ОДНОЙ КЛЕТКЕ (CT_WATCH=номер). Только для дознания. ---
+    /** Клетка, по которой печатать разбор пробоя. -1 — молчать. */
+    var pierceWatch = System.getenv("CT_WATCH")?.toIntOrNull() ?: -1
+    /** Номер тика — ставит хозяин. Нужен только трассе, чтобы привязать её к журналу. */
+    var tickNo = 0
+    /** Печатать только подшаги, где клетка прошла больше этого в долях связи. */
+    private val pwMinMove = System.getenv("CT_WATCH_MOVE")?.toDoubleOrNull() ?: 0.2
+    private var pwLeft = System.getenv("CT_WATCH_LINES")?.toIntOrNull() ?: 300
+    private var pwPairs = 0
+    private var pwEdges = 0
+    private var pwEndedIn = 0
+    private var pwWasIn = 0
+    private var pwOffEnd = 0
+    private var pwHits = 0
+
 
     /**
      * Сколько раз контакт ПРИТЯНУЛ пару вместо того, чтобы оттолкнуть.
@@ -360,6 +513,29 @@ class BoundaryContacts(
     private var restSpacingN = 0
     /** Клетка в контактах на этой топологии. */
     private val onBound = BooleanArray(n)
+
+    /**
+     * ВРЕМЕННЫЕ УЧАСТНИКИ КОНТАКТА: внутренние клетки, рядом с которыми найден чужой.
+     *
+     * ЗАЧЕМ. Контактный радиус назначается ТОЛЬКО из граничных рёбер, поэтому у
+     * внутренней клетки он строго ноль и для столкновений её не существует. Из этого
+     * следуют сразу две беды, обе видны в журналах игрока: ткань продавливается сквозь
+     * стенку бассейна СВОИМИ ВНУТРЕННИМИ клетками (в разборе клетка прошла, имея r=0.00
+     * при ближайшей чужой в 0.159 связи), а чужой обломок, попавший внутрь тела,
+     * не встречает там НИЧЕГО и остаётся навсегда.
+     *
+     * ПОЧЕМУ НЕ ДАТЬ РАДИУС ВСЕМ ВНУТРЕННИМ. Это убило бы всё: вторые соседи по решётке
+     * стоят на 1.0 связи при радиусах 0.5, то есть перекрывались бы В ПОЗЕ ПОКОЯ, и тело
+     * раздувало бы изнутри. Плюс цена: участников стало бы не четыреста, а две тысячи.
+     *
+     * ПОЭТОМУ ТОЛЬКО ТАМ, ГДЕ УЖЕ НАЙДЕН ЧУЖОЙ, и только ПРОТИВ ЧУЖИХ: пара двух клеток
+     * ОДНОГО тела с участием временного участника не берётся вовсе (см. broadphase).
+     * Тогда внутри ткани ничего не меняется, а нарушителя встречает ОБЫЧНЫЙ контакт — со
+     * всеми уже построенными потолками, сохранением импульса, маршрутизацией кости и
+     * переносом множителя. Ни новой стадии, ни новых правил, ни новых сил.
+     */
+
+
     /** Расстояние упора каждого контакта этого подшага. */
     private var cRR = DoubleArray(4096)
 
@@ -457,6 +633,17 @@ class BoundaryContacts(
     fun inContactSet(i: Int): Boolean = verts.contains(i)
 
     fun contactRadiusOf(i: Int): Double = contactRadius[i]
+
+    /**
+     * КЛЕТКА УМЕРЛА ПОСРЕДИ ТИКА: вывести её из столкновений, НЕ перестраивая топологию.
+     *
+     * Полная пересборка стоит дороже всего остального разрыва вместе взятого, а смерть
+     * приходит из контактов, то есть изнутри итерации решателя: до 64 раз за тик. Разрыв
+     * ткани эту цену не платит — он гасит ребро на месте и перестраивается один раз в
+     * конце тика (см. killEdgeNow). Смерть теперь работает так же: радиус обнуляется
+     * здесь, список пар перестраивается следующим prepare, структура — в конце тика.
+     */
+    fun dropFromContacts(i: Int) { contactRadius[i] = 0.0 }
 
     /** Нынешняя мягкость контакта — для стендов. См. CONTACT_OMEGA_PAIR. */
     val omegaPair: Double get() = CONTACT_OMEGA_PAIR
@@ -602,6 +789,8 @@ class BoundaryContacts(
     fun reconfigure(
         conA: IntArray, conB: IntArray, conCount: Int,
         boundA: IntArray, boundB: IntArray, boundCount: Int,
+        /** Внутренняя вершина каждого граничного ребра, -1 у голого. См. findPierce. */
+        boundOpp: IntArray,
         restX: FloatArray, restY: FloatArray,
         /** Клетки без единой связи в ПОЛНОМ графе связей. */
         isolated: BooleanArray?,
@@ -656,10 +845,13 @@ class BoundaryContacts(
             for (i in 0 until n) { val d = bndStart[i]; bndStart[i] = acc; acc += d }
             bndStart[n] = acc
             if (bndOther.size < acc) bndOther = IntArray(acc)
+            if (bndOpp.size < acc) bndOpp = IntArray(acc)
             val fill = IntArray(n + 1)
             System.arraycopy(bndStart, 0, fill, 0, n + 1)
             for (e in 0 until boundCount) {
+                bndOpp[fill[boundA[e]]] = boundOpp[e]
                 bndOther[fill[boundA[e]]++] = boundB[e]
+                bndOpp[fill[boundB[e]]] = boundOpp[e]
                 bndOther[fill[boundB[e]]++] = boundA[e]
             }
         }
@@ -673,15 +865,34 @@ class BoundaryContacts(
             if (half > contactRadius[a]) contactRadius[a] = half
             if (half > contactRadius[b]) contactRadius[b] = half
         }
-        // Одиночные клетки граничных рёбер не имеют вовсе — им остаётся
-        // собственный радиус: они не мембрана, а пробники.
-        if (isolated != null) for (i in 0 until n) {
-            // Только если своего радиуса ещё нет: клетка контура уже получила его по
-            // самому длинному граничному ребру, и перебивать это нельзя.
-            if (isolated[i] && contactRadius[i] <= 0.0) contactRadius[i] = radius[i] * contactScale
+        // НУЛЕВОЙ РАДИУС ПОЛОЖЕН ТОЛЬКО УКРЫТОЙ КЛЕТКЕ.
+        //
+        // Ноль означает «клетка со всех сторон закрыта живой тканью»: пройти к ней можно
+        // только сквозь контур, поэтому собственный контакт ей не нужен. Ради этого
+        // внутренние клетки из столкновений и исключены — их большинство, и на них
+        // держится вся скорость контактов.
+        //
+        // НО РОВНО ТО ЖЕ СОСТОЯНИЕ — ни одного граничного ребра — возникает у клетки,
+        // которая ПОТЕРЯЛА все связи: разрушение оторвало её от тела. Граничных рёбер у
+        // неё больше нет, радиус остаётся нулевым, и клетка превращается в призрак,
+        // который летит сквозь любую ткань и любую стенку, потому что для контактов её
+        // не существует. Именно так помеченный игроком кусок прошёл сквозь неподвижные
+        // частицы бассейна (журнал marked-log.txt, клетки #340..#342: «связей живых 0 из
+        // 0, контактный радиус 0.000»).
+        //
+        // Укрывает клетку ЖИВАЯ СВЯЗЬ, поэтому проверка идёт по графу живых связей: в
+        // reconfigure приходят только живые, списки сжимаются на разрыве.
+        //
+        // Радиус отломанной клетке даётся тот же, что свободной частице: она ею и стала.
+        for (i in 0 until n) {
+            if (contactRadius[i] > 0.0) continue
+            val lone = adjStart[i + 1] == adjStart[i]
+            if (lone || (isolated != null && isolated[i])) contactRadius[i] = radius[i] * contactScale
         }
-        // У мёртвой клетки контакта нет вовсе, и радиуса тоже: иначе отрисовка рисует
-        // его кружком, и лопнувшая клетка остаётся на экране неподвижной частицей.
+        // У МЁРТВОЙ КЛЕТКИ КОНТАКТА НЕТ, И ЭТО НЕ ДЕЛАЕТ ЕЁ ПРИЗРАКОМ: хозяин её
+        // замораживает (invMass = 0, см. applyKills). Невидимая мёртвая клетка, которая
+        // продолжала бы толкаться, была бы хуже, чем ничего: игрок видел бы, как ткань
+        // отлетает от пустого места.
         if (dead != null) for (i in 0 until n) if (dead[i]) contactRadius[i] = 0.0
 
         // Сторона ячейки — наибольший диаметр контакта ПЛЮС ЗАПАС. Меньше диаметра
@@ -1647,18 +1858,26 @@ class BoundaryContacts(
         return true
     }
 
+    /**
+     * ЗАЯВКА НА СМЕРТЬ: центр одной клетки зашёл внутрь радиуса другой.
+     *
+     * УМИРАЮТ ОБЕ. Проникновение это не вина одной из двух: в сжатом «поезде» переднюю
+     * клетку вдавливает в стену вся колонна за ней. Убить только переднюю значит
+     * освободить место следующей — колонна пройдёт стену по клетке за раз, и смерть
+     * из запрета на проникновение превратится в его смазку.
+     *
+     * Клетка кости не умирает (кость бессмертна), но её партнёр умирает: иначе удар
+     * костью о кость был бы единственным способом пройти сквозь тело.
+     */
     private fun requestKill(i: Int, j: Int) {
-        val bi = boneIdx(i) >= 0
-        val bj = boneIdx(j) >= 0
-        if (bi && bj) return
-        val victim = when {
-            bi -> j
-            bj -> i
-            else -> if (i < j) i else j
-        }
-        for (k in 0 until killN) if (killList[k] == victim) return
+        if (boneIdx(i) < 0) addKill(i)
+        if (boneIdx(j) < 0) addKill(j)
+    }
+
+    private fun addKill(v: Int) {
+        for (k in 0 until killN) if (killList[k] == v) return
         if (killN >= killList.size) killList = killList.copyOf(killList.size * 2)
-        killList[killN++] = victim
+        killList[killN++] = v
     }
 
     private fun addForce(k: Int, ax: Double, ay: Double, w: Double) {
@@ -1687,6 +1906,22 @@ class BoundaryContacts(
      * упирается в потолок скорости. Сложенные вектором силы противоположных соседей
      * взаимно гасятся, и зажатая клетка просто стоит.
      */
+
+
+
+
+    /**
+     * ПОЗИЦИИ НАЧАЛА ТИКА. Знак «пришла снаружи» берётся по ним, а не по началу подшага.
+     *
+     * ЗАЧЕМ. По началу ПОДШАГА упор ломал таран двух тел: 4.93 связи за встречное тело
+     * при пределе 1.0. На ударе внутри друг друга оказываются десятки клеток сразу, они
+     * пересекают контур в каком-то из подшагов, и упор выталкивает их все разом — то есть
+     * работает насосом, раздвигающим тела. По началу ТИКА клетка, уже сидевшая внутри на
+     * входе в тик, не считается «пришедшей снаружи», и бульк тарана упор не трогает;
+     * остаётся ровно то, ради чего он сделан — одиночное пересечение контура.
+     */
+
+
     private fun applyForces(px: DoubleArray, py: DoubleArray, invMass: DoubleArray,
                             pxOut: DoubleArray, pyOut: DoubleArray) {
         val cap = contactMaxStep * meanLink
@@ -1885,10 +2120,31 @@ class BoundaryContacts(
          * мембрану в первый же тик, когда клетка найдена внутри. Тогда отлов перестаёт
          * быть костылём и становится причиной разрушения, а новой цены не появляется.
          */
-        val PIERCE_TEAR = System.getenv("CT_PIERCE") == "1"
+        /**
+         * ВКЛЮЧЕНО: ПРОБОЙ КОНТУРА РВЁТ РЕБРО. Выключить — CT_PIERCE=0.
+         *
+         * Правило старое, но до сих пор было непригодно, потому что считало пересечение
+         * ПО СТАТИКЕ и не различало сторон. Что изменилось:
+         *   - сторона берётся по внутренней вершине ребра (boundOpp), и пробоем считается
+         *     только переход СНАРУЖИ ВНУТРЬ. Прежний порог по глубине больше не нужен: он
+         *     и не спасал от самошинковки (1.37 при пороге 1), и терял настоящие пробои;
+         *   - знак считается В СИСТЕМЕ САМОГО РЕБРА, отдельно на начало и на конец подшага.
+         *     Прежний вариант брал нормаль по конечному положению и почти не срабатывал на
+         *     таране, где не клетка влетает в ткань, а ТКАНЬ НАБЕГАЕТ НА КЛЕТКУ: 23
+         *     срабатывания за 90 тиков против 78 после правки.
+         * ЗАМЕР на таране клавишей O (медуза, осталось внутри из 1894): 651 → 473.
+         * physicsCheck 30 из 30, кость 0.1015 при пределе 0.15. По времени тика
+         * БЕСПЛАТНО: 10.873 против 10.898 мс без правила — проверка идёт по уже готовому
+         * списку пар, у клетки контура не больше двух граничных рёбер.
+         */
+        val PIERCE_TEAR = System.getenv("CT_PIERCE") != "0"
 
         /** Насколько глубоко за ребро надо уйти, чтобы это считалось пробоем. */
-        val PIERCE_DEPTH = System.getenv("CT_PIERCE_DEPTH")?.toDoubleOrNull() ?: 0.25
+        /**
+         * ПОРОГ ПО ГЛУБИНЕ БОЛЬШЕ НЕ НУЖЕН: сторону различает направление перехода, см.
+         * inward. Ноль — чистое пересечение. Оставлен знаком среды для проб.
+         */
+        val PIERCE_DEPTH = System.getenv("CT_PIERCE_DEPTH")?.toDoubleOrNull() ?: 0.0
         /** Пересчитывать пары покоя целиком, а не по задетым. Для сверки. См. applyRestPairs. */
         val REST_FULL = System.getenv("CT_RESTFULL") == "1"
         /** Полная проверка списка кандидатов перебором. Дорого, только для разбора. */
@@ -1980,6 +2236,16 @@ class BoundaryContacts(
          */
         val CONTACT_OMEGA_PAIR = System.getenv("CT_OMEGA_PAIR")?.toDoubleOrNull() ?: 2.0
 
+        /**
+         * ЗНАКОВЫЙ УПОР КОНТУРА: потолок поправки за подшаг, в долях средней связи.
+         * Ноль — выключено. См. solveContourSide.
+         */
+
+
+
+
+
+
         val CONTACT_SEAL = System.getenv("CT_SEAL")?.toDoubleOrNull() ?: 1.05
 
         /**
@@ -1992,7 +2258,7 @@ class BoundaryContacts(
         fun build(
             n: Int,
             conA: IntArray, conB: IntArray, conCount: Int,
-            boundA: IntArray, boundB: IntArray, boundCount: Int,
+            boundA: IntArray, boundB: IntArray, boundCount: Int, boundOpp: IntArray,
             radius: DoubleArray,
             contactScale: Double, ccdCore: Double, restitution: Double, friction: Double,
             /** Позиции покоя — из них берутся длины граничных рёбер. */
@@ -2026,8 +2292,8 @@ class BoundaryContacts(
                 contactScale, ccdCore, restitution, friction, meanLink, contactMaxStep,
                 DoubleArray(n),
             )
-            bc.reconfigure(conA, conB, conCount, boundA, boundB, boundCount, restX, restY,
-                isolated, dead, restPairs, everLinked)
+            bc.reconfigure(conA, conB, conCount, boundA, boundB, boundCount, boundOpp,
+                restX, restY, isolated, dead, restPairs, everLinked)
             return bc
         }
 

@@ -416,7 +416,9 @@ import kotlin.math.sqrt
  * ЛКМ - тянуть вершину, наведение на ребро мышцы - сокращение её кластера,
  * 1..9 - держать мышцу сокращённой, 0 - все сразу, G - автоматический гребок,
  * SPACE - пауза, F - ускорение до максимума машины, T - диалог скорости (ползунок
- * x0..x10), Y - вернуть x1, E - изгиб контура (перебор),
+ * x0..x10), Y - вернуть x1, [ - сверхзамедление x0.001 (переключатель, заодно включает
+ * интерполяцию по подшагам: вход клетки в ткань длится один-два подшага из шестнадцати,
+ * и на реальной скорости его просто не видно), E - изгиб контура (перебор),
  * I - режим интерполяции (выкл / по тикам, по умолчанию / по подшагам),
  * K - самоконтакт граничного контура,
  * R - сброс (включая камеру),
@@ -778,10 +780,22 @@ class RealBodyDemo(private val bodyPath: String,
          * тогда, когда MAX_SPEED_CELLS_PER_TICK / SUBSTEPS > этого потолка. Меняешь
          * SUBSTEPS или потолок скорости — здесь всё съезжает само и правильно.
          *
+         * ДВОЙКА (06.10): сравнивать надо не с ходом ОДНОЙ клетки, а со ВЗАИМНЫМ
+         * сближением. Потолок ограничивает поправку ПАРЫ: доля клетки выходит
+         * cap * w_её / (w_i + w_j), то есть у двух равных по 0.25 каждой, а сумма всё
+         * равно cap. А навстречу идут ДВЕ клетки, каждая по потолку скорости, значит
+         * сближение за подшаг доходит до 2 * vmax / SUBSTEPS. При cap = vmax/SUBSTEPS
+         * контакт отменял ровно половину — и свободную частицу у тяжёлого тела (вся
+         * поправка на ней, партнёр неподвижен) ткань просто проходила насквозь. Так
+         * внутрь попала клетка #1796 из журнала игрока: связей у неё ноль, решатель её
+         * не толкал, по ней прошла мембрана.
+         * Замер на таране медузы: тиков с проникновением 23 из 90 при 0.5 против 16 из
+         * 90 при 1.0, осталось внутри 0 в обоих, пробоев 5 против 1.
+         *
          * Стадию предела длины пришлось отвязать: см. LINK_MAX_STEP.
          */
         val CONTACT_MAX_STEP = System.getenv("RB_MAXSTEP")?.toDoubleOrNull()
-            ?: (MAX_SPEED_CELLS_PER_TICK / SUBSTEPS)
+            ?: (2.0 * MAX_SPEED_CELLS_PER_TICK / SUBSTEPS)
 
         /**
          * ТОТ ЖЕ ПОТОЛОК, НО ДЛЯ ЖЁСТКОЙ СТАДИИ ПРЕДЕЛА ДЛИНЫ. Отдельная константа.
@@ -842,6 +856,16 @@ class RealBodyDemo(private val bodyPath: String,
          * тот редкий случай, ради которого она и оставлена.
          */
         private const val MAX_SPEED_CELLS_PER_TICK = 8.0
+
+        /**
+         * СВЕРХЗАМЕДЛЕНИЕ на клавише [ — в тысячу раз медленнее реального времени.
+         *
+         * Шаг физики при этом НЕ МЕНЯЕТСЯ: timeScale умножает реальное время, то есть
+         * меняется число тиков в секунду, а не их длина. Состояния остаются побитово
+         * теми же, их просто показывают на большем числе кадров — поэтому замедление
+         * ничего не портит и его можно включать прямо посреди случая.
+         */
+        private const val SLOWMO_SCALE = 0.001
 
         /**
          * МАКСИМАЛЬНОЕ РАСТЯЖЕНИЕ СВЯЗИ в долях её СОБСТВЕННОЙ ДЛИНЫ ПОКОЯ.
@@ -1063,6 +1087,17 @@ class RealBodyDemo(private val bodyPath: String,
          * Журналы с таранами: лопнуло 1 / 16 / 2 / 8, стенд без изменений.
          */
         private const val TRAP_KILL_FOLDS = true
+
+        /**
+         * ЧЕРЕЗ СТОЛЬКО ТИКОВ ПЛЕНА КЛЕТКА ВОЗВРАЩАЕТСЯ НАРУЖУ. Ноль — выключено.
+         *
+         * Не сразу, потому что перекрытие на ударе — нормальная работа мягкого контакта:
+         * из 171 найденного перекрытия 82 решатель разгребает сам за несколько тиков, и
+         * возвращать их значило бы воевать со своим же решателем. См. ejectTrapped.
+         */
+
+
+
 
         /**
          * МЕМБРАНА ХРУПЧЕ ТКАНИ: связь на контуре рвётся, когда недобор сверх предела длины
@@ -1614,6 +1649,15 @@ class RealBodyDemo(private val bodyPath: String,
          *      из цикла заходов, но всё ещё идёт каждый подшаг, а это сетка, DDA и CCD,
          *      то есть худшая локальность во всём тике.
          */
+        /**
+         * ЧИСЛО ПРОХОДОВ ПО ВСЕМ ОГРАНИЧЕНИЯМ ЗА ПОДШАГ. Константа намеренно: граница
+         * самого горячего цикла, и настраиваемым полем она стоила около 8% времени тика.
+         *
+         * Поднимать пробовал — замером, для диагностики дребезга в толпе: на шестнадцати
+         * плата возврата обломков в УДАРАХ исчезает совсем (66.5к база против 63.0к), а в
+         * НАБИТОЙ ТОЛПЕ растёт (83к против 238к). Значит толпа не недосходится, а
+         * конфликтует без решения, и итерациями это не лечится.
+         */
         private const val SOLVER_ITERS = 4
         /**
          * КАК ЧАСТО МЕНЯТЬ НАПРАВЛЕНИЕ ОБХОДА СВЯЗЕЙ: 0 — никогда, 1 — раз в подшаг,
@@ -1666,7 +1710,7 @@ class RealBodyDemo(private val bodyPath: String,
          * ГЛАВНЫЙ ВЫКЛЮЧАТЕЛЬ СМЕРТИ ОТ ПРОНИКНОВЕНИЯ. false — не умирает никто нигде,
          * даже там, где стенд просит об этом через killOnDeep. Порог см. KILL_DEPTH.
          */
-        private const val KILL_ON_DEEP_OVERLAP = false
+        private val KILL_ON_DEEP_OVERLAP = System.getenv("RB_KILLDEEP") != "0"
 
         /** Прикладывать контакт к скорости до интегрирования. См. toVelocity. */
         private const val CONTACT_BEFORE_INTEGRATE = false
@@ -2019,6 +2063,16 @@ class RealBodyDemo(private val bodyPath: String,
     private fun bendCompliance(): Double = BEND_LEVELS[bendLevel]
 
     private var boundCount = 0
+
+    /**
+     * ВНУТРЕННЯЯ ВЕРШИНА каждого граничного ребра, или -1 у голого ребра.
+     *
+     * Ею задаётся внешняя нормаль контура. Без знака контакт между ЦЕНТРАМИ клеток
+     * слеп: стоит центру чужой клетки перейти линию контура, и отталкивание от центров
+     * мембраны начинает гнать её ВГЛУБЬ, а не назад. Замер по подшагам на стенде охоты
+     * показал ровно это. См. BoundaryContacts.solveContourSide.
+     */
+    private lateinit var boundOpp: IntArray
     private lateinit var boundA: IntArray
     private lateinit var boundB: IntArray
 
@@ -2566,7 +2620,7 @@ class RealBodyDemo(private val bodyPath: String,
         val ct = contacts
         if (ct == null) {
             contacts = BoundaryContacts.build(
-                n, conA, conB, conCount, boundA, boundB, boundCount, radius,
+                n, conA, conB, conCount, boundA, boundB, boundCount, boundOpp, radius,
                 CONTACT_SCALE, CCD_CORE, CONTACT_RESTITUTION, CONTACT_FRICTION,
                 body.x, body.y,
                 body.meanLinkLength.toDouble(), CONTACT_MAX_STEP, probeCells(), everLinked,
@@ -2575,7 +2629,7 @@ class RealBodyDemo(private val bodyPath: String,
         } else {
             // Объект переиспользуется: заводить его заново на каждой пересборке стоило
             // дороже всего остального разрыва вместе взятого. См. reconfigure.
-            ct.reconfigure(conA, conB, conCount, boundA, boundB, boundCount,
+            ct.reconfigure(conA, conB, conCount, boundA, boundB, boundCount, boundOpp,
                 body.x, body.y, probeCells(), cellDead, restPairs, everLinked)
         }
         // Наименьший радиус контакта в сцене — мерка «кто вообще способен пролезть».
@@ -2596,7 +2650,9 @@ class RealBodyDemo(private val bodyPath: String,
             }
         }
         contacts!!.also {
-            it.killOnDeep = killOnDeep && KILL_ON_DEEP_OVERLAP
+            // ПРАВИЛО ОБЩЕЕ, А НЕ ОПЦИЯ СТЕНДА: центр внутри чужого радиуса это
+            // проникновение, и оно запрещено везде, а не только в лаборатории.
+            it.killOnDeep = KILL_ON_DEEP_OVERLAP
             it.killDepth = KILL_DEPTH
             if (internalMom?.n != n) internalMom = InternalMomentum(n)
             if (contactPressure.size != n) contactPressure = DoubleArray(n)
@@ -2608,6 +2664,11 @@ class RealBodyDemo(private val bodyPath: String,
         }
         if (!rebuilding && !quiet) println("[RealBodyDemo] contact particles = ${boundCount} boundary edges, " +
             "contact radius from boundary edges, seal margin")
+        // ПРАВИЛО СМЕРТИ ВИДНО В ЖУРНАЛЕ: иначе замер легко сделать с выключенным
+        // правилом и объявить результат.
+        if (!rebuilding && !quiet) println("[RealBodyDemo] смерть от проникновения: " +
+            (if (contacts!!.killOnDeep) "ВКЛ, порог ${KILL_DEPTH} радиуса, умирают обе клетки (кость не умирает)"
+             else "выкл (RB_KILLDEEP=0)"))
     }
 
     /**
@@ -2882,12 +2943,31 @@ class RealBodyDemo(private val bodyPath: String,
         // попадает вовсе — и, считая только по карте, я терял такие рёбра целиком.
         // А это как раз хвост и плавники, то есть основная гребущая поверхность.
         if (!::boundA.isInitialized || boundA.size < lnkCount) {
-            boundA = IntArray(lnkCount); boundB = IntArray(lnkCount)
+            boundA = IntArray(lnkCount); boundB = IntArray(lnkCount); boundOpp = IntArray(lnkCount)
         }
         var m = 0
         for (k in 0 until lnkCount) {
-            if (use[lnkEdge[k]] > 1) continue
-            boundA[m] = lnkA[k]; boundB[m] = lnkB[k]; m++
+            val e = lnkEdge[k]
+            if (use[e] > 1) continue
+            boundA[m] = lnkA[k]; boundB[m] = lnkB[k]
+            // ТРЕТЬЯ ВЕРШИНА — ВНУТРЕННЯЯ СТОРОНА РЕБРА. У ребра с одним треугольником
+            // она есть, и по ней контакт узнаёт, где «наружу»: см. solveContourSide.
+            // У ГОЛОГО ребра (ни одного треугольника — тонкий отросток в одну клетку)
+            // внутренней стороны нет вовсе, и там стоит -1: у нитки нет изнутри.
+            boundOpp[m] = -1
+            if (use[e] == 1) {
+                val t = baked.liveTri(e)
+                if (t >= 0) {
+                    val a = lnkA[k]; val b = lnkB[k]
+                    val t0 = body.triA[t]; val t1 = body.triB[t]; val t2 = body.triC[t]
+                    boundOpp[m] = when {
+                        t0 != a && t0 != b -> t0
+                        t1 != a && t1 != b -> t1
+                        else -> t2
+                    }
+                }
+            }
+            m++
         }
         boundCount = m
         if (!rebuilding && !quiet) println("[RealBodyDemo] boundary edges = $boundCount")
@@ -3000,6 +3080,16 @@ class RealBodyDemo(private val bodyPath: String,
     /** Сколько рёбер контура порвано пробоем. См. applyPierce. */
     internal var piercedCount = 0
 
+    /**
+     * ИСКАТЬ ПРОБОЙ ПОСЛЕ КАЖДОЙ ИТЕРАЦИИ, А НЕ ТОЛЬКО ПО БАЛЛИСТИКЕ.
+     *
+     * prevX ставится в начале подшага, а prepare зовётся после ПЕРВОГО прохода стадий,
+     * значит смещения итераций 1..3 правило не видит вовсе. Именно так клетка #1796 из
+     * журнала игрока попала внутрь: её завёл решатель между двумя prepare, а на
+     * следующем подшаге она уже «была внутри», и знаковый фильтр по построению отказался.
+     */
+    internal val pierceEachIter = System.getenv("RB_PIERCE_ITER") == "1"
+
     private fun applyKills(ct: BoundaryContacts) {
         var any = false
         for (k in 0 until ct.killN) {
@@ -3011,8 +3101,29 @@ class RealBodyDemo(private val bodyPath: String,
             for (c in 0 until conCount) {
                 if (conA[c] == v || conB[c] == v) conDead[c] = true
             }
-            vx[v] = 0.0; vy[v] = 0.0
+            // МЁРТВАЯ КЛЕТКА ЗАМОРАЖИВАЕТСЯ, А НЕ ПРОСТО ОСТАНАВЛИВАЕТСЯ.
+            //
+            // Обнулить скорость мало: следующий же тик снова приложит к ней поток и
+            // тягу, и невидимая клетка (отрисовка мёртвых пропускает) полетит по сцене
+            // без контактного радиуса — сквозь всё. Ноль обратной массы выводит её из
+            // интегрирования так же, как неподвижные частицы бассейна.
+            vx[v] = 0.0; vy[v] = 0.0; invMass[v] = 0.0
+            // Из контактов клетка выводится сразу, а СТРУКТУРА перестраивается один раз
+            // в конце тика: смерть приходит изнутри итерации решателя, и пересборка на
+            // каждую смерть означала бы до 64 пересборок за тик.
+            ct.dropFromContacts(v)
         }
+        // ПЕРЕСБОРКА ЗДЕСЬ ЖЕ, А НЕ В КОНЦЕ ТИКА — ПРОВЕРЕНО ЗАМЕРОМ.
+        //
+        // Отложить её на конец тика заманчиво: смерть приходит изнутри итерации
+        // решателя, и пересборка на каждую смерть означает до 64 пересборок за тик.
+        // Отложенный вариант действительно быстрее, но ломает само правило: на таране
+        // медузы осталось внутри 109 против 0, а умерло всего 2 против 116.
+        //
+        // Потому что ПЕРЕСБОРКА И ЕСТЬ ТО, ЧТО ОТКРЫВАЕТ ДЫРУ. Пока она не прошла,
+        // клетки за погибшей остаются «внутренними» с нулевым радиусом: они не видят
+        // ни стены, ни друг друга, и колонна идёт дальше сквозь ткань. Радиус этим
+        // клеткам даёт только новый обход контура.
         if (any) { tearsPending = true; rebuildTimed() }
     }
 
@@ -4281,8 +4392,24 @@ class RealBodyDemo(private val bodyPath: String,
     private fun tick0() { if (dbgTimeOn) dbgTimeT0 = System.nanoTime() }
     private fun tick1(k: Int) { if (dbgTimeOn) dbgTimeNs[k] += System.nanoTime() - dbgTimeT0 }
 
+    /**
+     * КАКАЯ СТАДИЯ ДВИГАЕТ КЛЕТКУ. Знак среды RB_WATCH=номер клетки.
+     *
+     * Вопрос игрока: «какая-то стадия в обход контактов выталкивает частицы за другие
+     * частицы — возможно площади». Площади замером отвергнуты (без них ХУЖЕ: 596
+     * оставшихся внутри против 461), значит надо смотреть по стадиям поимённо, а не
+     * гадать. Здесь копится путь, который клетке дала каждая стадия за тик, в связях.
+     */
+    internal var watchCell = System.getenv("RB_WATCH")?.toIntOrNull() ?: -1
+        set(v) { field = v; if (v >= 0) dbgStages = true }
+    private val watchStage = DoubleArray(12)
+    private val watchNames = arrayOf("связи", "площади", "изгиб", "кость", "предел",
+        "контакт", "подготовка", "контакт2", "прочее", "лоскуты", "обход", "пересборка")
+
     private fun dbgMark() {
-        if (!dbgStages) return
+        // Снимок нужен и наблюдению за одной клеткой: инициализатор поля в Kotlin не
+        // проходит через сеттер, так что dbgStages по знаку среды сам не включится.
+        if (!dbgStages && watchCell < 0) return
         if (dbgSnapX.size < n) { dbgSnapX = DoubleArray(n); dbgSnapY = DoubleArray(n) }
         System.arraycopy(px, 0, dbgSnapX, 0, n)
         System.arraycopy(py, 0, dbgSnapY, 0, n)
@@ -4297,6 +4424,35 @@ class RealBodyDemo(private val bodyPath: String,
         if (dbgSnapVx.size < n) { dbgSnapVx = DoubleArray(n); dbgSnapVy = DoubleArray(n) }
         System.arraycopy(vx, 0, dbgSnapVx, 0, n)
         System.arraycopy(vy, 0, dbgSnapVy, 0, n)
+    }
+
+    /** Путь, который стадия [k] дала наблюдаемой клетке. См. watchCell. */
+    private fun watchNote(k: Int) {
+        val i = watchCell
+        if (i < 0 || i >= n || dbgSnapX.size < n) return
+        val dx = px[i] - dbgSnapX[i]; val dy = py[i] - dbgSnapY[i]
+        if (k in watchStage.indices) watchStage[k] += sqrt(dx * dx + dy * dy)
+    }
+
+    /** Печать разбивки по стадиям за тик и сброс. См. watchCell. */
+    private fun watchReport() {
+        val i = watchCell
+        if (i < 0 || i >= n) return
+        var sum = 0.0
+        for (v in watchStage) sum += v
+        val ml = body.meanLinkLength.toDouble()
+        if (sum > 1e-12) {
+            val sb = StringBuilder()
+            sb.append("[стадии] клетка #").append(i).append(" тик ").append(playTick)
+            sb.append(": всего ").append(String.format(java.util.Locale.ROOT, "%.3f", sum / ml)).append(" св")
+            for (k in watchStage.indices) {
+                if (watchStage[k] <= 1e-12) continue
+                sb.append("  ").append(watchNames[k]).append(' ')
+                    .append(String.format(java.util.Locale.ROOT, "%.3f", watchStage[k] / ml))
+            }
+            println(sb.toString())
+        }
+        java.util.Arrays.fill(watchStage, 0.0)
     }
 
     private fun dbgMeasureV(k: Int) {
@@ -4326,6 +4482,7 @@ class RealBodyDemo(private val bodyPath: String,
     }
 
     private fun dbgMeasure(k: Int, h: Double) {
+        watchNote(k)
         if (!dbgStages) return
         var worst = 0.0
         var hits = 0
@@ -4807,7 +4964,10 @@ class RealBodyDemo(private val bodyPath: String,
                 // растягивают: площадей, изгиба, проекции кости, контакта. Разрывы ловятся
                 // вторым заходом, который идёт каждый проход. См. MAXLEN_EARLY.
                 if (MAXLEN_EARLY) { tick0(); dbgMark(); solveLinkMaxLength(); dbgMeasure(4, h); tick1(2) }
-                tick0(); dbgMark(); solveAreas(h); dbgMeasure(1, h); tick1(3)
+                // ОПЫТ: выключить стадию площадей знаком среды RB_AREAS=0. Нужен проверке
+                // гипотезы игрока — не она ли проталкивает клетки сквозь чужую ткань в
+                // обход контактов. Возвращать в код насовсем не планируется.
+                if (areasOn) { tick0(); dbgMark(); solveAreas(h); dbgMeasure(1, h); tick1(3) }
                 tick0(); dbgMark(); solveBend(h); dbgMeasure(2, h); tick1(4)
                 tick0(); dbgMark()
                 if (bonesRigid) for (b in rigidBones.indices) projectBone(b)
@@ -4828,6 +4988,25 @@ class RealBodyDemo(private val bodyPath: String,
                         if (bonesRigid) boneOf else null, rigidBones)
                     tick0(); dbgMark(); ci.solveContacts(px, py, vx, vy, invMass, h); dbgMeasure(5, h); tick1(7)
                     if (ci.killN > 0) { applyKills(ci); contactsStale = true }
+                    // ПРОВЕРЯТЬ ПРОБОЙ ПОСЛЕ КАЖДОЙ ИТЕРАЦИИ — ПРОВЕРЕНО И ОТВЕРГНУТО.
+                    //
+                    // Догадка игрока была верной: на нулевой итерации видно только
+                    // баллистику, а внутрь клетку заводит решатель, и его смещение не
+                    // проверялось. Проверка после каждой итерации действительно нашла на
+                    // 67% больше пересечений (130 пробоев против 78). Но проникновение
+                    // стало ХУЖЕ: осталось внутри 637 против 461, входов 1204 против 978.
+                    //
+                    // Потому что РАЗРЫВ НЕ ОСТАНАВЛИВАЕТ КЛЕТКУ, А ВПУСКАЕТ ЕЁ: каждый
+                    // пробой открывает дыру, и следующие заходят через неё, уже ничего не
+                    // пересекая. Чем больше честных пробоев, тем больше дыр. Значит
+                    // непроницаемость контура разрывом не достигается в принципе — нужен
+                    // упор, который клетку ОСТАНАВЛИВАЕТ, а разрыв остаётся ответом на то,
+                    // что упор не удержал.
+                    //
+                    // ПЕРЕМЕР 06.10: тот замер делался, когда отломанные клетки были
+                    // призраками (радиус 0) и смерти от проникновения не было. Обе
+                    // причины убраны, поэтому развилка открыта заново — RB_PIERCE_ITER=1.
+                    if (pierceEachIter) ci.scanPierce(px, py, prevX, prevY)
                     if (ci.pierceN > 0) applyPierce(ci)
                 }
             }
@@ -4894,7 +5073,77 @@ class RealBodyDemo(private val bodyPath: String,
         // Пластика — РАЗ В ТИК, после всех подшагов: течение медленное, внутри тика
         // ему делать нечего, а стоить оно будет в шестнадцать раз дороже.
         applyPlasticity(DT)
+        if (watchCell >= 0) watchReport()
+        if (trapCrash > 0) trapCrashScan()
         burstByPressure()
+    }
+
+    /**
+     * Обход на проникновение с немедленной остановкой. Только для охоты, см. trapCrash.
+     *
+     * Пересборка перед обходом обязательна: порванное в последнем проходе предела длины
+     * ещё не пересобрано, и сетка треугольников содержала бы мёртвые — тогда клетка
+     * «внутри» треугольника, которого больше нет.
+     */
+
+
+    private fun trapCrashScan() {
+        if (contacts == null) return
+        if (tearsPending) rebuildTimed()
+        trapCrashCell = -1
+        scanTrapped()
+        val i = trapCrashCell
+        if (i < 0) return
+        // ЖУРНАЛ СНАЧАЛА. Падение в окне уносит буфер, а журнал — единственное, что потом
+        // воспроизводится побитово: без него от вылета нет никакой пользы.
+        try { plog?.flush() } catch (_: Throwable) {}
+        val ct = contacts
+        val t = trapCrashTri
+        val ml = body.meanLinkLength.toDouble()
+        // Глубина — наименьшее расстояние до сторон треугольника, в связях: «на волосок
+        // внутри» и «прошила насквозь» это разные болезни, и различать их надо числом.
+        var depth = 0.0
+        var verts = intArrayOf(-1, -1, -1)
+        if (t >= 0) {
+            val a = triA[t]; val b = triB[t]; val c = triC[t]
+            verts = intArrayOf(a, b, c)
+            var best = Double.MAX_VALUE
+            for (k in 0 until 3) {
+                val p0 = verts[k]; val p1 = verts[(k + 1) % 3]
+                var ex = px[p1] - px[p0]; var ey = py[p1] - py[p0]
+                val el = sqrt(ex * ex + ey * ey)
+                if (el < 1e-12) continue
+                ex /= el; ey /= el
+                val d = abs((px[i] - px[p0]) * ey - (py[i] - py[p0]) * ex)
+                if (d < best) best = d
+            }
+            if (best < Double.MAX_VALUE) depth = best / ml
+        }
+        // Ближайшая клетка чужого тела с контактом: если она далеко, клетка попала не
+        // сквозь мембрану, а мембрана уехала от неё.
+        var nearD = Double.MAX_VALUE; var nearJ = -1
+        val oi = organismOf[i]
+        for (j in 0 until n) {
+            if (j == i || cellDead[j] || organismOf[j] == oi) continue
+            if (ct != null && ct.contactRadiusOf(j) <= 0.0) continue
+            val dx = px[j] - px[i]; val dy = py[j] - py[i]
+            val d = sqrt(dx * dx + dy * dy)
+            if (d < nearD) { nearD = d; nearJ = j }
+        }
+        throw TrappedCrash(
+            cell = i, tri = t, fold = trapCrashFold,
+            orgCell = oi, orgTri = if (verts[0] >= 0) organismOf[verts[0]] else -1,
+            x = px[i], y = py[i],
+            speed = sqrt(vx[i] * vx[i] + vy[i] * vy[i]) * DT / ml,
+            radius = (ct?.contactRadiusOf(i) ?: 0.0) / ml,
+            bone = boneOf[i] >= 0,
+            free = isFree[i],
+            depth = depth,
+            nearForeign = nearJ,
+            nearDist = if (nearD < Double.MAX_VALUE) nearD / ml else -1.0,
+            nearRadius = if (nearJ >= 0) (ct?.contactRadiusOf(nearJ) ?: 0.0) / ml else -1.0,
+            triVerts = verts,
+        )
     }
 
     /**
@@ -4903,6 +5152,9 @@ class RealBodyDemo(private val bodyPath: String,
      * уходит. Кости бессмертны. Раз в тик, чтобы пересборка была одна на всех погибших.
      * Порог в связях смещения за тик, см. PRESSURE_BURST_LINKS; ноль — выключено.
      */
+    /** Опыт: стадия площадей. Выключается RB_AREAS=0. См. место вызова. */
+    internal var areasOn = System.getenv("RB_AREAS") != "0"
+
     internal var pressureBurst = System.getenv("RB_BURST")?.toDoubleOrNull() ?: PRESSURE_BURST_LINKS
     internal var pressureBurstCount = 0
     /** Клетки, у которых на этом тике связь порвалась на сжатии. См. CRUSH_BURST. */
@@ -4954,6 +5206,8 @@ class RealBodyDemo(private val bodyPath: String,
     internal var trapKillCount = 0
     /** Сколько тиков подряд центр клетки в чужой ткани. См. scanTrapped. */
     private var trapTicks = IntArray(0)
+    /** В чьём теле сидит застрявшая клетка. Нужно разбору и правилу пробоя. */
+    private var trapOrg = IntArray(0)
     private var trapGridStart = IntArray(0)
     private var trapTriBox = IntArray(0)
     private var trapGridItems = IntArray(0)
@@ -4975,6 +5229,23 @@ class RealBodyDemo(private val bodyPath: String,
     private var foldTicks = IntArray(0)
 
     /**
+     * ПАДАТЬ НА ПРОНИКНОВЕНИИ — отладочный режим охоты, а не лечение.
+     *
+     * Отлов застрявших (scanTrapped) как КОСТЫЛЬ убивал клетку через десять тиков и тем
+     * самым скрывал причину: прорыв случился, его замяли, разбираться не с чем. Здесь он
+     * работает наоборот — как утверждение в коде: любая клетка, чей центр оказался внутри
+     * чужого треугольника, это ошибка, и симуляция немедленно останавливается с полным
+     * описанием места. Дальше место воспроизводится тем же посевом и разбирается по
+     * подшагам. См. TrapHunt.
+     *
+     * 0 — выключено, 1 — чужая ткань, 2 — ещё и свои складки.
+     */
+    internal var trapCrash = System.getenv("RB_TRAP_CRASH")?.toIntOrNull() ?: 0
+    internal var trapCrashCell = -1
+    internal var trapCrashTri = -1
+    internal var trapCrashFold = false
+
+    /**
      * Кто сидит в чужой ткани. Раз в тик.
      *
      * ДЁШЕВО, ПОТОМУ ЧТО СМОТРЯТСЯ ТОЛЬКО КЛЕТКИ С КОНТАКТОМ — граница и мелкие куски.
@@ -4988,6 +5259,7 @@ class RealBodyDemo(private val bodyPath: String,
         val t0 = System.nanoTime()
         val n = n
         if (trapTicks.size != n) trapTicks = IntArray(n)
+        if (trapOrg.size != n) trapOrg = IntArray(n) { -1 }
         if (foldTicks.size != n) foldTicks = IntArray(n)
         // Всё в локальные: поле lateinit проверяется на каждом обращении.
         val px = px; val py = py; val dead = cellDead; val org = organismOf; val ticks = trapTicks
@@ -5060,12 +5332,25 @@ class RealBodyDemo(private val bodyPath: String,
                 if (foldTicks[i] > 0) dbgFoldExit[dbgTrapBin(foldTicks[i])]++
                 foldTicks[i] = 0
             }
+            // ПЕРВЫЙ НАРУШИТЕЛЬ ЗАПОМИНАЕТСЯ ЗДЕСЬ, а бросается после обхода: кидать из
+            // середины обхода значит оставить сетку треугольников недосчитанной, а её
+            // потом читает разбор места.
+            if (trapCrash > 0 && trapCrashCell < 0) {
+                if (foreign >= 0) {
+                    trapCrashCell = i; trapCrashTri = foreign; trapCrashFold = false
+                } else if (fold && trapCrash >= 2) {
+                    trapCrashCell = i; trapCrashTri = -1; trapCrashFold = true
+                }
+            }
             if (foreign < 0) {
                 if (ticks[i] > 0) dbgTrapExit[dbgTrapBin(ticks[i])]++
                 ticks[i] = 0
                 continue
             }
             ticks[i]++
+            // В ЧЬЁМ ТЕЛЕ СИДИТ — нужно возврату: контур берётся того организма, внутри
+            // которого клетка оказалась, а не ближайшего вообще. См. ejectTrapped.
+            if (trapOrg.size == n) trapOrg[i] = org[ta[foreign]]
             dbgTrapNow++
             if (boneOf[i] >= 0) dbgTrapBone++
             if (ct.contactRadiusOf(ta[foreign]) <= 0.0 && ct.contactRadiusOf(tb[foreign]) <= 0.0 &&
@@ -5073,6 +5358,121 @@ class RealBodyDemo(private val bodyPath: String,
         }
         dbgTrapNs += System.nanoTime() - t0
     }
+
+    /**
+     * ВОЗВРАТ ЗАСТРЯВШЕЙ КЛЕТКИ НАРУЖУ — вторая половина непроницаемости контура.
+     *
+     * ЗАЧЕМ ОНА НУЖНА ОТДЕЛЬНО ОТ ПРОФИЛАКТИКИ. Клетка внутри чужого тела не имеет НИ
+     * ОДНОГО контакта: контактный радиус назначается только из граничных рёбер, у
+     * внутренних клеток он строго ноль. Значит выталкивать её нечем, и само это никогда
+     * не исправится — замер показал, что клетка остаётся внутри все 60 тиков наблюдения.
+     * Позиционный решатель с конечным числом итераций когда-нибудь да пропустит, поэтому
+     * одной профилактики для гарантии не хватает.
+     *
+     * ПОЧЕМУ НЕ УБИВАТЬ. Так было раньше (TRAP_KILL_TICKS) и это был костыль: прорыв
+     * случился, его замяли, а игрок видел, как у него пропадают клетки. Возврат к
+     * ближайшему ребру — не затычка, а прямое решение того самого ограничения, которое
+     * нарушено.
+     *
+     * ПОЧЕМУ ПО СТОЙКОСТИ, А НЕ СРАЗУ. Перекрытие на ударе — нормальная работа мягкого
+     * контакта, и из 171 найденного перекрытия 82 решатель разгребает сам за несколько
+     * тиков. Возвращать их значило бы воевать со своим же решателем. Поэтому возврат
+     * ждёт TRAP_EJECT_TICKS тиков подряд: за это время транзит кончается сам, а
+     * настоящий плен — нет.
+     *
+     * НАПРАВЛЕНИЕ. К ближайшему ребру контура ТОГО тела, внутри которого клетка сидит
+     * (trapOrg), по внешней нормали этого ребра (boundOpp). Здесь «ближайшее ребро»
+     * уместно, в отличие от профилактики: клетка давно не движется относительно ткани,
+     * и кратчайший выход — он и есть выход. Поправка идёт долями по обратной массе,
+     * поэтому импульс пары сохраняется, и ограничена тем же потолком за тик.
+     */
+
+    /**
+     * ВОЗВРАЩАЮТСЯ ТОЛЬКО ОБЛОМКИ: кусок должен быть во столько раз меньше тела, в
+     * котором застрял. Отношение, а не число клеток — иначе правило зависело бы от
+     * размера тела, а оно про соотношение масс.
+     *
+     * ЗАЧЕМ ОГРАНИЧЕНИЕ. Возврат ВСЕХ ломал таран двух тел: на ударе внутри друг друга
+     * оказываются десятки клеток ПОЛНОРАЗМЕРНЫХ тел, и выталкивание каждой к своему
+     * ближайшему ребру работает насосом — ближайшие рёбра у них с разных сторон. Замер:
+     * 123 связи за встречное тело при пределе 1.0.
+     *
+     * А вот про обломок двух мнений быть не может: собственной ткани, которая держала
+     * бы его, у него нет, контактов внутри тела нет вовсе, и САМО это не исправится
+     * никогда. В журнале игрока застрявшие куски были размером 1, 1, 14 и 19 клеток
+     * при теле 947 — то есть именно обломки.
+     */
+
+    /** Ниже этой глубины до контура обломок не возвращается. См. ejectTrapped. */
+
+    /** Сколько обломков возвращать за тик. Ноль — все. См. planEjection. */
+
+    /**
+     * ШАГ ВОЗВРАТА ЗА ОДИН ЗАХОД, в долях средней связи.
+     *
+     * Маленький намеренно: невязка пересчитывается каждый заход, и стоит клетке выйти —
+     * приращение само обращается в ноль. Один большой прыжок за тик, который стоял в
+     * первой попытке, давал дрожь.
+     *
+     * ЗАХОД ОДИН НА ПОДШАГ, А НЕ НА КАЖДУЮ ИТЕРАЦИЮ. На всех четырёх итерациях поправка
+     * воюет со связями и площадями хозяина заново, и дребезг от этого вырос везде:
+     * лобовой 82к → 95к, вскользь 65к → 129к, куча плотнее 8к → 120к. Один заход на
+     * подшаг оставляет трём остальным итерациям возможность свести невязку всех прочих
+     * ограничений без помех.
+     */
+
+    /** 1 — выдавливать обломок, 2 — рвать мембрану в месте плена. См. planEjection. */
+
+    /**
+     * НЕ РВАТЬ СВЯЗЬ, ПОКА КЛЕТКА ВНУТРИ ЧУЖОЙ ТКАНИ ИЛИ В СКЛАДКЕ.
+     *
+     * Главный случай игрока устроен так: клетку вдавливает в ткань, связи рвутся, и на
+     * пересборке она становится отдельным организмом УЖЕ ВНУТРИ — разрыв и ЕСТЬ то, что
+     * создаёт нарушителя. Вытолкнуть его потом нельзя тихо: четыре размещения возврата
+     * измерены, все поднимают выброс и дребезг (см. applyEjection). Запрет на разрыв в
+     * этом состоянии убирает причину, и добавить шума ему нечем — он не прикладывает
+     * никаких поправок, а только НЕ разрывает.
+     *
+     * ОПРОВЕРГНУТО ЗАМЕРОМ, ПО УМОЛЧАНИЮ ВЫКЛЮЧЕНО. Запрет действительно тихий — дребезг
+     * остался базовым (бассейн 15951 ровно как база, куча в теле 64.2к против 63.8к), и
+     * это подтверждает, что шум давали именно поправки, а не сам отлов. Но ткань, которой
+     * не дают порваться, ПРОДАВЛИВАЮТ: проверка «тела не проходят друг сквозь друга на
+     * таране» дала 15.4 связи за встречное тело при пределе 1.0, а кость помялась на 0.225
+     * при пределе 0.15. В журнале игрока вторая метка при этом оказалась внутри ткани на
+     * 1.82 связи, то есть стало хуже, а число пленников на стенде не изменилось (86 из
+     * 1980 против 89 базовых).
+     *
+     * ВЫВОД, КОТОРЫЙ СТОИТ ЗАПОМНИТЬ: РАЗРЫВ НЕСУЩИЙ. Он и есть то, чем ткань отвечает на
+     * удар вместо того, чтобы быть пройденной насквозь. Запрещать его нельзя даже на один
+     * тик и даже локально.
+     */
+
+    /** Давать коллизию внутренней ткани там, где найден чужой. См. markExtraContacts. */
+
+    /** Сколько разрывов удержано запретом. Замер, а не догадка. */
+
+
+    /**
+     * ВОЗВРАТ ОБЛОМКА НАРУЖУ — ограничение, а не толчок. Зовётся В ПОДШАГЕ, перед
+     * проекцией кости.
+     *
+     * ПОЧЕМУ ИМЕННО ЗДЕСЬ. После этой стадии идёт projectBone, и он возвращает жёсткому
+     * кластеру форму — значит кость помяться не может по построению, а не по аккуратности.
+     * Дальше идёт предел длины, который подчистит растянутые поправкой связи, и контакты,
+     * у которых остаётся последнее слово. И главное: поправка попадает в позиционное
+     * решение подшага, а не кладётся в позиции после updateVelocities, где она целиком
+     * уходила в скорость делением на крошечный h.
+     *
+     * ШАГ МАЛЕНЬКИЙ И ПОВТОРЯЕТСЯ. Невязка пересчитывается каждый заход, поэтому стоит
+     * клетке выйти — приращение само обращается в ноль. Один большой прыжок за тик
+     * заменён многими малыми: так ведут себя все прочие ограничения, и дребезга от этого
+     * не возникает.
+     *
+     * ИМПУЛЬС. Трёхтельное: обломок и два конца ребра, доли по обратной массе с весами
+     * (1-t) и t вдоль ребра. Сумма m*dp равна нулю точно.
+     */
+
+    /** Сколько обломков ждёт возврата в этот тик. Видно в HUD. */
 
     private fun burstByPressure() {
         if (!tearingOn || contactPressure.size != n) return
@@ -5099,7 +5499,8 @@ class RealBodyDemo(private val bodyPath: String,
             if (!byPressure && !byCrush && !byTrap && !byFold) continue
             cellDead[i] = true; deadCount++
             when { byPressure -> pressureBurstCount++; byCrush -> crushBurstCount++; byTrap -> trapKillCount++; else -> foldKillCount++ }
-            vx[i] = 0.0; vy[i] = 0.0
+            // Заморозка, а не остановка. Причина та же, см. applyKills.
+            vx[i] = 0.0; vy[i] = 0.0; invMass[i] = 0.0
             any = true
         }
         if (!any) return
@@ -5127,6 +5528,9 @@ class RealBodyDemo(private val bodyPath: String,
         recordMuscles()
         updateMuscles(DT)
         recordDrag()
+        // Номер тика нужен разбору пробоя по одной клетке (CT_WATCH), иначе строки
+        // трассы нельзя привязать к событию из журнала игрока.
+        contacts?.tickNo = playTick
         simulate()
         simTime += DT
         logTick++
@@ -5162,10 +5566,36 @@ class RealBodyDemo(private val bodyPath: String,
 
     /** Помеченные средней кнопкой клетки. Только для глаз и журнала. */
     private val marks = LinkedHashSet<Int>()
+    /** Скорость, на которую вернуться из сверхзамедления. См. клавишу [. */
+    private var slowmoWas = 0.0
+    /** Режим интерполяции до включения сверхзамедления. */
+    private var slowmoInterpWas = 1
     private var wasMiddle = false
 
     private fun openPlayerLog(path: String = PlayerLog.FILE) {
+        // ПРИ ВОСПРОИЗВЕДЕНИИ ЖУРНАЛ НЕ ПИШЕТСЯ ВОВСЕ.
+        //
+        // Записывать нечего — ввод берётся из файла, — а перезаписать можно как раз тот
+        // журнал, который и воспроизводим. Я на этом уже потерял запись игрока: открыл
+        // окно, оно затёрло player-log.txt, и записи с метками не стало.
+        if (replayActive || pendingReplay != null) {
+            println("[RealBodyDemo] воспроизведение: журнал НЕ пишется, запись сохранена")
+            return
+        }
         val f = java.io.File(path)
+        // СТАРЫЙ ЖУРНАЛ НЕ ВЫБРАСЫВАЕТСЯ, А СДВИГАЕТСЯ. Журнал — единственное, что
+        // воспроизводится побитово, то есть единственное доказательство случая. Терять
+        // его при каждом запуске окна нельзя: игрок записал прорыв, открыл окно ещё раз
+        // посмотреть — и доказательства нет.
+        if (f.isFile && f.length() > 0L) {
+            val keep = java.io.File(f.parentFile, f.nameWithoutExtension + "-prev." + f.extension)
+            try {
+                keep.delete()
+                if (f.renameTo(keep)) println("[RealBodyDemo] прошлый журнал сохранён: ${keep.name}")
+            } catch (e: Exception) {
+                println("[RealBodyDemo] прошлый журнал сдвинуть не удалось: ${e.message}")
+            }
+        }
         try {
             val w = java.io.BufferedWriter(java.io.OutputStreamWriter(
                 java.io.FileOutputStream(f, false), Charsets.UTF_8))
@@ -5354,6 +5784,61 @@ class RealBodyDemo(private val bodyPath: String,
         } finally {
             replay = null
         }
+    }
+
+    /**
+     * ВОСПРОИЗВЕДЕНИЕ В ОКНЕ: тот же журнал, но видно, как всё происходит.
+     *
+     * ЗАЧЕМ ОТДЕЛЬНО ОТ replayRun. Тот крутит цикл до конца и ничего не рисует — он для
+     * разбора числами. Окну нужен ШАГ: кадр отрисовки отдаёт столько тиков, сколько
+     * набежало реального времени, и между ними картинка успевает обновиться. Физика при
+     * этом та же до бита: последовательность stepOnce и порядок событий не меняются, а
+     * скорость показа задаётся числом тиков за кадр, как и в обычном окне.
+     *
+     * Возвращает false, когда журнал кончился.
+     */
+    /** Журнал, который надо начать воспроизводить сразу после сборки тела. См. main. */
+    internal var pendingReplay: List<PlayerLog.Line>? = null
+    /** Во сколько раз быстрее показывать воспроизведение. См. main. */
+    internal var pendingReplaySpeed: Double? = null
+
+    internal fun replayLoad(lines: List<PlayerLog.Line>) {
+        replay = lines
+        replayAt = 0
+        replayMuscle = DoubleArray(muscleTarget.size)
+    }
+
+    internal val replayActive: Boolean get() = replay != null
+    internal val replayTotal: Int get() = replay?.lastOrNull()?.tick ?: 0
+
+    internal fun replayStepOne(): Boolean {
+        val lines = replay ?: return false
+        while (replayAt < lines.size) {
+            val ln = lines[replayAt]
+            if (ln.tick < playTick) {
+                // Рассинхрон: строка опоздала. В окне не печатаем на каждый кадр, счётчик
+                // ниже всё равно покажет расхождение сумм.
+                replayAt++
+                continue
+            }
+            if (ln.tick > playTick || ln.op == "M" || ln.op == "C") {
+                stepOnce()
+                return true
+            }
+            replayAt++
+            when (ln.op) {
+                "R", "B", "G", "K", "X", "E", "N", "S", "P", "O", "D", "U" ->
+                    act(ln.op[0], ln.args.getOrNull(0)?.toInt() ?: 0)
+                "H" -> replayCheckHash(ln)
+                // Метки игрока показываются тем же цветом, что и при записи: по ним и
+                // смотрят, та ли клетка и в тот ли момент.
+                "MARK" -> ln.args.getOrNull(0)?.toIntOrNull()?.let { marks.add(it) }
+                "UNMARK" -> ln.args.getOrNull(0)?.toIntOrNull()?.let { marks.remove(it) }
+            }
+            if (ln.op == "END") { replay = null; return false }
+        }
+        replay = null
+        return false
     }
 
     private fun replayTickInputs() {
@@ -5675,6 +6160,30 @@ class RealBodyDemo(private val bodyPath: String,
         if (Gdx.input.isKeyJustPressed(Input.Keys.K)) act('K', if (contactsOn) 0 else 1)
         if (Gdx.input.isKeyJustPressed(Input.Keys.P)) act('P')
         if (Gdx.input.isKeyJustPressed(Input.Keys.O)) act('O')
+        // СВЕРХЗАМЕДЛЕНИЕ НА КЛАВИШЕ, А НЕ НА ПОЛЗУНКЕ.
+        //
+        // Ползунок квадратичный (value = 10 * t^2), и 0.001 попадает на 1% дорожки —
+        // мышью такое не поймать. А нужно оно именно тогда, когда разглядываешь, как
+        // клетка входит в ткань, и ставишь на неё метку: на реальной скорости вход
+        // занимает один-два подшага из шестнадцати.
+        //
+        // Клавиша переключает: первое нажатие ставит SLOWMO_SCALE, второе возвращает
+        // прежнюю скорость, а не единицу — чтобы не терять то, что было выставлено.
+        if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT_BRACKET)) {
+            if (controls.timeScale > SLOWMO_SCALE * 1.5) {
+                slowmoWas = controls.timeScale
+                slowmoInterpWas = interpMode
+                controls.timeScale = SLOWMO_SCALE
+                // ИСТОРИЯ ПОДШАГОВ ВКЛЮЧАЕТСЯ ВМЕСТЕ С ЗАМЕДЛЕНИЕМ. Иначе на тик
+                // приходятся сотни кадров, а показывать между ними нечего: картинка
+                // стоит, потом прыгает на целый тик. Со историей видно каждый из
+                // шестнадцати подшагов — а вход клетки в ткань занимает один-два.
+                interpMode = 2
+            } else {
+                controls.timeScale = if (slowmoWas > 0.0) slowmoWas else 1.0
+                interpMode = slowmoInterpWas
+            }
+        }
         if (Gdx.input.isKeyJustPressed(Input.Keys.L)) {
             // Старая запись начинается со сброса — сброс идёт через журнал игрока.
             if (dragLog == null) act('R')
@@ -5783,6 +6292,13 @@ class RealBodyDemo(private val bodyPath: String,
 
         buildFromFile()
         startWarmUp()
+        // ВОСПРОИЗВЕДЕНИЕ НАЧИНАЕТСЯ С ТОГО ЖЕ СОСТОЯНИЯ, что и запись: reset ставит позы
+        // покоя, как replayBoot у разбора без окна. Без него тело стартовало бы из
+        // прогретого состояния, и суммы разошлись бы с первой же проверки.
+        pendingReplay?.let {
+            reset(); replayLoad(it); pendingReplay = null
+            pendingReplaySpeed?.let { v -> controls.timeScale = v }
+        }
         reset()
         openPlayerLog()
     }
@@ -5812,8 +6328,42 @@ class RealBodyDemo(private val bodyPath: String,
         return (lo + hi) * 0.5f
     }
 
+    /**
+     * ВВОД, РАЗРЕШЁННЫЙ ПРИ ВОСПРОИЗВЕДЕНИИ: только то, что меняет ПОКАЗ, но не физику.
+     *
+     * Пауза, скорость и режим интерполяции не вмешиваются в решатель: timeScale меняет
+     * число тиков в секунду, а не их длину, а интерполяция вообще только рисует. Значит
+     * воспроизведение остаётся побитово тем же, а смотреть его становится возможно: без
+     * этого запись на 247 тиков пролетает за восемь секунд, а вход клетки в ткань
+     * занимает один-два подшага.
+     *
+     * Всё, что подмешало бы в журнал событие (мышцы, таран, захват, сброс), здесь
+     * намеренно не читается.
+     */
+    private fun handleViewInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) paused = !paused
+        if (Gdx.input.isKeyJustPressed(Input.Keys.T)) controls.toggle()
+        if (Gdx.input.isKeyJustPressed(Input.Keys.I)) interpMode = (interpMode + 1) % 3
+        if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT_BRACKET)) {
+            if (controls.timeScale > SLOWMO_SCALE * 1.5) {
+                slowmoWas = controls.timeScale
+                slowmoInterpWas = interpMode
+                controls.timeScale = SLOWMO_SCALE
+                interpMode = 2
+            } else {
+                controls.timeScale = if (slowmoWas > 0.0) slowmoWas else 1.0
+                interpMode = slowmoInterpWas
+            }
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.Y)) controls.reset()
+        controls.handleInput(Gdx.graphics.width, Gdx.graphics.height)
+    }
+
     override fun render() {
-        handleInput()
+        // ПРИ ВОСПРОИЗВЕДЕНИИ ЖИВОЙ ВВОД НЕ ЧИТАЕТСЯ. Иначе случайное нажатие подмешает
+        // в журнал событие, которого там не было, и воспроизведение перестанет быть
+        // воспроизведением. Окно закрывается крестиком, как обычно.
+        if (replayActive) handleViewInput() else handleInput()
 
         // Мышцы обновляются ВНУТРИ паузы-гварда вместе с физикой. Иначе на паузе
         // активации продолжали бы ехать к цели, длины покоя менялись бы без решателя,
@@ -5840,7 +6390,8 @@ class RealBodyDemo(private val bodyPath: String,
                 // пачку шагов подряд — выглядит как взрыв.
                 if (accumulator > MAX_CATCHUP) accumulator = MAX_CATCHUP
                 while (accumulator >= DT) {
-                    stepOnce()
+                    if (replayActive) { if (!replayStepOne()) { accumulator = 0.0; break } }
+                    else stepOnce()
                     accumulator -= DT
                     steps++
                 }
@@ -5850,7 +6401,7 @@ class RealBodyDemo(private val bodyPath: String,
                 // симуляция встанет совсем и это будет похоже на зависание.
                 val deadline = System.nanoTime() + FAST_BUDGET_MS * 1_000_000L
                 do {
-                    stepOnce()
+                    if (replayActive) { if (!replayStepOne()) break } else stepOnce()
                     steps++
                 } while (System.nanoTime() < deadline && steps < FAST_MAX_STEPS)
                 // В ускорении долг не копим: реальное время тут ни при чём.
@@ -6053,6 +6604,20 @@ class RealBodyDemo(private val bodyPath: String,
 
         font.color = if (invertedPeak > 0) INVERTED_FILL else HUD_MUTED
         font.draw(batch, "INVERTED triangles: now = $invertedNow   peak = $invertedPeak", 16f, y); y -= line
+        // ПРОНИКНОВЕНИЕ ВИДНО СРАЗУ, А НЕ ПОСЛЕ РАЗБОРА. Обход на проникновение всё равно
+        // идёт каждый тик — он нужен возврату обломков, — так что строка почти бесплатна.
+        // Падения в окне намеренно нет (см. trapCrash): оно убило бы сеанс в момент
+        // наблюдения и унесло журнал, а журнал потом воспроизводится побитово.
+        if (replayActive || replayHashOk + replayHashBad > 0) {
+            font.color = if (replayHashBad > 0) Color.valueOf("FF6B6BFF") else HUD_MUTED
+            font.draw(batch, "REPLAY: tick $playTick / $replayTotal   checksums ok = $replayHashOk" +
+                (if (replayHashBad > 0) ", MISMATCH from tick $replayFirstBadTick" else ", none failed") +
+                (if (replayActive) "" else "   (log finished)"), 16f, y); y -= line
+            font.color = HUD_TEXT
+        }
+        font.draw(batch, "inside foreign tissue: now = $dbgTrapNow (folds $dbgTrapFold)" +
+            "   membrane pierced = $piercedCount" +
+            (if (trapCrash > 0) "   CRASH ON" else ""), 16f, y); y -= line
 
         // --- наблюдение за дрейфом ---
         //
@@ -6223,14 +6788,52 @@ class RealBodyDemo(private val bodyPath: String,
 /** Запуск: зелёная стрелка. Путь к выгрузке можно передать аргументом. */
 fun main(args: Array<String>) {
     if (StartupHelper.startNewJvmIfRequired()) return
-    val path = if (args.isNotEmpty()) args[0] else "body-export-медуза.txt"
+    val path = if (args.isNotEmpty()) args[0] else "body-export.txt"
     val config = Lwjgl3ApplicationConfiguration().apply {
         setTitle("Организм из редактора — XPBD + shape matching")
         setWindowedMode(1100, 720)
         useVsync(true)
         setForegroundFPS(144)
     }
-    Lwjgl3Application(RealBodyDemo(path), config)
+    // ВОСПРОИЗВЕДЕНИЕ ЖУРНАЛА В ОКНЕ: -Pplay=player-log.txt у задачи realBodyDemo.
+    //
+    // Тело и все параметры берутся ИЗ ЗАГОЛОВКА ЖУРНАЛА, как в разборе без окна: иначе
+    // воспроизводилось бы другое тело и суммы разошлись бы по причине, не имеющей
+    // отношения к физике. Контрольные суммы проверяются те же, и их итог виден в HUD —
+    // по нему и судят, то ли это, что видел игрок.
+    val playPath = args.getOrNull(1)?.takeIf { it.isNotEmpty() }
+    if (playPath != null) {
+        val f = java.io.File(playPath)
+        require(f.isFile) { "нет журнала: ${f.absolutePath}" }
+        val log = PlayerLog.parse(f)
+        val hdr = log.header
+        val bodyPath = hdr["body"] ?: error("в журнале нет строки HDR body")
+        val d = RealBodyDemo(bodyPath,
+            copies = hdr["copies"]?.toInt() ?: 2,
+            freeParticles = hdr["free"]?.toInt() ?: 6,
+            labKillFraction = hdr["killFraction"]?.toDouble() ?: 0.0,
+            labKillSeed = hdr["killSeed"]?.toLong() ?: 0L,
+            killOnDeep = hdr["killOnDeep"] == "1")
+        d.pendingReplay = log.lines
+        // СКОРОСТЬ ПОКАЗА: -Pspeed=4. Умножается РЕАЛЬНОЕ время, а не шаг физики, поэтому
+        // состояния остаются побитово теми же — их просто показывают на меньшем числе
+        // кадров. Запись на 4959 тиков это 166 секунд, а метки игрока бывают в середине,
+        // и ждать их вживую незачем.
+        d.pendingReplaySpeed = args.getOrNull(2)?.takeIf { it.isNotEmpty() }?.toDoubleOrNull()
+        println("[RealBodyDemo] воспроизведение журнала: ${f.absolutePath}, тело $bodyPath, " +
+            "строк ${log.lines.size}")
+        Lwjgl3Application(d, config)
+        return
+    }
+    val demo = RealBodyDemo(path)
+    // ВЫЛЕТ НА ПРОНИКНОВЕНИИ ПО УМОЛЧАНИЮ ВЫКЛЮЧЕН.
+    //
+    // Он был включён по просьбе игрока, и тут же выяснилось, чем мешает: окно падает
+    // раньше, чем успеваешь поставить метку на проникшую клетку, а метка нужнее — по ней
+    // потом разбирается конкретный случай. Включается явно:
+    //     gradlew :lwjgl3:realBodyDemo -Pcrash=1     (или RB_TRAP_CRASH=1)
+    if (System.getenv("RB_TRAP_CRASH") == "1") demo.trapCrash = 1
+    Lwjgl3Application(demo, config)
 }
 
 /** Счётчики проходимости мембраны — общие на все экземпляры стенда. См. dbgSeal. */

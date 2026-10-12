@@ -37,6 +37,8 @@ class Topology private constructor(
     val triRestArea2: FloatArray,
     val triMuscle: IntArray,
     val boundA: IntArray,
+    /** Внутренняя вершина граничного ребра, -1 у голого. См. RealBodyDemo.boundOpp. */
+    val boundOpp: IntArray,
     val boundB: IntArray,
     val rigidBones: Array<IntArray>,
     /** Номер жёсткой кости у клетки, -1 если не в кости. */
@@ -140,6 +142,7 @@ class Topology private constructor(
                 triRestArea2 = body.triRestArea2, triMuscle = f("triMuscle"),
                 boundA = f<IntArray>("boundA").copyOf(f("boundCount")),
                 boundB = f<IntArray>("boundB").copyOf(f("boundCount")),
+                boundOpp = f<IntArray>("boundOpp").copyOf(f("boundCount")),
                 rigidBones = f("rigidBones"),
                 boneRestQx = f("boneRestQx"), boneRestQy = f("boneRestQy"),
                 muscleCount = body.muscleClusters.size,
@@ -445,7 +448,7 @@ class SwimSolver(private val topo: Topology, var p: SwimParams) {
     }
     val contacts = BoundaryContacts.build(
         n, topo.conA, topo.conB, topo.conCount,
-        topo.boundA, topo.boundB, topo.boundCount, radius,
+        topo.boundA, topo.boundB, topo.boundCount, topo.boundOpp, radius,
         p.contactScale, p.ccdCore, p.contactRestitution, p.contactFriction,
         topo.restX, topo.restY,
         topo.meanLinkLength.toDouble(), p.contactMaxStep, topo.isFree,
