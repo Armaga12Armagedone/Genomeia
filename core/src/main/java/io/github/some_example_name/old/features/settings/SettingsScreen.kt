@@ -1,5 +1,7 @@
 package io.github.some_example_name.old.features.settings
 
+import io.github.some_example_name.old.commands.GameCommand
+import io.github.some_example_name.old.bug.ReplayTarget
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.utils.Align
 import com.kotcrab.vis.ui.widget.VisTable
@@ -20,9 +22,17 @@ import io.github.some_example_name.old.core.ui.w
 class SettingsScreen : VisDslScreen(
     background = Color(0.04f, 0.04f, 0.06f, 1f),
     isScrollable = false
-) {
+), ReplayTarget {
 
     private val viewModel = SettingsViewModel()
+
+    /** Повтор бага: команда настроек, и вёрстка заново — переключатели должны её показать. */
+    override fun replay(command: GameCommand): Boolean {
+        if (command !is SettingsIntent) return false
+        viewModel.handle(command)
+        recompose()
+        return true
+    }
 
     // Нужна ссылка на dynamic-таблицу из switchTo
     private var dynamicContent: VisTable? = null
@@ -138,16 +148,6 @@ class SettingsScreen : VisDslScreen(
         visLabel(bundle.get("settings.graphics.todo")) {
             pad(16f)
         }
-        row()
-
-        // Пишет команды игрока в debug.bin, чтобы баг можно было воспроизвести кнопкой
-        // «Повтор сессии» на экране симуляции. Действует со следующей сессии (вход в
-        // симуляцию или «Перезапустить»).
-        visToggleButton(
-            text = bundle.get("settings.debug_mode"),
-            checked = viewModel.isSessionRecording,
-            onCheckedChange = { viewModel.handle(SettingsIntent.SetSessionRecording(it)) }
-        )
     }
 
     fun VisTable.language() {
@@ -168,7 +168,7 @@ class SettingsScreen : VisDslScreen(
                 selectedIndex = currentIndex,
                 onChange = { _, index ->
                     // recompose() дёрнет сама ViewModel через onLanguageChanged.
-                    viewModel.handle(SettingsIntent.SetLanguage(languages[index]))
+                    viewModel.handle(SettingsIntent.SetLanguage(languages[index].toLanguageTag()))
                 }
             ) {
                 expandX().fillX().padTop(16.dp())

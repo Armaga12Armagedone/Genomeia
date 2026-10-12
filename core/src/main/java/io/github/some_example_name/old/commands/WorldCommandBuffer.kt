@@ -15,9 +15,19 @@ package io.github.some_example_name.old.commands
  * раскладывает в порядке объявления, поэтому padding реально окружает size.
  * Цена — ~128 байт на поток (всего ~2 КБ), то есть ноль.
  */
-class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный размер — на 1000 команд
+class WorldCommandBuffer(
+    initialCapacity: Int = 1000,  // Начальный размер — на 1000 команд
+    /** Номер буфера в массиве буферов — по нему берётся ключ из [order]. */
+    private val bufferIndex: Int = 0,
+    /** Ключи порядка от стадий симуляции; null — порядок не нужен (у буфера нет параллельных писателей). */
+    private val order: WorkOrder? = null
+) {
     // Массив типов команд (int — ordinal enum)
     var commandTypes = IntArray(initialCapacity) { -1 }  // -1 = пусто
+
+    /** Ключ порядка каждой команды — см. WorkOrder. Буфер по ним отсортирован. */
+    @JvmField
+    var orderKeys = LongArray(initialCapacity)
 
     // Параметры: большие массивы, где для каждой команды — фиксированный слот (type.ordinal * MAX_PARAMS + offset)
     var intParams = IntArray(initialCapacity * WorldCommandType.MAX_INT_PARAMS) { 0 }
@@ -46,6 +56,7 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
 
         val baseIndex = size
         commandTypes[baseIndex] = type.ordinal
+        orderKeys[baseIndex] = currentKey()
 
         // Копируем параметры в слоты (только нужное кол-во, остальное игнорируем)
         ints?.let { System.arraycopy(it, 0, intParams, baseIndex * WorldCommandType.MAX_INT_PARAMS, minOf(it.size, type.intParamsCount)) }
@@ -78,6 +89,7 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
 
         val index = size
         commandTypes[index] = type.ordinal
+        orderKeys[index] = currentKey()
         intParams[index * WorldCommandType.MAX_INT_PARAMS] = int0
 
         size = index + 1
@@ -88,6 +100,7 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
 
         val index = size
         commandTypes[index] = type.ordinal
+        orderKeys[index] = currentKey()
         val base = index * WorldCommandType.MAX_INT_PARAMS
         intParams[base] = int0
         intParams[base + 1] = int1
@@ -100,6 +113,7 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
 
         val index = size
         commandTypes[index] = type.ordinal
+        orderKeys[index] = currentKey()
         val base = index * WorldCommandType.MAX_INT_PARAMS
         intParams[base] = int0
         intParams[base + 1] = int1
@@ -109,13 +123,27 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
     }
 
 
+    private fun currentKey(): Long {
+        val o = order ?: return 0L
+        return o.keys[bufferIndex]
+    }
+
     // Обработка всех команд (consume) — итерация и вызов обработчика
     inline fun consume(processor: (WorldCommandType, IntArray, FloatArray, BooleanArray) -> Unit) {
+        consumeRange(0, size, processor)
+        clear()
+    }
+
+    /**
+     * Команды [from, to) без очистки буфера — для применения нескольких буферов слиянием
+     * по ключу порядка (WorldCommandsManager).
+     */
+    inline fun consumeRange(from: Int, to: Int, processor: (WorldCommandType, IntArray, FloatArray, BooleanArray) -> Unit) {
         val tempInts = IntArray(WorldCommandType.MAX_INT_PARAMS)
         val tempFloats = FloatArray(WorldCommandType.MAX_FLOAT_PARAMS)
         val tempBooleans = BooleanArray(WorldCommandType.MAX_BOOLEAN_PARAMS)
 
-        for (i in 0 until size) {
+        for (i in from until to) {
             val typeOrdinal = commandTypes[i]
             if (typeOrdinal == -1) continue  // Пусто
 
@@ -131,7 +159,6 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
 
             processor(type, tempInts, tempFloats, tempBooleans)
         }
-        clear()
     }
 
     // Очистка буфера
@@ -143,6 +170,7 @@ class WorldCommandBuffer (initialCapacity: Int = 1000) {  // Начальный 
     private fun resize() {
         val newCapacity = commandTypes.size * 2
         commandTypes = commandTypes.copyOf(newCapacity).apply { fill(-1, size, newCapacity) }
+        orderKeys = orderKeys.copyOf(newCapacity)
         intParams = intParams.copyOf(newCapacity * WorldCommandType.MAX_INT_PARAMS)
         floatParams = floatParams.copyOf(newCapacity * WorldCommandType.MAX_FLOAT_PARAMS)
         booleanParams = booleanParams.copyOf(newCapacity * WorldCommandType.MAX_BOOLEAN_PARAMS)

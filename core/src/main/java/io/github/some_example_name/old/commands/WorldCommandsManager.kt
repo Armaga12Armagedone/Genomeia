@@ -52,9 +52,16 @@ class WorldCommandsManager(
         defaultReturnValue(-1)
     }
 
+    /**
+     * Ключи порядка для буферов: стадии симуляции выставляют их, буферы запоминают, а
+     * применение идёт слиянием по ним — см. WorkOrder. ThreadManager получает его из
+     * контейнера.
+     */
+    val workOrder = WorkOrder(diContext.threadCount)
+
     var worldCommandSpecialModDataBuffer = Array(diContext.threadCount) { mutableListOf<SpecialModData>() }
-    var worldCommandBuffer = Array(diContext.threadCount) { WorldCommandBuffer() }
-    var worldCommandSecondBuffer = Array(diContext.threadCount) { WorldCommandBuffer(100) }
+    var worldCommandBuffer = newBuffers(1000)
+    var worldCommandSecondBuffer = newBuffers(100)
     val worldCommandLastBuffer = WorldCommandBuffer(100)
 
     private var lastAddedCellIndexBuffer = IntArray(diContext.threadCount) { -1 }
@@ -63,8 +70,7 @@ class WorldCommandsManager(
 
 
     fun executingCommandsFromTheWorld() {
-        worldCommandBuffer.forEachIndexed { threadId, worldCommandBuffer ->
-            worldCommandBuffer.consume { type, ints, floats, booleans ->
+        consumeInOrder(worldCommandBuffer) { threadId, type, ints, floats, booleans ->
                 when (type) {
                     WorldCommandType.DIVIDE_ALIVE_CELL_ACTION_COUNTER -> {
                         organEntity.divideCounterThisStage[ints[0]]++
@@ -93,7 +99,7 @@ class WorldCommandsManager(
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
 
-                        if (cellIndex == -1) return@consume
+                        if (cellIndex == -1) return@consumeInOrder
 
                         val linkIndex = linkEntity.addLink(
                             cellIndex = cellIndex,
@@ -116,7 +122,7 @@ class WorldCommandsManager(
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
 
-                        if (cellIndex == -1) return@consume
+                        if (cellIndex == -1) return@consumeInOrder
 
                         neuralLinkEntity.addNeuralLink(
                             cellIndex = cellIndex,
@@ -409,10 +415,8 @@ class WorldCommandsManager(
                     else -> {}
                 }
             }
-        }
 
-        worldCommandSecondBuffer.forEachIndexed { _, worldCommandBuffer ->
-            worldCommandBuffer.consume { type, ints, floats, booleans ->
+        consumeInOrder(worldCommandSecondBuffer) { _, type, ints, floats, booleans ->
                 when (type) {
                     WorldCommandType.ADD_LINK_BY_ID -> {
                         val cellId = ints[0]
@@ -459,7 +463,6 @@ class WorldCommandsManager(
                     else -> {}
                 }
             }
-        }
 
         organIndexCellIdMapIndex.clear()
     }
@@ -502,11 +505,60 @@ class WorldCommandsManager(
     }
 
     override fun resize() {
-        worldCommandBuffer = Array(diContext.threadCount) { WorldCommandBuffer() }
-        worldCommandSecondBuffer = Array(diContext.threadCount) { WorldCommandBuffer(100) }
+        workOrder.resize(diContext.threadCount)
+        worldCommandBuffer = newBuffers(1000)
+        worldCommandSecondBuffer = newBuffers(100)
         lastAddedCellIndexBuffer = IntArray(diContext.threadCount) { -1 }
     }
 
     override fun dispose() {
+    }
+
+    private fun newBuffers(capacity: Int) =
+        Array(diContext.threadCount) { index -> WorldCommandBuffer(capacity, bufferIndex = index, order = workOrder) }
+
+    /** Позиции слияния по буферам — поле, а не локальный массив: слияние идёт каждый тик. */
+    private var mergeCursors = IntArray(0)
+
+    /**
+     * Применить буферы в порядке ключей (WorkOrder): каждый буфер отсортирован, поэтому
+     * это слияние. Берётся целиком пачка одной работы — команды подряд с одним ключом, —
+     * так что выбор «чей ход» делается по разу на работу, а не на каждую команду. При
+     * равных ключах (команды вне стадий в разных буферах) первым идёт меньший номер буфера.
+     *
+     * [processor] получает номер буфера: по нему живут per-buffer структуры применения
+     * (lastAddedCellIndexBuffer, worldCommandSpecialModDataBuffer).
+     */
+    private inline fun consumeInOrder(
+        buffers: Array<WorldCommandBuffer>,
+        processor: (threadId: Int, type: WorldCommandType, ints: IntArray, floats: FloatArray, booleans: BooleanArray) -> Unit
+    ) {
+        if (mergeCursors.size < buffers.size) mergeCursors = IntArray(buffers.size)
+        val cursors = mergeCursors
+        cursors.fill(0, 0, buffers.size)
+
+        while (true) {
+            var best = -1
+            var bestKey = Long.MAX_VALUE
+            for (b in buffers.indices) {
+                val cursor = cursors[b]
+                if (cursor < buffers[b].size) {
+                    val key = buffers[b].orderKeys[cursor]
+                    if (best == -1 || key < bestKey) {
+                        best = b
+                        bestKey = key
+                    }
+                }
+            }
+            if (best == -1) break
+
+            val buffer = buffers[best]
+            val from = cursors[best]
+            var to = from + 1
+            while (to < buffer.size && buffer.orderKeys[to] == bestKey) to++
+            cursors[best] = to
+            buffer.consumeRange(from, to) { type, ints, floats, booleans -> processor(best, type, ints, floats, booleans) }
+        }
+        buffers.forEach { it.clear() }
     }
 }

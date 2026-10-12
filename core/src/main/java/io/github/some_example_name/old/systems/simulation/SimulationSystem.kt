@@ -29,10 +29,15 @@ import io.github.some_example_name.old.systems.render.RenderBufferManager
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
 import io.github.some_example_name.old.systems.physics.MovementManager
-import io.github.some_example_name.old.features.settings.GlobalSettings
-import io.github.some_example_name.old.systems.debug.LogReplay
-import io.github.some_example_name.old.systems.debug.LogSaver
-import io.github.some_example_name.old.systems.debug.ReplayFormat
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.ControllerKeys
+import io.github.some_example_name.old.journal.SessionJournal
+import io.github.some_example_name.old.journal.SessionStarted
+import io.github.some_example_name.old.journal.SimRestarted
+import io.github.some_example_name.old.journal.StateHash
+import io.github.some_example_name.old.journal.StateHashed
+import io.github.some_example_name.old.journal.WorldSaveCommitted
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -59,9 +64,7 @@ class SimulationSystem(
     val renderBufferManager: RenderBufferManager,
     val pheromonesManager: PheromonesManager,
     val movementManager: MovementManager,
-    val worldTerrainManager: WorldTerrainManager,
-    val logSaver: LogSaver,
-    val logReplay: LogReplay
+    val worldTerrainManager: WorldTerrainManager
 ) {
 
     private var simulationThread: Thread? = null
@@ -96,7 +99,11 @@ class SimulationSystem(
     private val profiler = PhaseProfiler()
     private val worldStats = WorldStats()
 
-    /** Только для отладочного стресс-теста, см. applyDebugStress. */
+    /**
+     * Только для отладочного стресс-теста, см. applyDebugStress. Сид — от сида сессии
+     * (resetSessionInput): иначе повтор бага не смог бы повторить, какие клетки стресс
+     * убил или разогнал.
+     */
     private val debugRandom = java.util.Random()
 
     /**
@@ -116,7 +123,19 @@ class SimulationSystem(
      */
     fun <T> betweenTicks(block: () -> T): T = tickLock.withLock(block)
 
-    fun updateTick() = tickLock.withLock { tick() }
+    fun updateTick() {
+        // Повтор бага держит мир на тике: сохранение мира ещё не случилось, или запись
+        // кончилась. Ждём вне лока — иначе само сохранение не смогло бы его взять.
+        if (BugReplay.isActive && BugReplay.mustHold(SessionJournal.epoch, simulationData.tickCounter)) {
+            try {
+                Thread.sleep(HOLD_SLEEP_MS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            return
+        }
+        tickLock.withLock { tick() }
+    }
 
     private fun tick() {
         val tickStart = System.nanoTime()
@@ -125,20 +144,17 @@ class SimulationSystem(
             dispose()
             return
         }
-        if (simulationData.isRestart) {
+        if (BugReplay.isActive) {
+            // При повторе рестарт берётся из записи — в том тике, где он случился у
+            // игрока, а не когда до флага дошёл бы этот поток.
+            simulationData.isRestart = false
+            if (BugReplay.restartAt(SessionJournal.epoch, simulationData.tickCounter)) {
+                restartSim()
+                return
+            }
+        } else if (simulationData.isRestart) {
+            SessionJournal.recordSim(CommandSource.SYSTEM, SimRestarted, SessionJournal.epoch, simulationData.tickCounter)
             restartSim()
-            return
-        }
-        logReplay.takePending()?.let {
-            startReplay(it)
-            return
-        }
-        if (logReplay.isActive && simulationData.tickCounter >= logReplay.endTick) {
-            // Дошли до места, где игрок остановился (или где игра упала): встаём на паузу,
-            // чтобы это состояние можно было рассмотреть.
-            logReplay.stop()
-            simulationData.isPlay = false
-            println("LogReplay: запись закончилась на тике ${simulationData.tickCounter}, пауза")
             return
         }
 
@@ -160,7 +176,6 @@ class SimulationSystem(
         profiler.measure(Phase.ORGANS) { organManager.performOrgansNextStage() }
         profiler.measure(Phase.USER_CMD) { userCommandManager.processingCommandsFromUser() }
         profiler.measure(Phase.LAST_WORLD_CMD) { worldCommandsManager.executingLastCommandsFromTheWorld() }
-        logSaver.endTick(simulationData.tickCounter)
         // Единственное место, где меняется структура пространственной сетки. Стоит здесь,
         // потому что к этому моменту уже применены все перемещения (фаза 6) и все
         // создания/удаления частиц (фазы 7-10), то есть сетка собирается один раз по
@@ -187,6 +202,10 @@ class SimulationSystem(
                 py = particleEntity.y
             )
         }
+
+        // Тик закончен целиком и сетка собрана — самое место для снимка состояния:
+        // однопоточно, и ни одна фаза уже ничего не допишет.
+        if (simulationData.tickCounter % STATE_HASH_PERIOD == 0) hashState()
 
         profiler.measure(Phase.RENDER) { renderBufferManager.updateBuffer(profiler.text) }
 
@@ -376,9 +395,6 @@ class SimulationSystem(
     }
 
     fun dispose() {
-        // До simulationData.clear(): в конец записи идёт номер последнего тика сессии.
-        logSaver.close(simulationData.tickCounter)
-        logReplay.stop()
         gridManager.clearAll()
         entityList.forEach { it.clear() }
         simulationData.clear()
@@ -396,76 +412,85 @@ class SimulationSystem(
     }
 
     /**
-     * Начало сессии в только что построенном мире (tickCounter = 0): новый seed для
-     * случайностей команд игрока и, если включено в настройках, новая запись.
+     * Начало сессии в только что построенном мире: новая эпоха журнала и новый seed для
+     * случайностей команд игрока. При повторе бага seed берётся из записи.
      */
     private fun startSession() {
-        // RandomXS128 сам перемешивает seed, так что близкие значения nanoTime не страшны.
-        val seed = System.nanoTime()
+        val epoch = SessionJournal.beginSimEpoch()
+        val seed = (if (BugReplay.isActive) BugReplay.sessionSeed(epoch) else null)
+            // RandomXS128 сам перемешивает seed, так что близкие значения nanoTime не страшны.
+            ?: System.nanoTime()
         resetSessionInput(seed)
-        if (GlobalSettings.DEBUG_MODE) logSaver.begin(sessionHeader(seed))
-    }
-
-    /** Пересоздаёт мир и проигрывает в нём записанную сессию. Сам ничего не пишет. */
-    private fun startReplay(recording: LogReplay.Recording) {
-        dispose()
-        worldTerrainManager.initWorld(
-            gridWith = DISimulationContainer.gridWidth,
-            gridHeight = DISimulationContainer.gridHeight
-        )
-        resetSessionInput(recording.header.seed)
-        val current = sessionHeader(recording.header.seed)
-        logReplay.start(
-            recording = recording,
-            gridWidth = current.gridWidth,
-            gridHeight = current.gridHeight,
-            threadCount = current.threadCount,
-            genomeNames = current.genomeNames,
-            initialParticles = current.initialParticles
-        )
-        simulationData.isPlay = true
+        SessionJournal.recordSim(CommandSource.SYSTEM, SessionStarted(seed), epoch, simulationData.tickCounter)
     }
 
     private fun resetSessionInput(seed: Long) {
         userCommandManager.startSession(seed)
+        debugRandom.setSeed(seed xor DEBUG_RANDOM_SALT)
         simulationData.controllerKeys.fill(false)
         lastControllerKeysMask = 0
     }
 
-    private fun sessionHeader(seed: Long) = ReplayFormat.Header(
-        seed = seed,
-        gridWidth = DISimulationContainer.gridWidth,
-        gridHeight = DISimulationContainer.gridHeight,
-        threadCount = threadCount,
-        genomeNames = genomeManager.genomes.map { it.name },
-        initialParticles = particleEntity.aliveList.size
-    )
+    /**
+     * Хэш состояния мира — в журнал, а при повторе сверка с записанным. Первое
+     * несовпадение — первый тик, где повтор разошёлся с игрой.
+     */
+    private fun hashState() {
+        val tick = simulationData.tickCounter
+        val hash = StateHash.compute(particleEntity, cellEntity, linkEntity, tick)
+        if (BugReplay.isActive) {
+            BugReplay.checkStateHash(SessionJournal.epoch, tick, hash)
+        } else {
+            SessionJournal.recordSim(CommandSource.SYSTEM, StateHashed(hash), SessionJournal.epoch, tick)
+        }
+    }
+
+    /**
+     * Мир записан в слот [slot]. Зовётся из сохранения между тиками (под тем же локом),
+     * поэтому номер тика здесь точный.
+     */
+    fun onWorldSaved(slot: String) {
+        if (BugReplay.isActive) {
+            BugReplay.onWorldSaveFinished()
+        } else {
+            SessionJournal.recordSim(
+                CommandSource.SYSTEM, WorldSaveCommitted(slot), SessionJournal.epoch, simulationData.tickCounter
+            )
+        }
+    }
 
     private var lastControllerKeysMask = 0
 
     /**
      * Клавиши контроллера на этот тик. Поток рендера пишет controllerKeyTouched когда
      * угодно, поэтому симуляция читает не его, а снимок, сделанный здесь, в однопоточном
-     * начале тика. Снимок и записывается в сессию (только при изменении), и подменяется
-     * записанным при воспроизведении.
+     * начале тика. Снимок пишется в журнал (только при изменении), а при повторе бага
+     * подменяется записанным.
      */
     private fun latchControllerKeys() {
-        val keys = simulationData.controllerKeys
-        if (logReplay.isActive) {
-            logReplay.applyKeys(simulationData.tickCounter, keys)
-            return
-        }
-
-        val input = simulationData.controllerKeyTouched
-        var mask = 0
-        for (i in keys.indices) {
-            val pressed = input[i]
-            keys[i] = pressed
-            if (pressed) mask = mask or (1 shl i)
+        val epoch = SessionJournal.epoch
+        val tick = simulationData.tickCounter
+        val mask = if (BugReplay.isActive) {
+            BugReplay.keysAt(epoch, tick) ?: lastControllerKeysMask
+        } else {
+            val input = simulationData.controllerKeyTouched
+            var live = 0
+            for (i in input.indices) if (input[i]) live = live or (1 shl i)
+            live
         }
         if (mask != lastControllerKeysMask) {
             lastControllerKeysMask = mask
-            logSaver.recordKeys(simulationData.tickCounter, mask)
+            SessionJournal.recordSim(CommandSource.SYSTEM, ControllerKeys(mask), epoch, tick)
+        }
+        val keys = simulationData.controllerKeys
+        for (i in keys.indices) keys[i] = mask and (1 shl i) != 0
+
+        // Отладочный стресс-тест — от тех же клавиш A и D, что и управление организмом.
+        // Из снимка, а не прямо с клавиатуры: снимок пишется в журнал, и повтор бага
+        // запускает стресс в тех же тиках.
+        if (DEBUG_CHECKS) {
+            simulationData.debugKillCells = keys[KEY_A]
+            simulationData.debugFlingCells = keys[KEY_D]
         }
     }
 
@@ -478,6 +503,23 @@ class SimulationSystem(
 
     companion object {
         const val DELTA_SIM_TICK_TIME = 0.016666666f
+
+        /** Индексы клавиш A и D в controllerKeys (0–9 цифры, 10–13 WASD, 14 пробел, 15–18 стрелки). */
+        private const val KEY_A = 11
+        private const val KEY_D = 13
+
+        /** Чтобы сид стресс-теста не совпадал с сидом команд игрока. */
+        private const val DEBUG_RANDOM_SALT = 0x5DEECE66DL
+
+        /**
+         * Хэш состояния мира — раз в столько тиков (раз в секунду при 60 тиках/с).
+         * -Dgenomeia.stateHashPeriod=1 — каждый тик: так находится первый тик, где повтор
+         * разошёлся. Запись и повтор должны идти с одним и тем же значением.
+         */
+        val STATE_HASH_PERIOD = System.getProperty("genomeia.stateHashPeriod")?.toIntOrNull()?.coerceAtLeast(1) ?: 60
+
+        /** Сколько спать, пока повтор держит мир на тике. */
+        private const val HOLD_SLEEP_MS = 2L
 
         /** Сколько клеток за тик убивает / разгоняет отладочный стресс-тест. */
         private const val DEBUG_STRESS_CELLS_PER_TICK = 55

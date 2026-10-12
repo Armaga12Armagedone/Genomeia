@@ -3,61 +3,26 @@ package io.github.some_example_name.lwjgl3;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 
-import io.github.some_example_name.old.core.log.CrashReport;
 import io.github.some_example_name.old.game.MyGame;
-import kotlin.Unit;
 
 import java.awt.Dimension;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.awt.Toolkit;
 
 /**
  * Launches the desktop (LWJGL3) application.
  */
 public class Lwjgl3Launcher {
-//    public static void main(String[] args) {
-//        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-//            Logger.logCrash(throwable);
-//            System.exit(1);
-//        });
-//        if (StartupHelper.startNewJvmIfRequired()) return;
-//        createApplication();
-//    }
+    /*
+     * Краши ловит сама игра (core, bug.CrashHandler): собирает .bug с журналом действий
+     * и показывает окно отчёта. Здесь своего обработчика нет, чтобы не перехватить
+     * исключение раньше неё; упавшее до запуска игры (окно, OpenGL) печатается JVM как
+     * обычно.
+     */
     public static void main(String[] args) {
-        installCrashReporter();
         if (StartupHelper.startNewJvmIfRequired())
             return; // This handles macOS support and helps on Windows.
         createApplication();
     }
-
-    /**
-     * Необработанное исключение в scene2d роняет приложение — и вместе с ним всё, что
-     * игрок успел сделать. Здесь мы дописываем к стектрейсу маршрут по экранам и хвост
-     * журнала действий, то есть сценарий, по которому баг воспроизводится.
-     */
-    private static void installCrashReporter() {
-        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-            try {
-                String report = CrashReport.INSTANCE.build(throwable);
-                System.err.println(report);
-                Files.write(
-                    Paths.get(CRASH_REPORT_FILE),
-                    report.getBytes(StandardCharsets.UTF_8)
-                );
-                System.err.println("[Genomeia] Отчёт сохранён: "
-                    + Paths.get(CRASH_REPORT_FILE).toAbsolutePath());
-            } catch (Throwable reportingFailure) {
-                // Сборщик отчёта не имеет права стать причиной второй ошибки:
-                // исходный стектрейс важнее любых наших украшений.
-                throwable.printStackTrace();
-            }
-            System.exit(1);
-        });
-    }
-
-    private static final String CRASH_REPORT_FILE = "crash-report.txt";
 
     private static Lwjgl3Application createApplication() {
         return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null), getDefaultConfiguration());

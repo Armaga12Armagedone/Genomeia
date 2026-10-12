@@ -1,8 +1,6 @@
 package io.github.some_example_name.android
 
-import android.app.AlertDialog
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.Rect
 import android.net.Uri
@@ -18,10 +16,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
 import android.widget.Toast
-import androidx.core.content.FileProvider
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import games.spooky.gdx.nativefilechooser.android.AndroidFileChooser
@@ -30,9 +25,6 @@ import io.github.some_example_name.old.game.KeyBoardListener
 import io.github.some_example_name.old.game.MyGame
 import java.io.File
 import java.io.FileOutputStream
-import java.io.FileWriter
-import java.io.PrintWriter
-import java.io.StringWriter
 
 //class AndroidLauncher : AndroidApplication() {
 //    override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,9 +49,6 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Crash handler должен быть первым
-        Thread.setDefaultUncaughtExceptionHandler(CrashHandler(this))
-
         super.onCreate(savedInstanceState)
 
         configureSimulationThreads()
@@ -190,69 +179,6 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         } catch (e: Exception) {
             Log.e("AndroidLauncher", "Import failed: ${e.message}")
             Toast.makeText(this, "Ошибка импорта: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    // ====================== Crash Handler ======================
-    private class CrashHandler(private val context: AndroidLauncher) : Thread.UncaughtExceptionHandler {
-        override fun uncaughtException(thread: Thread, throwable: Throwable) {
-            val sw = StringWriter()
-            val pw = PrintWriter(sw)
-            throwable.printStackTrace(pw)
-            val stackTrace = sw.toString()
-
-            Log.e("CrashHandler", stackTrace)
-
-            val crashDir = context.getExternalFilesDir(null)
-            crashDir?.mkdirs()
-            val crashFile = File(crashDir, "crash_log_android.txt")
-
-            try {
-                FileWriter(crashFile).use { it.write(stackTrace) }
-            } catch (e: Exception) {
-                Log.e("CrashHandler", "Failed to write crash log", e)
-            }
-
-            context.runOnUiThread {
-                val scrollView = ScrollView(context)
-                val textView = TextView(context).apply {
-                    text = stackTrace
-                    setTextIsSelectable(true)
-                    setBackgroundColor(Color.WHITE)
-                    setTextColor(Color.BLACK)
-                    setPadding(16, 16, 16, 16)
-                }
-                scrollView.addView(textView)
-
-                AlertDialog.Builder(context)
-                    .setTitle("Send the crash log to the community")
-                    .setView(scrollView)
-                    .setPositiveButton("Share") { dialog, _ ->
-                        try {
-                            val uri = FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.provider",
-                                crashFile
-                            )
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_STREAM, uri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Send the crash log"))
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Share failed: ${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                        dialog.dismiss()
-                    }
-                    .setNegativeButton("Close") { dialog, _ -> dialog.dismiss() }
-                    .setOnDismissListener {
-                        context.finish()
-                        android.os.Process.killProcess(android.os.Process.myPid())
-                    }
-                    .setCancelable(false)
-                    .show()
-            }
         }
     }
 }

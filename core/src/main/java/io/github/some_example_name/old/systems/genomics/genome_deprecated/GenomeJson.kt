@@ -6,6 +6,7 @@ import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.utils.Json
 import com.badlogic.gdx.utils.JsonWriter
 import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.GameFiles
 import java.io.File
 
 @Deprecated("Теперь используется protobuf")
@@ -62,7 +63,7 @@ class GenomeJsonReader() {
     }
 
     fun getGenomeFileNamesFromFolder(): List<String> {
-        val folderHandle: FileHandle = saveDir.child("genomes")
+        val folderHandle: FileHandle = GameFiles.genomesDir()
 //        if (!folderHandle.exists() || !folderHandle.isDirectory) {
 //            println("Folder not found: ${folderHandle.path()}")
 //            return emptyList()

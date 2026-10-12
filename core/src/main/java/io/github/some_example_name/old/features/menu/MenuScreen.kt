@@ -9,6 +9,9 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
 import com.kotcrab.vis.ui.widget.VisTable
+import io.github.some_example_name.old.bug.ReplayTarget
+import io.github.some_example_name.old.commands.GameCommand
+import io.github.some_example_name.old.core.GameVersion
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.ui.STYLE_BEIGE_BLACK
@@ -24,7 +27,7 @@ import io.github.some_example_name.render.RenderMode
 class MenuScreen : VisDslScreen(
     background = Color(0f, 0f, 0f, 1f),
     isScrollable = false
-) {
+), ReplayTarget {
 
     private val batch = SpriteBatch()
     private val camera = OrthographicCamera()
@@ -64,16 +67,10 @@ class MenuScreen : VisDslScreen(
             visLabel(text = "GENOMEIA", font = game.buttonFont, textColor = STYLE_BEIGE_BLACK)
             row()
 
-            visTextButton(bundle.get("button.empty"), onClick = {
-                showEffect(menuViewModel.handle(MenuIntent.BrowseWorlds))
-            }) { growX() }
+            visTextButton(bundle.get("button.empty"), onClick = { browseWorlds() }) { growX() }
             row()
 
-            visTextButton(bundle.get("button.editor"), onClick = {
-                // Решение «список или сразу пустой редактор» принимает ViewModel,
-                // экран только показывает диалог, если её попросили.
-                showEffect(menuViewModel.handle(MenuIntent.BrowseGenomes))
-            }) { growX() }
+            visTextButton(bundle.get("button.editor"), onClick = { browseGenomes() }) { growX() }
             row()
 
             visTextButton(bundle.get("button.options"), onClick = {
@@ -91,44 +88,60 @@ class MenuScreen : VisDslScreen(
             }) { growX() }
             row()
 
-            visLabel(text = "alpha-0.2.4", font = game.mediumFont, textColor = STYLE_BEIGE_BLACK)
+            visLabel(text = GameVersion.NAME, font = game.mediumFont, textColor = STYLE_BEIGE_BLACK)
             row()
         }
     }
 
-    /** Вёрстка того, что ViewModel попросила показать. */
-    private fun showEffect(effect: MenuEffect) {
-        when (effect) {
-            is MenuEffect.None -> Unit
-
-            is MenuEffect.ShowGenomeList -> {
-                val dialog = GenomeListDialog(
-                    genomesList = effect.genomes,
-                    selectedGenomeIndex = null,
-                    title = bundle.get("button.selectGenome"),
-                    new = bundle.get("button.new"),
-                    select = bundle.get("button.select"),
-                    import = bundle.get("button.import"),
-                    onNew = { menuViewModel.handle(MenuIntent.OpenGenomeEditor(null)) },
-                    onNext = { name -> menuViewModel.handle(MenuIntent.OpenGenomeEditor(name)) },
-                    game = game,
-                    onResize = { h -> onResize = if (h == {}) null else h },
-                    onImport = { menuViewModel.handle(MenuIntent.ImportGenome) }
-                )
-                menuViewModel.onGenomeImportFinished = { dialog.fadeOut() }
-                dialog.show(stage)
-            }
-
-            is MenuEffect.ShowWorldList -> MapSelect(
-                game = game,
-                title = bundle.get("dialog.worlds"),
-                worlds = effect.worlds,
-                newWorld = bundle.get("button.newWorld"),
-                onLoad = { slot -> menuViewModel.handle(MenuIntent.OpenSavedWorld(slot)) },
-                onNew = { menuViewModel.handle(MenuIntent.OpenWorldEditor) },
-                onResize = { h -> onResize = if (h == {}) null else h }
-            ).show(stage)
+    /**
+     * «Запуск симуляции»: список сохранённых миров, а если их нет — сразу новый мир.
+     * Сам список — только окно, команда — то, что в нём выбрали.
+     */
+    private fun browseWorlds() {
+        val worlds = menuViewModel.savedWorlds()
+        if (worlds.isEmpty()) {
+            menuViewModel.handle(MenuIntent.openWorldEditor())
+            return
         }
+        MapSelect(
+            game = game,
+            title = bundle.get("dialog.worlds"),
+            worlds = worlds,
+            newWorld = bundle.get("button.newWorld"),
+            onLoad = { slot -> menuViewModel.handle(MenuIntent.OpenSavedWorld(slot)) },
+            onNew = { menuViewModel.handle(MenuIntent.openWorldEditor()) },
+            onResize = { h -> onResize = if (h == {}) null else h }
+        ).show(stage)
+    }
+
+    /** «Редактор»: список геномов, а если их нет — сразу пустой редактор. */
+    private fun browseGenomes() {
+        val genomes = menuViewModel.genomeNames()
+        if (genomes.isEmpty()) {
+            menuViewModel.handle(MenuIntent.OpenGenomeEditor(null))
+            return
+        }
+        val dialog = GenomeListDialog(
+            genomesList = genomes,
+            selectedGenomeIndex = null,
+            title = bundle.get("button.selectGenome"),
+            new = bundle.get("button.new"),
+            select = bundle.get("button.select"),
+            import = bundle.get("button.import"),
+            onNew = { menuViewModel.handle(MenuIntent.OpenGenomeEditor(null)) },
+            onNext = { name -> menuViewModel.handle(MenuIntent.OpenGenomeEditor(name)) },
+            game = game,
+            onResize = { h -> onResize = if (h == {}) null else h },
+            onImport = { menuViewModel.handle(MenuIntent.ImportGenome) }
+        )
+        menuViewModel.onGenomeImportFinished = { dialog.fadeOut() }
+        dialog.show(stage)
+    }
+
+    override fun replay(command: GameCommand): Boolean {
+        if (command !is MenuIntent) return false
+        menuViewModel.handle(command)
+        return true
     }
 
     override fun dslRender(delta: Float) {

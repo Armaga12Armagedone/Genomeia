@@ -2,7 +2,9 @@ package io.github.some_example_name.old.features.devsupport
 
 import io.github.some_example_name.old.commands.GameCommand
 import com.badlogic.gdx.Gdx
-import io.github.some_example_name.old.core.log.ActionLog
+import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.SessionJournal
+import kotlinx.serialization.Serializable
 
 data class CryptoWallet(
     val title: String,
@@ -11,12 +13,14 @@ data class CryptoWallet(
 )
 
 /** Что игрок хочет сделать на экране поддержки. */
+@Serializable
 sealed interface SupportIntent : GameCommand {
 
     /**
      * @param title именно название кошелька, а не адрес: в журнал не кладут содержимое
      *   буфера обмена, даже когда оно публичное — это плохая привычка на будущее.
      */
+    @Serializable
     data class CopyAddress(val title: String) : SupportIntent {
         override val name get() = "CopyAddress"
         override val detail get() = title
@@ -38,18 +42,14 @@ class SupportViewModel {
         )
     )
 
-    fun handle(intent: SupportIntent) {
-        ActionLog.record(LOG_SOURCE, intent)
+    fun handle(intent: SupportIntent) = SessionJournal.execute(CommandSource.SUPPORT, intent) { apply(it) }
 
+    private fun apply(intent: SupportIntent) {
         when (intent) {
             is SupportIntent.CopyAddress -> {
                 val wallet = wallets.firstOrNull { it.title == intent.title } ?: return
                 Gdx.app.clipboard.contents = wallet.address
             }
         }
-    }
-
-    private companion object {
-        const val LOG_SOURCE = "Support"
     }
 }

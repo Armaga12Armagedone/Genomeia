@@ -4,7 +4,10 @@ import io.github.some_example_name.old.commands.GameCommand
 import com.badlogic.gdx.Gdx
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
-import io.github.some_example_name.old.core.log.ActionLog
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.SessionJournal
+import kotlinx.serialization.Serializable
 import java.util.Locale
 
 enum class SettingsTab {
@@ -12,34 +15,35 @@ enum class SettingsTab {
 }
 
 /** Что игрок хочет сделать в настройках. */
+@Serializable
 sealed interface SettingsIntent : GameCommand {
 
+    @Serializable
     data class SelectTab(val tab: SettingsTab) : SettingsIntent {
         override val name get() = "SelectTab"
         override val detail get() = tab.name
     }
 
+    @Serializable
     data class SetMusicVolume(val value: Int) : SettingsIntent {
         override val name get() = "SetMusicVolume"
         override val detail get() = value.toString()
     }
 
+    @Serializable
     data class SetSoundVolume(val value: Int) : SettingsIntent {
         override val name get() = "SetSoundVolume"
         override val detail get() = value.toString()
     }
 
-    data class SetLanguage(val locale: Locale) : SettingsIntent {
+    /** Язык — тегом (ru, en, ...): Locale сам по себе в журнал не пишется. */
+    @Serializable
+    data class SetLanguage(val languageTag: String) : SettingsIntent {
         override val name get() = "SetLanguage"
-        override val detail get() = locale.toLanguageTag()
+        override val detail get() = languageTag
     }
 
-    /** Запись сессии в debug.bin для кнопки «Повтор сессии». Действует со следующей сессии. */
-    data class SetSessionRecording(val enabled: Boolean) : SettingsIntent {
-        override val name get() = "SetSessionRecording"
-        override val detail get() = enabled.toString()
-    }
-
+    @Serializable
     data object OpenGithub : SettingsIntent {
         override val name get() = "OpenGithub"
     }
@@ -56,14 +60,13 @@ class SettingsViewModel {
 
     val musicVolume: Int get() = GlobalSettings.MUSIC_VOLUME
     val soundVolume: Int get() = GlobalSettings.SOUND_VOLUME
-    val isSessionRecording: Boolean get() = GlobalSettings.DEBUG_MODE
 
     /** Экран подписывается сюда, чтобы перерисоваться после смены языка. */
     var onLanguageChanged: (() -> Unit)? = null
 
-    fun handle(intent: SettingsIntent) {
-        ActionLog.record(LOG_SOURCE, intent)
+    fun handle(intent: SettingsIntent) = SessionJournal.execute(CommandSource.SETTINGS, intent) { apply(it) }
 
+    private fun apply(intent: SettingsIntent) {
         when (intent) {
             is SettingsIntent.SelectTab -> currentTab = intent.tab
 
@@ -77,14 +80,13 @@ class SettingsViewModel {
             }
 
             is SettingsIntent.SetLanguage -> {
-                GlobalSettings.currentLanguageTag = intent.locale.toLanguageTag()
-                DIGameGlobalContainer.setLanguage(intent.locale)
+                GlobalSettings.currentLanguageTag = intent.languageTag
+                DIGameGlobalContainer.setLanguage(Locale.forLanguageTag(intent.languageTag))
                 onLanguageChanged?.invoke()
             }
 
-            is SettingsIntent.SetSessionRecording -> GlobalSettings.DEBUG_MODE = intent.enabled
-
-            is SettingsIntent.OpenGithub -> Gdx.net.openURI(GITHUB_URL)
+            // При повторе бага браузер разработчику ни к чему.
+            is SettingsIntent.OpenGithub -> if (!BugReplay.isActive) Gdx.net.openURI(GITHUB_URL)
         }
     }
 
@@ -139,7 +141,6 @@ class SettingsViewModel {
     }
 
     private companion object {
-        const val LOG_SOURCE = "Settings"
         const val GITHUB_URL = "https://github.com/dendor0101/Genomeia"
     }
 }
@@ -149,5 +150,4 @@ object GlobalSettings {
     var MUSIC_VOLUME = 0
     var SOUND_VOLUME = 50
     var currentLanguageTag: String = Locale.getDefault().toLanguageTag()
-    var DEBUG_MODE = false
 }

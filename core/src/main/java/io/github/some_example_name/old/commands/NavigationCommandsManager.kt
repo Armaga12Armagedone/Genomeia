@@ -2,7 +2,10 @@ package io.github.some_example_name.old.commands
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Screen
+import io.github.some_example_name.old.bug.BugReplay
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
+import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.SessionJournal
 import io.github.some_example_name.old.features.devsupport.SupportScreen
 import io.github.some_example_name.old.features.ecosystem.EcoSystemScreen
 import io.github.some_example_name.old.features.editor.GenomeEditorScreen
@@ -37,7 +40,11 @@ class NavigationCommandsManager {
     fun currentPath(): List<String> =
         commandStack.map { it.logName } + listOfNotNull(currentCommand?.logName)
 
-    fun performCommand(navigationCommands: NavigationCommands) {
+    fun performCommand(command: NavigationCommands) =
+        // В ActionLog переход пишет onCommand — уже с тем, куда в итоге попали.
+        SessionJournal.execute(CommandSource.NAVIGATION, command, logAction = false) { perform(it) }
+
+    private fun perform(navigationCommands: NavigationCommands) {
         val destination = when (navigationCommands) {
             is Menu -> {
                 val old = game.screen
@@ -70,16 +77,13 @@ class NavigationCommandsManager {
                     current?.dispose()
                     currentCommand?.name ?: GoMenu.name
                 } else {
-                    clearStack()
-                    game.screen?.dispose()
-                    Gdx.app.exit()
+                    exitGame()
                     EXIT
                 }
             }
 
             GoExit -> {
-                clearStack()
-                Gdx.app.exit()
+                exitGame()
                 EXIT
             }
         }
@@ -92,11 +96,25 @@ class NavigationCommandsManager {
         GoEcoSystem -> EcoSystemScreen()
         is GoGenomeEditor -> GenomeEditorScreen(command.genomeName)
         GoSettings -> SettingsScreen()
-        GoWorldEditor -> WorldEditorScreen()
+        is GoWorldEditor -> WorldEditorScreen(command.seed)
         GoSupport -> SupportScreen()
         EcoSystemScreenCellsSettings -> TODO()
         EcoSystemScreenGlobalSettings -> TODO()
         is GoSimulation -> SimulationScreen(command.world, command.genomeName, command.savedWorld)
+    }
+
+    /**
+     * Выход из игры. При повторе бага не выходим: игрок вышел, а разработчику надо
+     * рассмотреть, чем всё кончилось.
+     */
+    private fun exitGame() {
+        if (BugReplay.isActive) {
+            BugReplay.note("игрок вышел из игры — здесь запись кончается")
+            return
+        }
+        clearStack()
+        game.screen?.dispose()
+        Gdx.app.exit()
     }
 
     private fun clearStack() {

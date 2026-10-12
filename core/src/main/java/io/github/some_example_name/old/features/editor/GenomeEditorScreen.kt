@@ -9,7 +9,11 @@ import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.bug.ReplayTarget
+import io.github.some_example_name.old.commands.GameCommand
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.editor.system.logic.UiEditorCommands
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.editor.system.logic.CtrlY
 import io.github.some_example_name.old.editor.system.logic.CtrlZ
@@ -32,6 +36,7 @@ import io.github.some_example_name.old.editor.system.logic.ShowMutateDialog
 import io.github.some_example_name.old.editor.system.logic.ShowMutateOrDivideDialog
 import io.github.some_example_name.old.editor.system.logic.UiScreenCommands
 import io.github.some_example_name.old.core.ui.CameraControl
+import io.github.some_example_name.old.core.ui.KeyboardFocus
 
 data class GenomeEditorData(
     var currentTick: Int,
@@ -40,7 +45,7 @@ data class GenomeEditorData(
 
 class GenomeEditorScreen(
     val genomeName: String?
-) : Screen {
+) : Screen, ReplayTarget {
 
     private val renderSystem = DIGenomeEditorContainer.editorRenderSystem
     private val editorLogicSystem = DIGenomeEditorContainer.editorLogicSystem
@@ -146,29 +151,41 @@ class GenomeEditorScreen(
 
         isRestartSimulation = false
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Z) && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)) {
+        // Пока игрок печатает (имя генома, описание бага), клавиши — тексту, а не редактору:
+        // иначе пробел в имени генома перематывал бы таймлайн, а Ctrl+Z отменял правку генома.
+        val typing = KeyboardFocus.isTyping(stage)
+
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.Z) && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)) {
             editorLogicSystem.putUiCommand(CtrlZ)
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Y) && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)) {
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.Y) && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)) {
             editorLogicSystem.putUiCommand(CtrlY)
         }
 
         // На десктопе режим нейросвязей — пока зажат Ctrl. Команда только на смену
         // состояния: опрос каждый кадр, а журналу нужно нажатие, а не кадр.
         if (Gdx.app.type == Application.ApplicationType.Desktop) {
-            val ctrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
+            val ctrl = !typing && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
             if (ctrl != isNeuralLinking) editorLogicSystem.putUiCommand(SetNeuralLinking(ctrl))
         }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             editorLogicSystem.putUiCommand(GoToEndOfTimeLine)
         }
 
-        actionDialog(uiScreenCommands)
+        // При повторе бага окна действий не открываются: что в них выбрали, придёт
+        // следующей командой из записи, а закрыть их было бы некому.
+        if (!BugReplay.isActive) actionDialog(uiScreenCommands)
         uiScreenCommands = null
 
         stage.act(delta)
         stage.draw()
+    }
+
+    override fun replay(command: GameCommand): Boolean {
+        if (command !is UiEditorCommands) return false
+        editorLogicSystem.putUiCommand(command)
+        return true
     }
 
     private fun actionDialog(uiScreenCommands: UiScreenCommands?) {

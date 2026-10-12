@@ -1,5 +1,7 @@
 package io.github.some_example_name.old.features.devsupport
 
+import io.github.some_example_name.old.commands.GameCommand
+import io.github.some_example_name.old.bug.ReplayTarget
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
@@ -19,9 +21,15 @@ import io.github.some_example_name.old.core.ui.visTable
 import io.github.some_example_name.old.core.ui.visTextButton
 import io.github.some_example_name.old.core.ui.w
 
-class SupportScreen : VisDslScreen(isScrollable = true) {
+class SupportScreen : VisDslScreen(isScrollable = true), ReplayTarget {
 
     private val viewModel = SupportViewModel()
+
+    override fun replay(command: GameCommand): Boolean {
+        if (command !is SupportIntent) return false
+        viewModel.handle(command)
+        return true
+    }
     /**
      * Кэш по имени файла: compose() вызывается на каждый resize, и без кэша каждый
      * поворот окна заводил бы ещё пару текстур QR, которые доживали бы до dispose().

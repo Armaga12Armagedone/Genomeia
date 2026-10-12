@@ -3,6 +3,7 @@ package io.github.some_example_name.old.core
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.PixmapIO
+import io.github.some_example_name.old.bug.BugOverlay
 import io.github.some_example_name.old.commands.navigationCommandByName
 import io.github.some_example_name.old.core.log.ActionLog
 
@@ -23,6 +24,10 @@ import io.github.some_example_name.old.core.log.ActionLog
  *   genomeia.screenshotFrame номер кадра для съёмки (по умолчанию 60)
  *   genomeia.keepRunning     true — не закрывать игру после скриншота
  *   genomeia.logActions      true — печатать журнал действий в консоль по мере событий
+ *   genomeia.bugReportAt     номер кадра: открыть окно отчёта об ошибке, как кнопкой-жуком
+ *   genomeia.crashAt         кадр:поток — тестовый краш; поток render (игра падает, окно
+ *                            покажется при следующем запуске) или thread (фоновый поток,
+ *                            окно сразу), например 120:thread
  *
  * genomeia.width/height читает лаунчер (Lwjgl3Launcher), а не этот объект.
  */
@@ -33,10 +38,13 @@ object DevStartup {
     private const val SCREENSHOT_FRAME_PROPERTY = "genomeia.screenshotFrame"
     private const val KEEP_RUNNING_PROPERTY = "genomeia.keepRunning"
     private const val LOG_ACTIONS_PROPERTY = "genomeia.logActions"
+    private const val BUG_REPORT_PROPERTY = "genomeia.bugReportAt"
+    private const val CRASH_PROPERTY = "genomeia.crashAt"
 
     private const val DEFAULT_SCREENSHOT_FRAME = 60
 
     private var frame = 0
+    private var renderedFrames = 0
     private var screenshotTaken = false
 
     /** Вызывается в конце MyGame.create(), когда стартовый экран уже выставлен. */
@@ -62,6 +70,12 @@ object DevStartup {
 
     /** Вызывается в конце MyGame.render(), когда кадр уже нарисован в бэкбуфер. */
     fun afterRender() {
+        renderedFrames++
+        if (renderedFrames == System.getProperty(BUG_REPORT_PROPERTY)?.toIntOrNull()) {
+            BugOverlay.requestReport()
+        }
+        System.getProperty(CRASH_PROPERTY)?.let { crashTest(it) }
+
         val path = System.getProperty(SCREENSHOT_PROPERTY) ?: return
         if (screenshotTaken) return
 
@@ -75,6 +89,18 @@ object DevStartup {
 
         if (System.getProperty(KEEP_RUNNING_PROPERTY) != "true") {
             Gdx.app.exit()
+        }
+    }
+
+    /** Проверка пути краша: отчёт, окно, передача исключения платформе. */
+    private fun crashTest(spec: String) {
+        val crashFrame = spec.substringBefore(':').toIntOrNull() ?: return
+        if (renderedFrames != crashFrame) return
+        val message = "тестовый краш (-D$CRASH_PROPERTY=$spec)"
+        if (spec.substringAfter(':', "render") == "thread") {
+            Thread({ throw IllegalStateException(message) }, "Crash-Test").start()
+        } else {
+            throw IllegalStateException(message)
         }
     }
 

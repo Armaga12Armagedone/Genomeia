@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.systems.genomics.genome
 
+import io.github.some_example_name.old.core.GameFiles
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -161,7 +162,7 @@ fun saveGenome(genome: Genome, fileName: String) {
         dataOutput.write(protobufBytes)
 
         // Сохраняем файл с расширением .genome
-        val file = Gdx.files.local("genomes/$fileName.genome")
+        val file = GameFiles.genomesDir().child("$fileName.genome")
         file.writeBytes(byteArrayOutput.toByteArray(), false)
 
     } finally {
@@ -172,7 +173,7 @@ fun saveGenome(genome: Genome, fileName: String) {
 // ==================== ЗАГРУЗКА ====================
 @OptIn(ExperimentalSerializationApi::class)
 fun loadGenome(fileName: String): Genome {
-    val file = Gdx.files.local("genomes/$fileName.genome")
+    val file = GameFiles.genomesDir().child("$fileName.genome")
 
     if (!file.exists()) {
         throw IllegalStateException("Файл генома не найден: $fileName.genome")

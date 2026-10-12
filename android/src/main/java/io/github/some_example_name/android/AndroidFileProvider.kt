@@ -8,6 +8,7 @@ import games.spooky.gdx.nativefilechooser.NativeFileChooser
 import games.spooky.gdx.nativefilechooser.NativeFileChooserCallback
 import games.spooky.gdx.nativefilechooser.NativeFileChooserConfiguration
 import io.github.some_example_name.old.core.FileProvider
+import io.github.some_example_name.old.core.GameFiles
 import java.io.File
 import java.io.FilenameFilter
 
@@ -38,7 +39,7 @@ class AndroidFileProvider(private val context: Context, private val fileChooser:
                 val importedName = sanitizeGenomeFileName(file.name())
 
                 // Сохраняем в local с тем же именем (перезапись, если существует)
-                val localFile = Gdx.files.local("genomes/$importedName")
+                val localFile = GameFiles.genomesDir().child(importedName)
                 file.copyTo(localFile)
 
                 Gdx.app.log("Import", "Name: ${localFile.path()}")
@@ -134,6 +135,22 @@ class AndroidFileProvider(private val context: Context, private val fileChooser:
 
     override fun getExternalFilesDir(type: String?): File? {
         return (Gdx.app as AndroidLauncher).getExternalFilesDir(null)
+    }
+
+    /** Системное окно «поделиться»: файл уходит как вложение (почта, мессенджер, диск). */
+    override fun shareFile(file: File, title: String): Boolean = try {
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/octet-stream"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, file.name)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (e: Exception) {
+        Gdx.app.error("Share", "не удалось поделиться ${file.name}", e)
+        false
     }
 
     private companion object {

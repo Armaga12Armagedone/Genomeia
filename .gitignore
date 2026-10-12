@@ -180,6 +180,7 @@ ios-moe/xcode/native/
 # Рабочие копии веток Claude Code (git worktree) — не часть проекта
 /.claude/worktrees/
 
-# Запись сессии игры (настройка «Запись сессии»), воспроизводится кнопкой «Повтор сессии»
-/debug.bin
-/debug.prev.bin
+# Отчёты о багах: текущая сессия (журнал, лог), собранные .bug и папка повтора
+/session/
+/bugs/
+/bug-replay/

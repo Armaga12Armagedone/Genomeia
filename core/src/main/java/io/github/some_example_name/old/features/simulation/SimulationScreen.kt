@@ -20,15 +20,16 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.scenes.scene2d.utils.Layout
 import com.badlogic.gdx.utils.viewport.ScreenViewport
-import com.kotcrab.vis.ui.util.dialog.Dialogs
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTextButton
+import io.github.some_example_name.old.bug.ReplayTarget
+import io.github.some_example_name.old.commands.GameCommand
 import io.github.some_example_name.old.commands.GoGenomeEditor
 import io.github.some_example_name.old.commands.GoMenu
 import io.github.some_example_name.old.commands.GoReplace
 import io.github.some_example_name.old.commands.PlayerCommand
-import io.github.some_example_name.old.core.DEBUG_CHECKS
+import io.github.some_example_name.old.core.ui.KeyboardFocus
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.ui.CameraControl
@@ -51,7 +52,7 @@ class SimulationScreen(
     val genomeName: String?,
     /** Слот сохранённого мира: мир загружается из него, см. MapSave. */
     val savedWorld: String? = null
-) : Screen {
+) : Screen, ReplayTarget {
 
     private val simulationSystem = DISimulationContainer.simulationSystem
     private val renderSystem = DISimulationContainer.renderSystem
@@ -176,15 +177,20 @@ class SimulationScreen(
         }.show(stage)
     }
 
+    override fun replay(command: GameCommand): Boolean {
+        if (command !is SimulationIntent) return false
+        viewModel.handle(command)
+        return true
+    }
+
+    override fun onReplayFinished() = applyEffect(SimulationEffect.PauseChanged)
+
     /** Вёрстка того, что попросила ViewModel. */
     private fun applyEffect(effect: SimulationEffect) {
         when (effect) {
             SimulationEffect.RebuildMenu -> rebuildMenu()
 
             SimulationEffect.PauseChanged -> pauseSimToggle?.isChecked = viewModel.isPaused
-
-            is SimulationEffect.ShowReplayError ->
-                Dialogs.showOKDialog(stage, DIGameGlobalContainer.bundle.get("button.logReplay"), effect.message)
 
             is SimulationEffect.WorldSaved -> saveWorldButton?.let {
                 flashText(it, if (effect.success) "label.saved" else "label.saveFailed")
@@ -201,9 +207,13 @@ class SimulationScreen(
     }
 
     override fun render(delta: Float) {
+        // Пока игрок печатает (окно отчёта, поле ввода), клавиатура — его тексту, а не игре:
+        // иначе «в» в описании бага — это клавиша D, а «н» — Y. Нажатые клавиши при этом
+        // отпускаются, чтобы не залипли.
+        val typing = KeyboardFocus.isTyping(stage)
         if (Gdx.app.type == Application.ApplicationType.Desktop) {
             for (i in CONTROLLER_KEY_CODES.indices) {
-                val pressed = Gdx.input.isKeyPressed(CONTROLLER_KEY_CODES[i])
+                val pressed = !typing && Gdx.input.isKeyPressed(CONTROLLER_KEY_CODES[i])
                 if (pressed != keyboardKeys[i]) {
                     keyboardKeys[i] = pressed
                     viewModel.handle(SimulationIntent.SetControllerKey(i, pressed))
@@ -211,20 +221,8 @@ class SimulationScreen(
             }
         }
 
-        // Отладочный стресс-тест жизненного цикла клеток: A убивает случайные клетки,
-        // D разгоняет их до предела, чтобы они улетали и рвали свои связи. Пока клавиша
-        // зажата — каждый тик. Нужен, чтобы гонки и битые ссылки в связях воспроизводились
-        // сами, а не руками.
-        //
-        // A и D заняты управлением организмом (controllerKeyTouched), но в обычной сборке
-        // этот блок вырезается компилятором целиком, так что конфликт живёт только в
-        // отладочной.
-        if (DEBUG_CHECKS) {
-            simulationSystem.simulationData.debugKillCells =
-                Gdx.input.isKeyPressed(Input.Keys.A)
-            simulationSystem.simulationData.debugFlingCells =
-                Gdx.input.isKeyPressed(Input.Keys.D)
-        }
+        // Отладочный стресс-тест (A убивает клетки, D разгоняет их) берёт клавиши из снимка
+        // контроллера в потоке симуляции — см. SimulationSystem.latchControllerKeys.
 
         // Бежевый фон — только под отладкой. Реалистичный режим закрывает экран
         // постпроцессом, а у ностальгического чёрный фон — часть рисунка.
@@ -242,10 +240,10 @@ class SimulationScreen(
         stage.act(Gdx.graphics.deltaTime)
         stage.draw()
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Z)) {
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.Z)) {
             viewModel.handle(SimulationIntent.SetUiVisible(false))
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Y)) {
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.Y)) {
             viewModel.handle(SimulationIntent.SetUiVisible(true))
         }
 
@@ -255,7 +253,7 @@ class SimulationScreen(
         // что ушёл на GPU. Открывается потом так:
         //   gradlew :render:renderLab
         // Удалять — вместе с dumpSceneToFile ниже.
-        if (Gdx.app.type == Application.ApplicationType.Desktop &&
+        if (Gdx.app.type == Application.ApplicationType.Desktop && !typing &&
             Gdx.input.isKeyJustPressed(Input.Keys.F9)
         ) {
             dumpSceneToFile()
@@ -342,6 +340,7 @@ class SimulationScreen(
     override fun hide() { }
 
     override fun dispose() {
+        viewModel.stopWorld()
         renderSystem.dispose()
         simulationSystem.simulationData.isFinish = true
         simulationSystem.stopUpdateThread()
@@ -437,12 +436,8 @@ class SimulationScreen(
             viewModel.handle(SimulationIntent.SetControllerKeysVisible(controllerKeysToggle.isChecked))
         }
 
-        val logReplayButton = makeStyledButton(bundle.get("button.logReplay"), game, extraTextures).onClick {
-            viewModel.handle(SimulationIntent.ReplaySession)
-        }
-
         val saveButton = makeStyledButton(bundle.get("button.save"), game, extraTextures).onClick {
-            viewModel.handle(SimulationIntent.SaveWorld)
+            viewModel.handle(viewModel.saveWorldIntent())
         }
         saveWorldButton = saveButton
 
@@ -452,12 +447,12 @@ class SimulationScreen(
             listOf(
                 menuButton, putOrganismToggle, selectGenomeButton, speedUpButton,
                 pauseToggle, restartSimulationButton, renderModeSelect, controllerKeysToggle,
-                logReplayButton, saveButton
+                saveButton
             )
         } else {
             listOf(
                 menuButton, putOrganismToggle, speedUpButton, pauseToggle,
-                restartSimulationButton, renderModeSelect, controllerKeysToggle, logReplayButton
+                restartSimulationButton, renderModeSelect, controllerKeysToggle
             )
         }
 

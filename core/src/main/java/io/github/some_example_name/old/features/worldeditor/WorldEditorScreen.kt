@@ -1,5 +1,7 @@
 package io.github.some_example_name.old.features.worldeditor
 
+import io.github.some_example_name.old.bug.ReplayTarget
+import io.github.some_example_name.old.commands.GameCommand
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.ui.Cell
@@ -37,9 +39,23 @@ import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel
  * колонкой справа от холста, на узком — строкой под ним. Так она не перекрывает карту,
  * которую в этот момент и настраивают, и не требует отдельного пересчёта размеров.
  */
-class WorldEditorScreen : VisDslScreen(background = Color(0.1f, 0.1f, 0.1f, 1f)) {
+class WorldEditorScreen(
+    /** Стартовый сид — из команды GoWorldEditor. */
+    seed: String
+) : VisDslScreen(background = Color(0.1f, 0.1f, 0.1f, 1f)), ReplayTarget {
 
-    private val viewModel = WorldEditorViewModel()
+    private val viewModel = WorldEditorViewModel(initialSeed = seed)
+
+    /**
+     * Повтор бага. Вёрстка пересобирается, чтобы ползунки и поле сида показали новое
+     * значение, — кроме мазков кистью: холст следит за картой сам, а мазков сотни.
+     */
+    override fun replay(command: GameCommand): Boolean {
+        if (command !is WorldEditorIntent) return false
+        viewModel.handle(command)
+        if (command !is WorldEditorIntent.Paint) recompose()
+        return true
+    }
 
     /**
      * Холст живёт дольше рекомпозиции: он владеет Pixmap и Texture, пересоздавать их

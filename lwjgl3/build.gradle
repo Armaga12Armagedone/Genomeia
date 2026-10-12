@@ -321,6 +321,40 @@ tasks.register('saveRoundTrip', JavaExec) {
   if (project.hasProperty('keep')) systemProperty 'keep', 'true'
 }
 
+// Запись и повтор бага целиком: gradlew :lwjgl3:bugReplayCheck
+// Первый запуск игры проходит сценарий через команды и собирает .bug, второй проигрывает его и
+// сверяет контрольные суммы журнала и хэши состояния мира; ненулевой код — повтор разошёлся.
+tasks.register('bugReplayCheckRecord', JavaExec) {
+  group = 'verification'
+  description = 'Сценарий игрока через команды и .bug в конце (первая половина bugReplayCheck)'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.some_example_name.lwjgl3.demo.BugReplayCheckKt'
+  args 'record'
+  workingDir = rootProject.projectDir
+  jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+  if (project.hasProperty('hashPeriod')) systemProperty 'genomeia.stateHashPeriod', project.property('hashPeriod')
+  if (project.hasProperty('workers')) systemProperty 'bugReplayCheck.workers', project.property('workers')
+  if (project.hasProperty('growTicks')) systemProperty 'bugReplayCheck.growTicks', project.property('growTicks')
+  if (project.hasProperty('spawnGrid')) systemProperty 'bugReplayCheck.spawnGrid', project.property('spawnGrid')
+  if (project.hasProperty('stressTicks')) systemProperty 'bugReplayCheck.stressTicks', project.property('stressTicks')
+}
+
+tasks.register('bugReplayCheck', JavaExec) {
+  group = 'verification'
+  description = 'Повтор .bug совпадает с записью: команды, контрольные суммы, хэши состояния мира'
+  dependsOn 'bugReplayCheckRecord'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.some_example_name.lwjgl3.demo.BugReplayCheckKt'
+  args 'replay'
+  workingDir = rootProject.projectDir
+  jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+  if (project.hasProperty('hashPeriod')) systemProperty 'genomeia.stateHashPeriod', project.property('hashPeriod')
+  if (project.hasProperty('workers')) systemProperty 'bugReplayCheck.workers', project.property('workers')
+  if (project.hasProperty('growTicks')) systemProperty 'bugReplayCheck.growTicks', project.property('growTicks')
+  if (project.hasProperty('spawnGrid')) systemProperty 'bugReplayCheck.spawnGrid', project.property('spawnGrid')
+  if (project.hasProperty('stressTicks')) systemProperty 'bugReplayCheck.stressTicks', project.property('stressTicks')
+}
+
 // Воспроизведение записанных мышиных действий: gradlew :lwjgl3:dragReplay -Plog=drag-log.txt
 // Лог пишется в самом демо по клавише L (запись начинается со сброса тела).
 tasks.register('dragReplay', JavaExec) {
@@ -428,19 +462,6 @@ tasks.register('playerLogSelfTest', JavaExec) {
   workingDir = rootProject.projectDir
   // -Pkeep=путь сохраняет записанный журнал, чтобы прогнать по нему playerReplay.
   args = [project.findProperty('body') ?: 'body-export.txt', project.findProperty('keep') ?: '']
-  jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
-}
-
-// Самопроверка записи сессии игры (LogSaver / LogReplay): входы возвращаются в свои тики.
-tasks.register('replaySelfTest', JavaExec) {
-  group = 'verification'
-  description = 'Запись сессии игры читается обратно без потерь и сдвигов по тикам'
-  classpath = sourceSets.main.runtimeClasspath
-  mainClass = 'io.github.some_example_name.lwjgl3.demo.ReplaySelfTestKt'
-  // Свой каталог: тест пишет debug.bin и не должен трогать настоящую запись в корне.
-  def dir = layout.buildDirectory.dir('replaySelfTest').get().asFile
-  workingDir = dir
-  doFirst { dir.mkdirs() }
   jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
 }
 

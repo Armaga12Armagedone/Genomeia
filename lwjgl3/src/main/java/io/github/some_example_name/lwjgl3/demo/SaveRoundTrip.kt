@@ -51,7 +51,7 @@ private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by g
     private var frames = 0
     private var stepStartedAt = 0L
 
-    private val world = WorldEditorViewModel().toSpec()
+    private val world = WorldEditorViewModel(initialSeed = "12345678").toSpec()
     private var slot: String? = null
     private lateinit var before: Snapshot
     private var tickAfterLoad = 0

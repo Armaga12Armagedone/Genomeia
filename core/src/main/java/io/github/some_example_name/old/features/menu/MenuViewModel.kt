@@ -1,82 +1,100 @@
 package io.github.some_example_name.old.features.menu
 
-import io.github.some_example_name.old.commands.GameCommand
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Input
 import com.badlogic.gdx.graphics.Camera
 import com.badlogic.gdx.math.MathUtils
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.commands.GameCommand
 import io.github.some_example_name.old.commands.GoExit
 import io.github.some_example_name.old.commands.GoGenomeEditor
-import io.github.some_example_name.old.commands.GoSimulation
 import io.github.some_example_name.old.commands.GoSettings
+import io.github.some_example_name.old.commands.GoSimulation
 import io.github.some_example_name.old.commands.GoSupport
 import io.github.some_example_name.old.commands.GoWorldEditor
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISingleThreadSimulationContainer
-import io.github.some_example_name.old.core.log.ActionLog
+import io.github.some_example_name.old.core.GameFiles
+import io.github.some_example_name.old.features.worldeditor.WorldEditorIntent
 import io.github.some_example_name.old.features.worldeditor.WorldGenerator
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
+import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.SessionAttachments
+import io.github.some_example_name.old.journal.SessionJournal
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.maps.SavedMap
 import io.github.some_example_name.old.systems.render.RenderSystem
 import io.github.some_example_name.old.systems.simulation.SingleThreadSimulationSystem
+import kotlinx.serialization.Serializable
 
-/** Что игрок хочет сделать в главном меню. */
+/**
+ * Что игрок хочет сделать в главном меню.
+ *
+ * Просмотр списков (миров, геномов) — не команда: это только окно с выбором, игру оно
+ * не меняет. Команда — то, что выбрали.
+ */
+@Serializable
 sealed interface MenuIntent : GameCommand {
 
-    data object OpenWorldEditor : MenuIntent {
+    /** Новый мир в редакторе мира. Стартовый сид выбран заранее, см. [openWorldEditor]. */
+    @Serializable
+    data class OpenWorldEditor(val seed: String) : MenuIntent {
         override val name get() = "OpenWorldEditor"
+        override val detail get() = seed
     }
 
-    /** Нажали «Запуск симуляции» — дальше или список сохранённых миров, или сразу редактор мира. */
-    data object BrowseWorlds : MenuIntent {
-        override val name get() = "BrowseWorlds"
-    }
-
+    @Serializable
     data class OpenSavedWorld(val slot: String) : MenuIntent {
         override val name get() = "OpenSavedWorld"
         override val detail get() = slot
     }
 
-    /** Нажали «Редактор» — дальше или список геномов, или сразу пустой редактор. */
-    data object BrowseGenomes : MenuIntent {
-        override val name get() = "BrowseGenomes"
-    }
-
+    @Serializable
     data class OpenGenomeEditor(val genomeName: String?) : MenuIntent {
         override val name get() = "OpenGenomeEditor"
         override val detail get() = genomeName ?: "new"
     }
 
-    /** Android: импорт файла генома через системный выбор файла. */
+    /** Android: открыть системный выбор файла генома. Что выбрали — см. [GenomeImported]. */
+    @Serializable
     data object ImportGenome : MenuIntent {
         override val name get() = "ImportGenome"
     }
 
+    /**
+     * Файл генома импортирован и лежит в папке геномов под именем [fileName].
+     *
+     * Какой файл выбрал игрок, решает система, а не игра, поэтому итог — отдельная
+     * команда, а сам файл кладётся в приложения сессии ([attachment]): при повторе бага
+     * геном берётся оттуда, а не из системного окна выбора.
+     */
+    @Serializable
+    data class GenomeImported(val fileName: String, val attachment: String) : MenuIntent {
+        override val name get() = "GenomeImported"
+        override val detail get() = fileName
+    }
+
+    @Serializable
     data object OpenSettings : MenuIntent {
         override val name get() = "OpenSettings"
     }
 
+    @Serializable
     data object OpenSupport : MenuIntent {
         override val name get() = "OpenSupport"
     }
 
+    @Serializable
     data object Exit : MenuIntent {
         override val name get() = "Exit"
     }
-}
 
-/** Что экран должен сделать со своей стороны в ответ на намерение. */
-sealed interface MenuEffect {
-    data object None : MenuEffect
-
-    /** Показать диалог выбора генома — это чистая вёрстка, ViewModel её не открывает. */
-    data class ShowGenomeList(val genomes: List<String>) : MenuEffect
-
-    /** Показать список сохранённых миров. */
-    data class ShowWorldList(val worlds: List<SavedMap>) : MenuEffect
+    companion object {
+        /** Кнопка нового мира: сид решается здесь, чтобы ехать в команде. */
+        fun openWorldEditor(): OpenWorldEditor = OpenWorldEditor(WorldEditorIntent.newSeed().seed)
+    }
 }
 
 class MenuViewModel(
@@ -100,77 +118,60 @@ class MenuViewModel(
     private val sensitivity = 3.8f // насколько быстро набирается наклон
     private val damping = 0.92f // затухание (чтобы возвращалось в центр)
 
+    /** Сохранённые миры для окна выбора. Запрос, а не команда: игру он не меняет. */
+    fun savedWorlds(): List<SavedMap> = MapSave.listMaps()
+
+    /** Геномы для окна выбора. */
+    fun genomeNames(): List<String> = DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder()
+
     /**
      * Единственный вход для действий игрока в меню.
      *
      * В журнале получается две строки на нажатие: намерение ("нажали Настройки") и переход
      * ("экран стал GoSettings"). Это не дубль — это разные слои, и когда переход когда-нибудь
      * окажется заблокирован или перенаправлен, они разойдутся, и в логе это будет видно.
+     * Переход — вложенная команда: при повторе его заново делает само намерение.
      */
-    fun handle(intent: MenuIntent): MenuEffect {
-        ActionLog.record(LOG_SOURCE, intent)
+    fun handle(intent: MenuIntent) = SessionJournal.execute(CommandSource.MENU, intent) { apply(it) }
 
-        return when (intent) {
-            is MenuIntent.OpenWorldEditor -> {
-                navigation.performCommand(GoWorldEditor)
-                MenuEffect.None
-            }
+    private fun apply(intent: MenuIntent) {
+        when (intent) {
+            is MenuIntent.OpenWorldEditor -> navigation.performCommand(GoWorldEditor(intent.seed))
 
-            is MenuIntent.BrowseWorlds -> {
-                val worlds = MapSave.listMaps()
-                if (worlds.isEmpty()) {
-                    handle(MenuIntent.OpenWorldEditor)
-                } else {
-                    MenuEffect.ShowWorldList(worlds)
-                }
-            }
+            is MenuIntent.OpenSavedWorld -> navigation.performCommand(
+                GoSimulation(world = null, genomeName = null, savedWorld = intent.slot)
+            )
 
-            is MenuIntent.OpenSavedWorld -> {
-                navigation.performCommand(
-                    GoSimulation(world = null, genomeName = null, savedWorld = intent.slot)
-                )
-                MenuEffect.None
-            }
-
-            is MenuIntent.BrowseGenomes -> {
-                val genomes = DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder()
-                if (genomes.isEmpty()) {
-                    handle(MenuIntent.OpenGenomeEditor(null))
-                } else {
-                    MenuEffect.ShowGenomeList(genomes)
-                }
-            }
-
-            is MenuIntent.OpenGenomeEditor -> {
-                navigation.performCommand(GoGenomeEditor(intent.genomeName))
-                MenuEffect.None
-            }
+            is MenuIntent.OpenGenomeEditor -> navigation.performCommand(GoGenomeEditor(intent.genomeName))
 
             is MenuIntent.ImportGenome -> {
-                // Какой файл выберет игрок, решает система, а не игра, поэтому команда
-                // только запускает выбор, а его итог дописывается в журнал отдельной
-                // строкой. Для повтора по журналу сам файл придётся приложить.
+                // При повторе окна выбора нет: файл придёт следующей командой из записи.
+                if (BugReplay.isActive) return
                 DIGameGlobalContainer.fileProvider.importGenome { file ->
-                    ActionLog.record(LOG_SOURCE, "GenomeImported", file?.name() ?: "cancelled")
-                    onGenomeImportFinished?.invoke()
+                    // Колбэк системного окна приходит не в поток игры.
+                    Gdx.app.postRunnable {
+                        if (file != null) {
+                            val attachment = SessionAttachments.attachImported(file)
+                            handle(MenuIntent.GenomeImported(file.name(), attachment))
+                        }
+                        onGenomeImportFinished?.invoke()
+                    }
                 }
-                MenuEffect.None
             }
 
-            is MenuIntent.OpenSettings -> {
-                navigation.performCommand(GoSettings)
-                MenuEffect.None
+            is MenuIntent.GenomeImported -> {
+                // В игре файл уже скопирован в папку геномов окном выбора. При повторе его
+                // там нет — кладём из приложений сессии.
+                if (BugReplay.isActive) {
+                    SessionAttachments.restore(intent.attachment, GameFiles.genomesDir().child(intent.fileName))
+                }
             }
 
-            is MenuIntent.OpenSupport -> {
-                navigation.performCommand(GoSupport)
-                MenuEffect.None
-            }
+            is MenuIntent.OpenSettings -> navigation.performCommand(GoSettings)
 
-            is MenuIntent.Exit -> {
-                navigation.performCommand(GoExit)
-                MenuEffect.None
-            }
+            is MenuIntent.OpenSupport -> navigation.performCommand(GoSupport)
+
+            is MenuIntent.Exit -> navigation.performCommand(GoExit)
         }
     }
 
@@ -252,7 +253,4 @@ class MenuViewModel(
         camera.update()
     }
 
-    private companion object {
-        const val LOG_SOURCE = "Menu"
-    }
 }

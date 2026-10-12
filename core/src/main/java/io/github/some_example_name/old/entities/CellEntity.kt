@@ -599,7 +599,19 @@ class CellEntity(
         isOnEdge[cellIndex] = onEdge
 
         val particleIndex = particleIndexes[cellIndex]
-        if (particleIndex != -1) particleEntity.isInGrid[particleIndex] = onEdge
+        if (particleIndex == -1) return
+        particleEntity.isInGrid[particleIndex] = onEdge
+
+        // Внутренней клетки в сетке не было, а перестройка (GridManager.rebuild) перебирает
+        // только прошлый состав сетки и зарегистрированных новичков. Без регистрации клетка,
+        // ставшая краевой, когда тело рвут, в сетку не попадала никогда: жива, рисуется, но
+        // не сталкивается и не берётся курсором. Так падала проверка целостности сетки под
+        // отладочным стресс-тестом «разогнать клетки» (клавиша D).
+        //
+        // Звать отсюда безопасно: addLink/deleteLink работают только при применении команд
+        // мира, в одном потоке. Уход внутрь регистрации не требует: перестройка пропускает
+        // частицы с isInGrid == false сама.
+        if (onEdge) particleEntity.gridManager.registerParticle(particleIndex)
     }
 
     fun deleteCell(cellIndex: Int) {

@@ -3,7 +3,9 @@ package io.github.some_example_name.old.editor.system.logic
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.OrthographicCamera
 import io.github.some_example_name.old.core.DIGameGlobalContainer
-import io.github.some_example_name.old.core.log.ActionLog
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.SessionJournal
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.editor.system.command.CommandEditorStackManager
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
@@ -71,11 +73,11 @@ class EditorLogicSystem(
      * Единственный вход для действий игрока в редакторе генома: экран только собирает
      * команду из жеста или кнопки, а состояние редактора меняется здесь.
      */
-    fun putUiCommand(command: UiEditorCommands) {
-        ActionLog.record(LOG_SOURCE, command)
-        applyCommand(command)
-        dropStaleNeuralLinkStart()
-    }
+    fun putUiCommand(command: UiEditorCommands) =
+        SessionJournal.execute(CommandSource.EDITOR, command) {
+            applyCommand(it)
+            dropStaleNeuralLinkStart()
+        }
 
     private fun applyCommand(command: UiEditorCommands) {
         when (command) {
@@ -198,8 +200,10 @@ class EditorLogicSystem(
 
             is SaveGenome -> saveCurrentGenome(command.genomeName)
 
-            is ExportGenome ->
+            // Окно «поделиться» при повторе бага ни к чему: файл и так в песочнице.
+            is ExportGenome -> if (!BugReplay.isActive) {
                 DIGameGlobalContainer.game.multiPlatformFileProvider.exportGenome("genomes/${command.genomeName}.genome")
+            }
 
             is ZoomCamera -> {
                 camera.zoom = command.zoom
@@ -246,9 +250,5 @@ class EditorLogicSystem(
             sortedGraph = layout
         )
         saveGenome(genome, genomeName)
-    }
-
-    private companion object {
-        const val LOG_SOURCE = "Editor"
     }
 }

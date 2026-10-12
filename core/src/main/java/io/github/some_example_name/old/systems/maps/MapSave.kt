@@ -8,6 +8,7 @@ import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.PixmapIO
 import io.github.some_example_name.old.core.DIContext
+import io.github.some_example_name.old.core.GameFiles
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.Entity
 import io.github.some_example_name.old.entities.OrganEntity
@@ -69,8 +70,11 @@ class MapSave(
     fun save(slot: String?, world: WorldSpec?, preview: Pixmap?): String {
         val entries = LinkedHashMap<String, ByteArray>()
         preview?.let { entries[PREVIEW] = encodePng(it) }
+        val target = slot ?: nextSlot()
 
         simulationSystem.betweenTicks {
+            // Точный тик сохранения — в журнал: при повторе мир будет ждать на нём.
+            simulationSystem.onWorldSaved(target)
             entries[META] = encodeMeta(world)
             entries[GENOMES] = encodeGenomes()
             entries[CELL_ACTIONS] = encodeInts(cellEntity.cellActionStages(genomeManager.genomes))
@@ -79,7 +83,6 @@ class MapSave(
             }
         }
 
-        val target = slot ?: nextSlot()
         writeArchive(target, entries)
         return target
     }
@@ -308,7 +311,11 @@ class MapSave(
 
     // ---------------------------------------------------------------- файлы
 
-    private fun nextSlot(): String {
+    /**
+     * Слот для нового сохранения. Решается при создании команды сохранения, а не внутри
+     * неё: при повторе бага папка с мирами другая, и выбор по ней дал бы другой слот.
+     */
+    fun nextSlot(): String {
         val last = listMaps().maxOfOrNull { it.slot.toIntOrNull() ?: 0 } ?: 0
         return (last + 1).toString()
     }
@@ -337,7 +344,6 @@ class MapSave(
         /** Сторона квадратного превью в пикселях: его показывают в маленьком окошке списка. */
         const val PREVIEW_SIZE = 128
 
-        private const val MAPS_DIR = "maps"
         private const val EXTENSION = ".zip"
         private const val IO_BUFFER = 64 * 1024
 
@@ -374,24 +380,10 @@ class MapSave(
             }
         }
 
-        /**
-         * Gdx.files.local — это рабочая папка. Но `gradlew :lwjgl3:run` запускает игру из
-         * assets/, а всё, что лежит там, generateAssetList упаковывает в сборку игры. Поэтому
-         * на десктопе из assets/ поднимаемся на уровень выше — так же, как дампы сцены.
-         */
-        private fun mapsDir(): FileHandle {
-            val working = File("").absoluteFile
-            val dir = if (Gdx.app.type == Application.ApplicationType.Desktop &&
-                working.name.equals("assets", ignoreCase = true)
-            ) {
-                Gdx.files.absolute(File(working.parentFile, MAPS_DIR).path)
-            } else {
-                Gdx.files.local(MAPS_DIR)
-            }
-            return dir.apply { mkdirs() }
-        }
+        /** Где лежат миры — см. GameFiles.mapsDir (при повторе бага это песочница). */
+        private fun mapsDir(): FileHandle = GameFiles.mapsDir()
 
-        private fun mapFile(slot: String): FileHandle = mapsDir().child("$slot$EXTENSION")
+        fun mapFile(slot: String): FileHandle = mapsDir().child("$slot$EXTENSION")
 
         private fun readArchive(file: FileHandle): Map<String, ByteArray> {
             check(file.exists()) { "файл мира не найден: ${file.path()}" }

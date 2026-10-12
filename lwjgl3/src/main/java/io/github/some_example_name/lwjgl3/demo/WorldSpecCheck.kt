@@ -10,7 +10,7 @@ import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel
  * Запуск: gradlew :lwjgl3:worldSpecCheck
  */
 fun main() {
-    val viewModel = WorldEditorViewModel()
+    val viewModel = WorldEditorViewModel(initialSeed = "00000000")
 
     val script = listOf(
         WorldEditorIntent.SetSeed("12345678"),

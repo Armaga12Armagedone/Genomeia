@@ -1,60 +1,73 @@
 package io.github.some_example_name.old.features.worldeditor
 
 import io.github.some_example_name.old.commands.GameCommand
-import io.github.some_example_name.old.core.log.ActionLog
+import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.SessionJournal
+import kotlinx.serialization.Serializable
 
 /** Что игрок хочет сделать в редакторе мира. Один тип на все действия экрана. */
+@Serializable
 sealed interface WorldEditorIntent : GameCommand {
 
     /**
      * Кнопка «Новый сид». Сам сид выбирается при создании команды ([newSeed]) и едет в ней:
      * случайность внутри обработчика при повторе по журналу дала бы другую карту.
      */
+    @Serializable
     data class NewSeed(val seed: String) : WorldEditorIntent {
         override val name get() = "NewSeed"
         override val detail get() = seed
     }
 
+    @Serializable
     data class SetSeed(val seed: String) : WorldEditorIntent {
         override val name get() = "SetSeed"
         override val detail get() = seed
     }
 
+    @Serializable
     data class SetDayNight(val value: Int) : WorldEditorIntent {
         override val name get() = "SetDayNight"
         override val detail get() = value.toString()
     }
 
+    @Serializable
     data class SetSmoothing(val value: Int) : WorldEditorIntent {
         override val name get() = "SetSmoothing"
         override val detail get() = value.toString()
     }
 
+    @Serializable
     data class SetBrushSize(val value: Int) : WorldEditorIntent {
         override val name get() = "SetBrushSize"
         override val detail get() = value.toString()
     }
 
+    @Serializable
     data class SetErasing(val value: Boolean) : WorldEditorIntent {
         override val name get() = "SetErasing"
         override val detail get() = value.toString()
     }
 
+    @Serializable
     data class SetCircleBrush(val value: Boolean) : WorldEditorIntent {
         override val name get() = "SetCircleBrush"
         override val detail get() = value.toString()
     }
 
+    @Serializable
     data class Paint(val gridX: Int, val gridY: Int) : WorldEditorIntent {
         override val name get() = "Paint"
         override val detail get() = "$gridX,$gridY"
     }
 
+    @Serializable
     data object ClearMap : WorldEditorIntent {
         override val name get() = "ClearMap"
     }
 
     /** Показать или спрятать панель настроек генератора рядом с холстом. */
+    @Serializable
     data class SetSettingsOpen(val open: Boolean) : WorldEditorIntent {
         override val name get() = "SetSettingsOpen"
         override val detail get() = open.toString()
@@ -78,6 +91,8 @@ sealed interface WorldEditorIntent : GameCommand {
  * `map: Array<BooleanArray>`, поэтому её можно дёргать из тестов без окна и GL-контекста.
  */
 class WorldEditorViewModel(
+    /** Стартовый сид — из команды навигации GoWorldEditor, см. её описание. */
+    initialSeed: String,
     private val worldGenerator: WorldGenerator = WorldGenerator(),
     val gridWidth: Int = DEFAULT_GRID_WIDTH,
     val gridHeight: Int = DEFAULT_GRID_HEIGHT
@@ -92,12 +107,9 @@ class WorldEditorViewModel(
         const val SMOOTHING_MAX = 50f
         const val BRUSH_SIZE_MIN = 0f
         const val BRUSH_SIZE_MAX = 20f
-
-        private const val LOG_SOURCE = "WorldEditor"
     }
 
-    /** Задаётся первой же командой, см. init. */
-    var seed: String = ""
+    var seed: String = initialSeed
         private set
 
     /**
@@ -124,7 +136,7 @@ class WorldEditorViewModel(
     /** Правки поверх сгенерированной карты — то, из чего собирается [WorldSpec]. */
     private val edits = mutableListOf<WorldEdit>()
 
-    var map: Array<BooleanArray> = emptyArray()
+    var map: Array<BooleanArray> = generate()
         private set
 
     /**
@@ -135,15 +147,9 @@ class WorldEditorViewModel(
     var mapVersion: Int = 0
         private set
 
-    init {
-        // Стартовый сид — тоже команда, а не тихая случайность в конструкторе: иначе
-        // повтор по журналу начался бы с другой карты, и все мазки легли бы не туда.
-        handle(WorldEditorIntent.newSeed())
-    }
+    fun handle(intent: WorldEditorIntent) = SessionJournal.execute(CommandSource.WORLD_EDITOR, intent) { apply(it) }
 
-    fun handle(intent: WorldEditorIntent) {
-        ActionLog.record(LOG_SOURCE, intent)
-
+    private fun apply(intent: WorldEditorIntent) {
         when (intent) {
             is WorldEditorIntent.NewSeed -> {
                 seed = intent.seed

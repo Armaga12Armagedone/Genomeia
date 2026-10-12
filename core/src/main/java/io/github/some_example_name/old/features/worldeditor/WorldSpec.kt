@@ -1,8 +1,11 @@
 package io.github.some_example_name.old.features.worldeditor
 
+import kotlinx.serialization.Serializable
 /** Правка карты поверх сгенерированной. */
+@Serializable
 sealed interface WorldEdit {
 
+    @Serializable
     data class Stroke(
         val gridX: Int,
         val gridY: Int,
@@ -15,6 +18,7 @@ sealed interface WorldEdit {
         val circle: Boolean
     ) : WorldEdit
 
+    @Serializable
     data object Clear : WorldEdit
 }
 
@@ -26,6 +30,7 @@ sealed interface WorldEdit {
  * кладётся в журнал целиком и воспроизводится побайтово: генератор детерминирован по сиду,
  * правки — по своим же параметрам.
  */
+@Serializable
 data class WorldSpec(
     val gridWidth: Int,
     val gridHeight: Int,

@@ -23,7 +23,11 @@ import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextButton.VisTextButtonStyle
 import com.kotcrab.vis.ui.widget.VisTextField
 import com.kotcrab.vis.ui.widget.VisValidatableTextField
+import io.github.some_example_name.old.bug.BugOverlay
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.bug.BugSession
 import io.github.some_example_name.old.core.DIGameGlobalContainer
+import io.github.some_example_name.old.journal.SessionJournal
 import io.github.some_example_name.old.core.DevStartup
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.core.DISimulationContainer
@@ -64,6 +68,8 @@ class MyGame(
 
     override fun create() {
         VisUI.load()  // Загружаем дефолтный VisUI
+        // До контейнеров: журнал, лог, краш-хэндлер и, если есть .bug в bug-replay, песочница.
+        BugSession.start()
         DIGameGlobalContainer.fileProvider = multiPlatformFileProvider
         DIGameGlobalContainer.game = this
         DISimulationContainer
@@ -146,8 +152,9 @@ class MyGame(
         openKeyBoardListenerGlobal = openKeyBoardListener
         shuffleTracks()
         playNextTrack()
+        BugSession.afterContainers()
         setScreen(MenuScreen())
-        DevStartup.applyStartCommand()
+        BugSession.afterFirstScreen()
 
         pikSounds = listOf<Sound>(
             Gdx.audio.newSound(Gdx.files.internal("sounds/pik1.mp3")),
@@ -159,8 +166,17 @@ class MyGame(
     }
 
     override fun render() {
+        // Повтор бага подаёт команды до кадра экрана — как живой ввод, который тоже
+        // приходит до render().
+        BugReplay.update()
         super.render()
+        BugOverlay.render()
         DevStartup.afterRender()
+    }
+
+    override fun resize(width: Int, height: Int) {
+        super.resize(width, height)
+        BugOverlay.resize(width, height)
     }
 
     private fun shuffleTracks() {
@@ -185,6 +201,8 @@ class MyGame(
     }
 
     override fun dispose() {
+        SessionJournal.flush()
+        BugOverlay.dispose()
         currentMusic.dispose()
         screen.dispose()
         // Рендер один на всю игру и переживает смену экранов, поэтому освобождать его

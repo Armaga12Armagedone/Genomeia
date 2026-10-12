@@ -16,8 +16,9 @@ import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
-import io.github.some_example_name.old.systems.debug.LogReplay
-import io.github.some_example_name.old.systems.debug.LogSaver
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.SessionJournal
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.cos
 import kotlin.math.sin
@@ -33,9 +34,11 @@ class UserCommandManager(
     val particleEntity: ParticleEntity,
     val zygote: Zygote,
     val isEditor: Boolean,
-    /** Запись и воспроизведение сессии. Есть только у основной симуляции, не у редактора и меню. */
-    val logSaver: LogSaver? = null,
-    val logReplay: LogReplay? = null
+    /**
+     * Команды пишутся в журнал сессии и при повторе бага берутся из него. Только у
+     * основной симуляции: у редактора генома и мира за меню свои миры, игрок их не трогает.
+     */
+    val isJournaled: Boolean = false
 ): Disposable {
 
     private val commandQueue = ConcurrentLinkedQueue<PlayerCommand>()
@@ -70,6 +73,8 @@ class UserCommandManager(
         // Единственный вход для действий игрока в мире — значит и единственное место,
         // где их надо журналировать. Drag сыпется на каждое движение мыши, но подряд
         // идущие однотипные записи ActionLog схлопывает в одну со счётчиком.
+        // При повторе бага касания мира берутся из записи, живые — мимо.
+        if (isJournaled && BugReplay.isActive) return
         ActionLog.record(LOG_SOURCE, cmd)
         commandQueue.offer(cmd)
     }
@@ -87,17 +92,17 @@ class UserCommandManager(
         isAlreadyDragged = false
         val tick = simulationData.tickCounter
 
-        if (logReplay != null && logReplay.isActive) {
-            // Во время воспроизведения команды идут только из записи: живой ввод
-            // перемешался бы с записанным и увёл сценарий в сторону.
+        if (isJournaled && BugReplay.isActive) {
+            // Во время повтора команды идут только из записи: живой ввод перемешался бы
+            // с записанным и увёл сценарий в сторону.
             commandQueue.clear()
-            logReplay.forEachCommandAt(tick) { applyCommand(it) }
+            BugReplay.forEachCommandAt(SessionJournal.epoch, tick) { applyCommand(it) }
         } else {
             while (true) {
-                val cmd = commandQueue.poll() ?: break
+                val cmd = resolve(commandQueue.poll() ?: break)
                 // Пишем в момент применения и с этим тиком: ровно здесь же команда
-                // будет применена и при воспроизведении.
-                logSaver?.recordCommand(tick, cmd, resolveGenomeIndex(cmd))
+                // будет применена и при повторе.
+                if (isJournaled) SessionJournal.recordSim(CommandSource.PLAYER, cmd, SessionJournal.epoch, tick)
                 applyCommand(cmd)
             }
         }
@@ -114,6 +119,18 @@ class UserCommandManager(
 
     private fun resolveGenomeIndex(cmd: PlayerCommand): Int =
         (cmd as? PlayerCommand.Tap)?.genomeIndex ?: simulationData.currentGenomeIndex
+
+    /**
+     * Команда со всем, что решено в момент применения: у касания «поставить организм» —
+     * какой геном выбран сейчас. В журнал уходит уже такая, чтобы при повторе геном не
+     * зависел от того, когда именно был нажат выбор генома.
+     */
+    private fun resolve(cmd: PlayerCommand): PlayerCommand =
+        if (cmd is PlayerCommand.Tap && cmd.genomeIndex == null) {
+            PlayerCommand.Tap(cmd.x, cmd.y, cmd.isLeftButton, simulationData.currentGenomeIndex)
+        } else {
+            cmd
+        }
 
     private fun applyCommand(cmd: PlayerCommand) {
         when (cmd) {

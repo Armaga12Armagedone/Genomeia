@@ -10,4 +10,10 @@ interface FileProvider {
     fun importGenome(callback: (FileHandle?) -> Unit)
 
     fun getExternalFilesDir(type: String?): File?
+
+    /**
+     * Отдать файл игроку: на телефоне — системное окно «поделиться» (почта, мессенджер),
+     * на ПК — открыть папку с файлом. false — не вышло.
+     */
+    fun shareFile(file: File, title: String): Boolean
 }

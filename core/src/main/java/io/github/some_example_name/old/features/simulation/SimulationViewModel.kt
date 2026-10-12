@@ -5,7 +5,11 @@ import com.badlogic.gdx.graphics.OrthographicCamera
 import io.github.some_example_name.old.commands.GameCommand
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
-import io.github.some_example_name.old.core.log.ActionLog
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.SessionAttachments
+import io.github.some_example_name.old.journal.SessionJournal
+import kotlinx.serialization.Serializable
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
 import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.render.RenderSystem
@@ -21,45 +25,54 @@ import java.util.Locale
  * поток симуляции в своём тике, и они пишутся в запись сессии с номером тика. Здесь —
  * всё остальное: время, выбор генома, вид, сохранение.
  */
+@Serializable
 sealed interface SimulationIntent : GameCommand {
 
+    @Serializable
     data class SetPaused(val paused: Boolean) : SimulationIntent {
         override val name get() = "SetPaused"
         override val detail get() = paused.toString()
     }
 
     /** «Поставить организм»: левая кнопка ставит организм, правая — субстанцию; выключено — наоборот. */
+    @Serializable
     data class SetPutOrganism(val enabled: Boolean) : SimulationIntent {
         override val name get() = "SetPutOrganism"
         override val detail get() = enabled.toString()
     }
 
     /** Геном для следующих организмов — по имени файла, см. [SimulationViewModel.genomeNames]. */
+    @Serializable
     data class SelectGenome(val fileName: String) : SimulationIntent {
         override val name get() = "SelectGenome"
         override val detail get() = fileName
     }
 
+    @Serializable
     data class SetTargetUps(val value: Int) : SimulationIntent {
         override val name get() = "SetTargetUps"
         override val detail get() = value.toString()
     }
 
+    @Serializable
     data class SetMaxSpeed(val enabled: Boolean) : SimulationIntent {
         override val name get() = "SetMaxSpeed"
         override val detail get() = enabled.toString()
     }
 
+    @Serializable
     data object Restart : SimulationIntent {
         override val name get() = "Restart"
     }
 
+    @Serializable
     data class SetRenderMode(val mode: RenderMode) : SimulationIntent {
         override val name get() = "SetRenderMode"
         override val detail get() = mode.name
     }
 
     /** Экранная клавиатура контроллера: показать или спрятать. */
+    @Serializable
     data class SetControllerKeysVisible(val visible: Boolean) : SimulationIntent {
         override val name get() = "SetControllerKeysVisible"
         override val detail get() = visible.toString()
@@ -72,42 +85,49 @@ sealed interface SimulationIntent : GameCommand {
      * в запись сессии с номером тика (SimulationSystem.latchControllerKeys). Команда
      * нужна, чтобы нажатие было видно в журнале рядом с остальными действиями.
      */
+    @Serializable
     data class SetControllerKey(val index: Int, val pressed: Boolean) : SimulationIntent {
         override val name get() = "SetControllerKey"
         override val detail get() = "$index ${if (pressed) "down" else "up"}"
     }
 
-    /** Кнопка «Повтор сессии»: перезапустить мир и проиграть в нём debug.bin. */
-    data object ReplaySession : SimulationIntent {
-        override val name get() = "ReplaySession"
-    }
-
-    data object SaveWorld : SimulationIntent {
+    /**
+     * Сохранить мир в [slot]. Слот решается при нажатии (SimulationViewModel.saveWorldIntent):
+     * новый слот выбирается по списку файлов, а при повторе бага он другой.
+     */
+    @Serializable
+    data class SaveWorld(val slot: String) : SimulationIntent {
         override val name get() = "SaveWorld"
+        override val detail get() = slot
     }
 
     /** Спрятать или вернуть интерфейс поверх мира (клавиши Z / Y). */
+    @Serializable
     data class SetUiVisible(val visible: Boolean) : SimulationIntent {
         override val name get() = "SetUiVisible"
         override val detail get() = visible.toString()
     }
 
     /** Приложение свёрнуто — мир встаёт, пока игра в фоне. */
+    @Serializable
     data object AppPaused : SimulationIntent {
         override val name get() = "AppPaused"
     }
 
     /** Приложение развёрнуто — мир идёт, если шёл до сворачивания. */
+    @Serializable
     data object AppResumed : SimulationIntent {
         override val name get() = "AppResumed"
     }
 
     /** Сдвиг камеры перетаскиванием пустого места. Смещение — в координатах мира. */
+    @Serializable
     data class MoveCamera(val dx: Float, val dy: Float) : SimulationIntent {
         override val name get() = "MoveCamera"
     }
 
     /** Масштаб камеры колесом или щипком: итоговые масштаб и положение, а не приращение. */
+    @Serializable
     data class ZoomCamera(val zoom: Float, val x: Float, val y: Float) : SimulationIntent {
         override val name get() = "ZoomCamera"
         override val detail get() = String.format(Locale.ROOT, "%.4f", zoom)
@@ -121,8 +141,6 @@ sealed interface SimulationEffect {
 
     /** Поменялась пауза, но не по кнопке паузы — поправить её отметку. */
     data object PauseChanged : SimulationEffect
-
-    data class ShowReplayError(val message: String) : SimulationEffect
 
     data class WorldSaved(val success: Boolean) : SimulationEffect
 }
@@ -181,11 +199,17 @@ class SimulationViewModel(
      */
     private var wasPlayingBeforeAppPause = true
 
-    fun handle(intent: SimulationIntent) {
-        ActionLog.record(LOG_SOURCE, intent)
+    fun handle(intent: SimulationIntent) = SessionJournal.execute(CommandSource.SIMULATION, intent) { apply(it) }
 
+    /** Команда кнопки «Сохранить»: в старый слот мира, а если его нет — в новый. */
+    fun saveWorldIntent(): SimulationIntent.SaveWorld =
+        SimulationIntent.SaveWorld(saveSlot ?: DISimulationContainer.mapSave.nextSlot())
+
+    private fun apply(intent: SimulationIntent) {
         when (intent) {
-            is SimulationIntent.SetPaused -> simulationData.isPlay = !intent.paused
+            // При повторе бага ход времени ведёт сам повтор: пауза из записи остановила
+            // бы мир раньше, чем он дойдёт до тиков следующих команд.
+            is SimulationIntent.SetPaused -> if (!BugReplay.isActive) simulationData.isPlay = !intent.paused
 
             is SimulationIntent.SetPutOrganism -> putOrganism = intent.enabled
 
@@ -205,7 +229,8 @@ class SimulationViewModel(
 
             is SimulationIntent.SetMaxSpeed -> simulationData.maxSpeed = intent.enabled
 
-            is SimulationIntent.Restart -> simulationData.isRestart = true
+            // При повторе рестарт делает сам поток симуляции, в записанном тике (SimRestarted).
+            is SimulationIntent.Restart -> if (!BugReplay.isActive) simulationData.isRestart = true
 
             is SimulationIntent.SetRenderMode -> renderSystem.mode = intent.mode
 
@@ -217,19 +242,7 @@ class SimulationViewModel(
             is SimulationIntent.SetControllerKey ->
                 simulationData.controllerKeyTouched[intent.index] = intent.pressed
 
-            is SimulationIntent.ReplaySession -> {
-                // Файл читается здесь, а мир перезапускается уже потоком симуляции
-                // в начале следующего тика.
-                val error = DISimulationContainer.logReplay.request()
-                if (error == null) {
-                    simulationData.isPlay = true
-                    onEffect?.invoke(SimulationEffect.PauseChanged)
-                } else {
-                    onEffect?.invoke(SimulationEffect.ShowReplayError(error))
-                }
-            }
-
-            is SimulationIntent.SaveWorld -> saveWorld()
+            is SimulationIntent.SaveWorld -> saveWorld(intent.slot)
 
             is SimulationIntent.SetUiVisible -> {
                 if (isUiVisible == intent.visible) return
@@ -240,7 +253,7 @@ class SimulationViewModel(
 
             is SimulationIntent.AppPaused -> {
                 wasPlayingBeforeAppPause = simulationData.isPlay
-                simulationData.isPlay = false
+                if (!BugReplay.isActive) simulationData.isPlay = false
                 // Приложение свёрнуто: воркерам разрешаем спать долго. Без этого каждый из
                 // них просыпается по таймауту парковки сотни раз в секунду всё время, что
                 // игра висит в фоне, — на телефоне это заметный расход батареи впустую.
@@ -248,7 +261,7 @@ class SimulationViewModel(
             }
 
             is SimulationIntent.AppResumed -> {
-                simulationData.isPlay = wasPlayingBeforeAppPause
+                if (!BugReplay.isActive) simulationData.isPlay = wasPlayingBeforeAppPause
                 DISimulationContainer.threadManager.executor.setBackground(false)
             }
 
@@ -285,6 +298,8 @@ class SimulationViewModel(
         // первый же тик ЭТОЙ сессии вызвал бы dispose() и стёр только что построенный —
         // или только что загруженный — мир.
         simulationSystem.dispose()
+        // С этого момента UI-команды экрана получают отметку тика мира.
+        SessionJournal.simTick = { simulationData.tickCounter }
         val loaded = savedWorld != null && loadSavedWorld(savedWorld)
         if (!loaded) {
             DISimulationContainer.worldTerrainManager.map = worldSpec?.buildMap()
@@ -316,7 +331,14 @@ class SimulationViewModel(
         return savedWorld == null || loaded
     }
 
+    /** Экран симуляции закрывается: тика мира больше нет. */
+    fun stopWorld() {
+        SessionJournal.simTick = null
+    }
+
     private fun loadSavedWorld(slot: String): Boolean = try {
+        // Файл мира — с машины игрока: при первой загрузке за сессию он уходит в снимки.
+        SessionAttachments.attachMapBeforeLoad(slot)
         worldSpec = DISimulationContainer.mapSave.load(slot)
         // Рельеф не строится заново — он уже в загруженных частицах. Карта нужна
         // только «Перезапуску».
@@ -334,20 +356,20 @@ class SimulationViewModel(
      * сохранение идёт оттуда же: в одном кадре с превью, чтобы оно показывало ровно
      * сохранённый мир.
      */
-    private fun saveWorld() {
+    private fun saveWorld(slot: String) {
+        SessionAttachments.markMapWritten(slot)
         renderSystem.requestPreview(MapSave.PREVIEW_SIZE) { preview ->
             val saved = try {
-                saveSlot = DISimulationContainer.mapSave.save(saveSlot, worldSpec, preview)
+                saveSlot = DISimulationContainer.mapSave.save(slot, worldSpec, preview)
                 true
             } catch (e: Exception) {
                 Gdx.app.error("MapSave", "не удалось сохранить мир", e)
+                // Повтор держит мир на тике сохранения, пока оно не случится. Упало —
+                // отпускаем, иначе мир так и простоит.
+                BugReplay.onWorldSaveFinished()
                 false
             }
             onEffect?.invoke(SimulationEffect.WorldSaved(saved))
         }
-    }
-
-    private companion object {
-        const val LOG_SOURCE = "Simulation"
     }
 }
