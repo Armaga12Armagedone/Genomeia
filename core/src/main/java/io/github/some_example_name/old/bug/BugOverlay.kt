@@ -172,8 +172,24 @@ object BugOverlay {
         Gdx.input.inputProcessor = input
     }
 
+    /**
+     * Снимок экрана для отчёта — уменьшенный до [SCREENSHOT_MAX_SIDE] по длинной стороне:
+     * полный кадр 1920×1080 в PNG — это мегабайт, а чтобы увидеть, что на экране, хватит
+     * и меньшего. Приложится, только если игрок отметит галочку в окне отчёта.
+     */
     private fun captureScreen(): ByteArray {
-        val pixmap = Pixmap.createFromFrameBuffer(0, 0, Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight)
+        val full = Pixmap.createFromFrameBuffer(0, 0, Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight)
+        val scale = minOf(1f, SCREENSHOT_MAX_SIDE.toFloat() / maxOf(full.width, full.height))
+        val pixmap = if (scale >= 1f) full else {
+            val width = (full.width * scale).toInt()
+            val height = (full.height * scale).toInt()
+            Pixmap(width, height, full.format).also {
+                it.filter = Pixmap.Filter.BiLinear
+                it.blending = Pixmap.Blending.None
+                it.drawPixmap(full, 0, 0, full.width, full.height, 0, 0, width, height)
+                full.dispose()
+            }
+        }
         try {
             val png = PixmapIO.PNG(pixmap.width * pixmap.height * 4)
             try {
@@ -248,5 +264,6 @@ object BugOverlay {
     }
 
     private const val BUTTON_DP = 36f
+    private const val SCREENSHOT_MAX_SIDE = 1280
     private const val STATUS_WIDTH = 0.6f
 }

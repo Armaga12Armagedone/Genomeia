@@ -23,7 +23,10 @@ import java.util.zip.ZipOutputStream
  *  - console.log         — вывод игры за сессию (console.1.log — его начало, если он длинный);
  *  - journal.bin         — журнал команд сессии (JournalFormat), по нему идёт повтор;
  *  - actions.txt         — тот же журнал текстом, чтобы читать глазами;
- *  - screenshot.png      — экран в момент нажатия кнопки-жука;
+ *  - meta.json           — краткое описание для сервера (BugMeta): версия, платформа,
+ *                          устройство, подпись краша — для сортировки и группировки;
+ *  - images/             — снимок экрана игры (если игрок отметил) и картинки, которые
+ *                          игрок приложил сам (из буфера обмена, галереи, файла);
  *  - attachments/        — файлы игрока: геномы, настройки среды, загруженные миры.
  *
  * Сжатие — обычный Deflate: журнал и логи — это повторяющийся текст и однотипные записи,
@@ -45,7 +48,8 @@ object BugFile {
     const val CONSOLE_PREVIOUS = "console.1.log"
     const val JOURNAL = "journal.bin"
     const val ACTIONS = "actions.txt"
-    const val SCREENSHOT = "screenshot.png"
+    const val META = "meta.json"
+    const val IMAGES = "images/"
     const val ATTACHMENTS = "attachments/"
 
     /** Содержимое одного файла внутри .bug: готовые байты или файл на диске. */
@@ -107,6 +111,12 @@ object BugFile {
         }
         return result
     }
+
+    /** Один файл из .bug или null — без чтения остального (например, meta.json для отправки). */
+    fun readEntry(file: File, name: String): ByteArray? =
+        openZip(BufferedInputStream(FileInputStream(file), BUFFER)).use { zip ->
+            generateSequence { zip.nextEntry }.firstOrNull { it.name == name }?.let { zip.readBytes() }
+        }
 
     /** Распаковать .bug в каталог — для повтора. */
     fun unpack(file: File, toDir: File) {

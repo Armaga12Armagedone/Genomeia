@@ -351,7 +351,7 @@ object BugReplay {
             notes.forEach { appendLine("  ! $it") }
             crash?.let { appendLine("КРАШ ВОСПРОИЗВЕДЁН: $it") }
             if (crash == null && manifest["kind"] == BugKind.CRASH.label) {
-                appendLine("Краш НЕ воспроизвёлся: ${manifest["crash.exception"] ?: "?"} — исправлен, или повтор разошёлся с записью")
+                appendLine("Краш НЕ воспроизвёлся: ${manifest["crash.exception"] ?: "?"}: ${manifest["crash.message"] ?: ""} — исправлен, или повтор разошёлся с записью")
             }
             if (world && crash == null) appendLine("Мир остановлен на тике ${SessionJournal.simTick?.invoke()} (эпоха ${SessionJournal.epoch}).")
         }

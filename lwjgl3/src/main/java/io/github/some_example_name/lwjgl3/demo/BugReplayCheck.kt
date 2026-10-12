@@ -5,6 +5,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import io.github.some_example_name.lwjgl3.DesktopFileProvider
+import io.github.some_example_name.old.bug.BugImage
 import io.github.some_example_name.old.bug.BugKind
 import io.github.some_example_name.old.bug.BugReplay
 import io.github.some_example_name.old.bug.BugReports
@@ -223,6 +224,9 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
             // Отчёт кнопкой-жуком (без окна) — и конец.
             14 -> {
                 val bug = BugReports.create(BugKind.REPORT, "bugReplayCheck: сквозная проверка")
+                // Как в окне отчёта: игрок дописал пояснение и приложил картинку после
+                // первой кнопки — перепаковка не должна задеть журнал (повтор это проверит).
+                BugReports.rewrite(bug, "bugReplayCheck: перепаковано", listOf(BugImage("1-test.png", TEST_PNG)))
                 pathFile.parentFile.mkdirs()
                 pathFile.writeText(bug.file().absolutePath)
                 println("Записан ${bug.file().absolutePath} (${bug.length() / 1024} КБ) на тике ${data.tickCounter}")
@@ -253,6 +257,10 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
          * Организмы стоят плотно: столкновения тел — то место, где порядок потоков мог бы
          * просочиться в мир. -PspawnGrid=N ставит их сеткой N×N.
          */
+        /** Картинка 1×1 PNG для проверки перепаковки. */
+        val TEST_PNG: ByteArray = java.util.Base64.getDecoder()
+            .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
         val SPAWN: List<Pair<Float, Float>> = run {
             val n = System.getProperty("bugReplayCheck.spawnGrid")?.toIntOrNull() ?: 2
             val step = 150f / n

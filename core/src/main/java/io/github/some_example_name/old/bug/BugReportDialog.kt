@@ -3,33 +3,49 @@ package io.github.some_example_name.old.bug
 import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.files.FileHandle
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
+import com.badlogic.gdx.scenes.scene2d.Actor
+import com.badlogic.gdx.scenes.scene2d.ui.Cell
+import com.badlogic.gdx.scenes.scene2d.ui.Label
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Timer
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextArea
+import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextField
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.ui.dp
 import io.github.some_example_name.old.core.ui.globalVisTable
 import io.github.some_example_name.old.core.ui.h
+import io.github.some_example_name.old.core.ui.makeStyledButton
 import io.github.some_example_name.old.core.ui.makeStyledTextField
 import io.github.some_example_name.old.core.ui.setupTitleSize
 import io.github.some_example_name.old.core.ui.visLabel
 import io.github.some_example_name.old.core.ui.visTable
 import io.github.some_example_name.old.core.ui.visTextButton
+import io.github.some_example_name.old.core.ui.visToggleButton
 import io.github.some_example_name.old.core.ui.w
 
 /**
- * Окно отчёта об ошибке: пояснение игрока и что сделать с .bug — сохранить, поделиться,
- * отправить на сервер (пока заглушка, см. BugUploader).
+ * Окно отчёта об ошибке: пояснение игрока, картинки и что сделать с .bug — сохранить,
+ * поделиться, отправить на сервер (пока заглушка, см. BugUploader).
  *
  * Отчёт собирается не при открытии окна, а при первой кнопке: в него должно попасть
- * пояснение. Для краша .bug уже собран обработчиком, и пояснение дописывается в него.
- * Поменяли текст после сохранения — следующая кнопка перепишет файл.
+ * пояснение. Для краша .bug уже собран обработчиком. Поменяли текст или картинки после
+ * сохранения — следующая кнопка перепишет файл.
+ *
+ * КАРТИНКИ
+ * --------
+ * Снимок экрана игры снимается при нажатии на жука (на нём то, что игрок видел, без этого
+ * окна), но прикладывается, только если отметить галочку: часто он не нужен, а ошибки на
+ * нём может и не быть. Своё игрок прикладывает сам — из буфера обмена или из галереи
+ * (на ПК — файлом).
  *
  * Само окно и всё, что в нём делается, — не команды игры: в журнал оно не пишется.
  */
@@ -37,6 +53,7 @@ class BugReportDialog(
     private val kind: BugKind,
     /** Уже собранный .bug (краш) или null — соберётся при первой кнопке. */
     existing: FileHandle?,
+    /** Снимок экрана игры на момент нажатия жука, или null (краш — снять нечего). */
     private val screenshot: ByteArray?,
     /** Уже набранное пояснение — когда окно краша сменяет недописанный отчёт. */
     private val initialDescription: String = "",
@@ -44,26 +61,49 @@ class BugReportDialog(
 ) : VisDialog(bundle.get(if (kind == BugKind.CRASH) "bug.title.crash" else "bug.title.report")) {
 
     private var bug: FileHandle? = existing
-    private var writtenDescription = ""
     private val textures = mutableListOf<Texture>()
     private lateinit var description: VisTextArea
     private lateinit var status: VisLabel
+    private lateinit var imagesLabel: VisLabel
+    private lateinit var imagesRow: VisTable
+    private lateinit var imagesCell: Cell<Actor>
     private var closed = false
+
+    private var includeScreenshot = false
+    private val attached = ArrayList<BugImage>()
+
+    /** Что уже записано в .bug: перепаковывать, только если что-то поменялось. */
+    private var writtenDescription = ""
+    private var changes = 0
+    private var writtenChanges = 0
 
     init {
         setupTitleSize(game)
         isModal = true
         isMovable = true
 
-        val root = globalVisTable { compose() }
-        contentTable.add(root).width(minOf(w * 0.9f, 640f.dp())).maxHeight(h * 0.9f)
+        val width = minOf(w * 0.9f, 640f.dp())
+
+        // Прокручивается только содержимое: на телефоне в высоту оно не влезает. Ширина у
+        // него фиксированная — иначе длинный текст растянул бы его шире окна. Кнопки
+        // действий — под прокруткой, всегда на виду.
+        val content = globalVisTable { composeContent() }
+        val holder = VisTable().apply { add(content).width(width - SCROLLBAR_ROOM.dp()) }
+        val scroll = ScrollPane(holder).apply {
+            setScrollingDisabled(true, false)
+            setFadeScrollBars(false)
+            setOverscroll(false, false)
+        }
+        contentTable.add(scroll).width(width).maxHeight(h * 0.6f)
+        contentTable.row()
+        contentTable.add(globalVisTable { composeActions() }).width(width)
 
         closeOnEscape()
         pack()
         centerWindow()
     }
 
-    private fun VisTable.compose() {
+    private fun VisTable.composeContent() {
         defaults().pad(6.dp())
 
         visLabel(
@@ -79,6 +119,56 @@ class BugReportDialog(
         }
         add(description).growX().minHeight(110f.dp())
         row()
+
+        // --- Картинки ---
+        if (screenshot != null) {
+            visToggleButton(
+                text = bundle.get("bug.screenshot"),
+                checked = includeScreenshot,
+                onCheckedChange = {
+                    includeScreenshot = it
+                    changes++
+                }
+            ) { growX() }
+            row()
+        }
+
+        visTable({ growX() }) {
+            defaults().pad(4.dp()).growX().uniformX()
+            visTextButton(bundle.get("bug.pasteImage"), onClick = { pasteImage() })
+            val isPhone = Gdx.app.type == Application.ApplicationType.Android
+            visTextButton(bundle.get(if (isPhone) "bug.pickImagePhone" else "bug.pickImage"), onClick = { pickImage() })
+        }
+        row()
+
+        // Строка «приложено N» — только когда есть что показать: пустая занимала бы место.
+        imagesRow = VisTable().apply {
+            imagesLabel = VisLabel("", Label.LabelStyle(game.mediumFont, Color.WHITE))
+            add(imagesLabel).growX().left()
+            add(makeClearButton()).pad(4.dp())
+        }
+        imagesCell = add().growX()
+        row()
+        refreshImages()
+
+        // --- Приватность ---
+        visLabel(text = bundle.get("bug.privacy"), font = game.mediumFont, textColor = PRIVACY_COLOR) { growX() }
+            .setWrap(true)
+    }
+
+    private fun makeClearButton(): VisTextButton =
+        makeStyledButton(bundle.get("bug.clearImages"), game, textures).apply {
+            addListener(object : ChangeListener() {
+                override fun changed(event: ChangeEvent?, actor: Actor?) {
+                    attached.clear()
+                    changes++
+                    refreshImages()
+                }
+            })
+        }
+
+    private fun VisTable.composeActions() {
+        defaults().pad(6.dp())
 
         status = visLabel("", font = game.mediumFont, align = Align.center) { growX() }
         status.setWrap(true)
@@ -101,51 +191,105 @@ class BugReportDialog(
     /** Что игрок успел написать. */
     fun typedDescription(): String = description.text.trim()
 
-    /** .bug с текущим пояснением: собрать, если ещё нет, или переписать пояснение. */
+    // ==================== Картинки ====================
+
+    private fun pasteImage() {
+        val image = game.multiPlatformFileProvider.clipboardImage()
+        if (image == null) {
+            showStatus(bundle.get("bug.noClipboardImage"))
+            return
+        }
+        attach(image.first, "clipboard.${image.second}")
+    }
+
+    private fun pickImage() {
+        game.multiPlatformFileProvider.pickImage { bytes, name ->
+            // Окно выбора отвечает не в поток игры.
+            Gdx.app.postRunnable {
+                if (bytes != null && !closed) attach(bytes, name ?: "image.png")
+            }
+        }
+    }
+
+    private fun attach(bytes: ByteArray, originalName: String) {
+        when {
+            attached.size >= MAX_IMAGES -> showStatus(bundle.get("bug.tooManyImages"))
+            bytes.size > MAX_IMAGE_BYTES -> showStatus(bundle.get("bug.imageTooBig"))
+            else -> {
+                attached += BugImage("${attached.size + 1}-${safeName(originalName)}", bytes)
+                changes++
+                refreshImages()
+                showStatus("")
+            }
+        }
+    }
+
+    private fun refreshImages() {
+        imagesLabel.setText(bundle.get("bug.images") + attached.size)
+        imagesCell.setActor(if (attached.isEmpty()) null else imagesRow)
+        imagesRow.invalidateHierarchy()
+        if (::status.isInitialized) pack()
+    }
+
+    /** Снимок (если отмечен) и приложенное игроком — то, что уйдёт в images/ внутри .bug. */
+    private fun images(): List<BugImage> {
+        val shot = screenshot?.takeIf { includeScreenshot }?.let { BugImage(BugReports.SCREENSHOT_NAME, it) }
+        return listOfNotNull(shot) + attached
+    }
+
+    // ==================== .bug ====================
+
+    /** .bug с текущими пояснением и картинками: собрать, если ещё нет, или переписать. */
     private fun ensureBug(): FileHandle? {
         val text = description.text.trim()
         return try {
             val current = bug
             when {
-                current == null -> BugReports.create(kind, text, screenshotPng = screenshot).also { bug = it }
-                text != writtenDescription -> current.also { BugReports.rewriteDescription(it, text) }
+                current == null -> BugReports.create(kind, text, images = images()).also { bug = it }
+                text != writtenDescription || changes != writtenChanges ->
+                    current.also { BugReports.rewrite(it, text, images()) }
                 else -> current
-            }.also { writtenDescription = text }
+            }.also {
+                writtenDescription = text
+                writtenChanges = changes
+            }
         } catch (e: Exception) {
             Gdx.app.error("BugReport", "не удалось собрать отчёт", e)
-            status.setText(bundle.get("bug.failed") + (e.message ?: e::class.java.simpleName))
+            showStatus(bundle.get("bug.failed") + (e.message ?: e::class.java.simpleName))
             null
         }
     }
 
     private fun save() {
         val file = ensureBug() ?: return
-        status.setText(bundle.get("bug.saved") + file.file().absolutePath)
-        pack()
+        showStatus(bundle.get("bug.saved") + file.file().absolutePath)
     }
 
     private fun share() {
         val file = ensureBug() ?: return
         if (!game.multiPlatformFileProvider.shareFile(file.file(), bundle.get("bug.title.report"))) {
-            status.setText(bundle.get("bug.saved") + file.file().absolutePath)
-            pack()
+            showStatus(bundle.get("bug.saved") + file.file().absolutePath)
         }
     }
 
     private fun send() {
         val file = ensureBug() ?: return
-        status.setText(bundle.get("bug.sending"))
+        showStatus(bundle.get("bug.sending"))
         BugUploader.upload(file) { success, message ->
-            status.setText(if (success) bundle.get("bug.sent") else bundle.get("bug.sendFailed") + message)
-            pack()
+            showStatus(if (success) bundle.get("bug.sent") else bundle.get("bug.sendFailed") + message)
         }
+    }
+
+    private fun showStatus(text: String) {
+        status.setText(text)
+        pack()
     }
 
     public override fun close() {
         if (!closed) {
             closed = true
-            // Пояснение, набранное после последней кнопки, не должно потеряться.
-            if (bug != null && description.text.trim() != writtenDescription) ensureBug()
+            // Пояснение и картинки, изменённые после последней кнопки, не должны потеряться.
+            if (bug != null && (description.text.trim() != writtenDescription || changes != writtenChanges)) ensureBug()
             if (kind == BugKind.CRASH) bug?.let { BugReports.clearPendingCrash(it) }
             onClosed()
         }
@@ -161,5 +305,19 @@ class BugReportDialog(
 
     private companion object {
         const val TEXTURE_DISPOSE_DELAY = 0.6f
+
+        /** Место под полосу прокрутки справа от содержимого, dp. */
+        const val SCROLLBAR_ROOM = 16f
+        const val MAX_IMAGES = 5
+        const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
+        val PRIVACY_COLOR = Color(0.78f, 0.74f, 0.66f, 1f)
+
+        /** Имя файла внутри .bug: только безопасные символы, расширение сохраняется. */
+        fun safeName(name: String): String =
+            name.substringAfterLast('/').substringAfterLast('\\')
+                .map { if (it.isLetterOrDigit() || it in "._-") it else '_' }
+                .joinToString("")
+                .takeLast(60)
+                .ifEmpty { "image.png" }
     }
 }

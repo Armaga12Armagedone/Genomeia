@@ -1,7 +1,9 @@
 package io.github.some_example_name.android
 
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.files.FileHandle
 import games.spooky.gdx.nativefilechooser.NativeFileChooser
@@ -152,6 +154,58 @@ class AndroidFileProvider(private val context: Context, private val fileChooser:
         Gdx.app.error("Share", "не удалось поделиться ${file.name}", e)
         false
     }
+
+    /** Картинка из буфера: на Android туда кладут не байты, а ссылку на картинку (content://). */
+    override fun clipboardImage(): Pair<ByteArray, String>? = try {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = clipboard.primaryClip
+        var found: Pair<ByteArray, String>? = null
+        if (clip != null) {
+            for (i in 0 until clip.itemCount) {
+                val uri = clip.getItemAt(i).uri ?: continue
+                val type = context.contentResolver.getType(uri) ?: continue
+                if (!type.startsWith("image/")) continue
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: continue
+                found = bytes to type.substringAfter('/').substringBefore(';').ifEmpty { "png" }
+                break
+            }
+        }
+        found
+    } catch (e: Exception) {
+        Gdx.app.error("Clipboard", "не удалось взять картинку из буфера", e)
+        null
+    }
+
+    /** Галерея: тот же системный выбор файла, что и у импорта генома, только картинки. */
+    override fun pickImage(callback: (bytes: ByteArray?, name: String?) -> Unit) {
+        val conf = NativeFileChooserConfiguration().apply {
+            title = "Image"
+            mimeFilter = "image/*"
+        }
+        fileChooser.chooseFile(conf, object : NativeFileChooserCallback {
+            override fun onFileChosen(file: FileHandle) {
+                val bytes = runCatching { file.readBytes() }.getOrNull()
+                callback(bytes, file.name().removePrefix("~"))
+            }
+
+            override fun onCancellation() = callback(null, null)
+
+            override fun onError(exception: Exception?) {
+                Gdx.app.log("FileChooser", "Error: ${exception?.message}")
+                callback(null, null)
+            }
+        })
+    }
+
+    override fun deviceInfo(): Map<String, String> = mapOf(
+        "manufacturer" to Build.MANUFACTURER,
+        "model" to Build.MODEL,
+        "android" to Build.VERSION.RELEASE,
+        "sdk" to Build.VERSION.SDK_INT.toString(),
+        "abi" to (Build.SUPPORTED_ABIS.firstOrNull() ?: "?"),
+        "cpuCores" to Runtime.getRuntime().availableProcessors().toString(),
+        "maxMemoryMb" to (Runtime.getRuntime().maxMemory() / (1024 * 1024)).toString()
+    )
 
     private companion object {
         const val GENOME_EXTENSION = ".genome"
