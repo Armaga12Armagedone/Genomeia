@@ -36,9 +36,14 @@ data object SimRestarted : SimEvent {
 /**
  * Хэш состояния мира на этом тике (см. StateHash). При повторе мир считает свой хэш на
  * том же тике и сверяет: первое несовпадение — первый тик, где повтор разошёлся с игрой.
+ *
+ * @param version версия формулы (StateHash.VERSION); 0 — запись первых сборок, где был
+ *   только общий хэш частиц, клеток и связей.
+ * @param parts хэши частей мира по порядку StateHash.partNames — чтобы сказать, ЧТО
+ *   разошлось.
  */
 @Serializable
-data class StateHashed(val hash: Long) : SimEvent {
+data class StateHashed(val hash: Long, val version: Int = 0, val parts: List<Long> = emptyList()) : SimEvent {
     override val name get() = "StateHash"
     override val detail get() = java.lang.Long.toHexString(hash)
 }

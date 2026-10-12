@@ -18,6 +18,7 @@ import io.github.some_example_name.old.systems.physics.CollisionManager.Companio
 import io.github.some_example_name.old.systems.physics.GridManager
 import io.github.some_example_name.old.bug.BugReplay
 import io.github.some_example_name.old.journal.CommandSource
+import io.github.some_example_name.old.journal.Fnv
 import io.github.some_example_name.old.journal.SessionJournal
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.cos
@@ -67,6 +68,19 @@ class UserCommandManager(
         commandQueue.clear()
         grabbedParticleIndex = -1
         isDragging = false
+    }
+
+    /**
+     * Состояние ввода для хэша мира (StateHash): что схвачено, где касание, и генератор
+     * случайностей команд — от него зависит, куда ляжет следующее вещество.
+     */
+    fun hashInput(hash: Long): Long {
+        var h = Fnv.word(hash, grabbedParticleIndex)
+        h = Fnv.word(h, java.lang.Float.floatToRawIntBits(tapX))
+        h = Fnv.word(h, java.lang.Float.floatToRawIntBits(tapY))
+        h = Fnv.word(h, if (isDragging) 1 else 0)
+        h = Fnv.long(h, random.getState(0))
+        return Fnv.long(h, random.getState(1))
     }
 
     fun push(cmd: PlayerCommand) {

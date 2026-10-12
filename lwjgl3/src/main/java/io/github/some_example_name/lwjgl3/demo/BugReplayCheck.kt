@@ -162,7 +162,12 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 val baked = genomes.indices.filter { genomes[it].cellsAmount > 0 }
                 check(baked.isNotEmpty()) { "в папке genomes нет запечённых геномов" }
                 screen(SimulationIntent.SelectGenome(DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder()[baked.first()]))
-                SPAWN.forEach { (x, y) -> DISimulationContainer.userCommandManager.push(PlayerCommand.Tap(x, y)) }
+                // Все запечённые геномы по кругу: нейросвязи, феромоны, глаза — всё, что
+                // есть в папке, должно попасть в мир и в хэш состояния.
+                println("Запечённых геномов: ${baked.size} из ${genomes.size}")
+                SPAWN.forEachIndexed { i, (x, y) ->
+                    DISimulationContainer.userCommandManager.push(PlayerCommand.Tap(x, y, genomeIndex = baked[i % baked.size]))
+                }
                 screen(SimulationIntent.ZoomCamera(0.05f, 90f, 90f))
                 untilTick(data.tickCounter + GROW_TICKS)
             }
@@ -205,6 +210,9 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
 
             // Сохранение мира — повтор должен сделать его на том же тике.
             11 -> {
+                // Что вообще есть в мире: части хэша без объектов ничего не проверяют.
+                println("В мире: " + DISimulationContainer.entityList.joinToString { "${it::class.simpleName}=${it.aliveList.size}" })
+                println("Геномы: " + DISimulationContainer.genomeManager.genomes.filter { it.cellsAmount > 0 }.joinToString { it.name })
                 val slot = DISimulationContainer.mapSave.nextSlot()
                 savedSlot = slot
                 screen(SimulationIntent.SaveWorld(slot))

@@ -20,6 +20,12 @@ object Fnv {
         return byte(h, value ushr 24)
     }
 
+    /**
+     * Целое число за один шаг (FNV-1a по 32-битным словам, а не по байтам): в хэш
+     * состояния мира идут миллионы чисел за раз, и вчетверо меньше умножений заметно.
+     */
+    fun word(hash: Long, value: Int): Long = (hash xor (value.toLong() and 0xFFFFFFFFL)) * PRIME
+
     fun long(hash: Long, value: Long): Long = int(int(hash, value.toInt()), (value ushr 32).toInt())
 
     fun float(hash: Long, value: Float): Long = int(hash, java.lang.Float.floatToRawIntBits(value))

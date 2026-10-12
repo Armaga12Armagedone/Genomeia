@@ -32,6 +32,7 @@ import io.github.some_example_name.old.systems.physics.MovementManager
 import io.github.some_example_name.old.bug.BugReplay
 import io.github.some_example_name.old.journal.CommandSource
 import io.github.some_example_name.old.journal.ControllerKeys
+import io.github.some_example_name.old.journal.Fnv
 import io.github.some_example_name.old.journal.SessionJournal
 import io.github.some_example_name.old.journal.SessionStarted
 import io.github.some_example_name.old.journal.SimRestarted
@@ -437,13 +438,31 @@ class SimulationSystem(
      */
     private fun hashState() {
         val tick = simulationData.tickCounter
-        val hash = StateHash.compute(particleEntity, cellEntity, linkEntity, tick)
+        val state = StateHash.compute(
+            entities = entityList,
+            simulation = { h ->
+                var x = Fnv.word(h, simulationData.tickCounter)
+                x = Fnv.word(x, java.lang.Float.floatToRawIntBits(simulationData.timeSimulation))
+                x = Fnv.word(x, simulationData.currentGenomeIndex)
+                Fnv.word(x, simulationData.selectedCellIndex)
+            },
+            input = userCommandManager::hashInput,
+            grid = gridManager::hashOrder
+        )
         if (BugReplay.isActive) {
-            BugReplay.checkStateHash(SessionJournal.epoch, tick, hash)
+            BugReplay.checkStateHash(SessionJournal.epoch, tick, state, stateHashNames)
         } else {
-            SessionJournal.recordSim(CommandSource.SYSTEM, StateHashed(hash), SessionJournal.epoch, tick)
+            SessionJournal.recordSim(
+                CommandSource.SYSTEM,
+                StateHashed(state.hash, StateHash.VERSION, state.parts.toList()),
+                SessionJournal.epoch,
+                tick
+            )
         }
     }
+
+    /** Имена частей хэша мира — для сообщения, что именно разошлось. */
+    private val stateHashNames by lazy { StateHash.partNames(entityList) }
 
     /**
      * Мир записан в слот [slot]. Зовётся из сохранения между тиками (под тем же локом),

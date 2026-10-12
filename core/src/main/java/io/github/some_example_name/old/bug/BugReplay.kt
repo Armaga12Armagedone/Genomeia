@@ -20,6 +20,7 @@ import io.github.some_example_name.old.journal.SessionAttachments
 import io.github.some_example_name.old.journal.SessionJournal
 import io.github.some_example_name.old.journal.SessionStarted
 import io.github.some_example_name.old.journal.SimRestarted
+import io.github.some_example_name.old.journal.StateHash
 import io.github.some_example_name.old.journal.StateHashed
 import io.github.some_example_name.old.journal.WorldSaveCommitted
 import java.io.File
@@ -344,8 +345,11 @@ object BugReplay {
                 if (simDone == simTotal && simSum == expectedSimHash) "контрольная сумма совпала" else "контрольная сумма НЕ совпала")
             val mismatch = firstMismatch
             appendLine(
-                if (mismatch == null) "Состояние мира: сверок $hashesOk, все совпали"
-                else "Состояние мира: РАЗОШЛОСЬ — $mismatch (всего сошлось $hashesOk)"
+                when {
+                    mismatch != null -> "Состояние мира: РАЗОШЛОСЬ — $mismatch (всего сошлось $hashesOk)"
+                    hashesOk == 0 && oldHashNoted -> "Состояние мира: не сверялось — хэши в записи старой формулы"
+                    else -> "Состояние мира: сверок $hashesOk, все совпали"
+                }
             )
             if (skipped > 0) appendLine("Пропущено команд: $skipped")
             notes.forEach { appendLine("  ! $it") }
@@ -425,18 +429,32 @@ object BugReplay {
     @PublishedApi
     internal fun consumeEntry(entry: JournalEntry) = consume(entry)
 
-    /** Сверить хэш состояния мира с записанным в этом тике. */
-    fun checkStateHash(epoch: Int, tick: Int, hash: Long) {
+    /**
+     * Сверить хэш состояния мира с записанным в этом тике. При расхождении — какие части
+     * мира разошлись (StateHash.partNames).
+     */
+    fun checkStateHash(epoch: Int, tick: Int, actual: StateHash.Result, names: List<String>) {
         val entry = epochs[epoch]?.hashes?.get(tick) ?: return
         consume(entry)
-        val expected = (entry.command as StateHashed).hash
-        if (expected == hash) {
+        val expected = entry.command as StateHashed
+        if (expected.version != StateHash.VERSION) {
+            // Хэш другой формулы: сравнивать нечего — разошлось бы всегда.
+            if (!oldHashNoted) {
+                oldHashNoted = true
+                note("хэши состояния записаны формулой версии ${expected.version}, а игра считает версией ${StateHash.VERSION} — сверка мира пропущена")
+            }
+            return
+        }
+        if (expected.hash == actual.hash) {
             hashesOk++
         } else if (firstMismatch == null) {
-            firstMismatch = "эпоха $epoch, тик $tick: ожидалось ${Fnv.hex(expected)}, получено ${Fnv.hex(hash)}"
+            val parts = StateHash.diff(names, expected.parts.toLongArray(), actual.parts)
+            firstMismatch = "эпоха $epoch, тик $tick: разошлись ${parts.joinToString().ifEmpty { "?" }}"
             println("[$TAG] СОСТОЯНИЕ МИРА РАЗОШЛОСЬ: $firstMismatch")
         }
     }
+
+    @Volatile private var oldHashNoted = false
 
     /**
      * Держать ли мир на этом тике: впереди сохранение, которого ещё не было, или запись
