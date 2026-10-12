@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.systems.genomics.genome.BakedLayout
+import io.github.some_example_name.old.systems.genomics.genome.Genome
 import it.unimi.dsi.fastutil.ints.IntArrayList
 
 
@@ -348,6 +349,63 @@ class OrganEntity(
         linkArenaBase[organIndex] = -1
         linkArenaCapacity[organIndex] = 0
         linkArenaUsed[organIndex] = 0
+    }
+
+    override fun persistFields(state: EntityState) {
+        state.ints(::genomeIndex)
+        state.ints(::genomeSize)
+        state.ints(::stage)
+        state.ints(::dividedTimes)
+        state.ints(::mutatedTimes)
+        state.booleans(::alreadyGrownUp)
+        state.ints(::divideCounterThisStage)
+        state.ints(::mutateCounterThisStage)
+        state.ints(::divideAmountThisStage)
+        state.ints(::mutateAmountThisStage)
+        state.booleans(::justChangedStage)
+
+        state.ints(::cellArenaBase)
+        state.ints(::cellArenaCapacity)
+        state.ints(::cellArenaUsed)
+        state.ints(::particleArenaBase)
+        state.ints(::linkArenaBase)
+        state.ints(::linkArenaCapacity)
+        state.ints(::linkArenaUsed)
+        state.packed("cellFreeSlots", write = { packFreeSlots(cellFreeSlots) }, read = { unpackFreeSlots(it, cellFreeSlots) })
+        state.packed("linkFreeSlots", write = { packFreeSlots(linkFreeSlots) }, read = { unpackFreeSlots(it, linkFreeSlots) })
+        // arenaLayout — ссылка внутрь генома, её ставит restoreArenaLayouts.
+    }
+
+    /** Свободные списки подряд: [organIndex, size, слоты...] на каждый непустой список. */
+    private fun packFreeSlots(lists: Array<IntArrayList?>): IntArray {
+        val packed = IntArrayList()
+        for (organIndex in 0..lastId) {
+            val list = lists[organIndex] ?: continue
+            if (list.isEmpty) continue
+            packed.add(organIndex)
+            packed.add(list.size)
+            packed.addAll(list)
+        }
+        return packed.toIntArray()
+    }
+
+    private fun unpackFreeSlots(packed: IntArray, lists: Array<IntArrayList?>) {
+        var i = 0
+        while (i < packed.size) {
+            val organIndex = packed[i]
+            val size = packed[i + 1]
+            freeListOf(lists, organIndex).addElements(0, packed, i + 2, size)
+            i += 2 + size
+        }
+    }
+
+    /** Раскладки арен после загрузки мира: их источник — геном организма, как в allocateArenas. */
+    fun restoreArenaLayouts(genomes: List<Genome>) {
+        for (i in 0 until aliveList.size) {
+            val organIndex = aliveList.getInt(i)
+            if (cellArenaBase[organIndex] == -1) continue
+            arenaLayout[organIndex] = genomes.getOrNull(genomeIndex[organIndex])?.sortedGraph
+        }
     }
 
     override fun onCopy() {

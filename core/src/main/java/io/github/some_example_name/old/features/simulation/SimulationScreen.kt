@@ -14,10 +14,14 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
+import com.badlogic.gdx.scenes.scene2d.actions.Actions
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.kotcrab.vis.ui.util.dialog.Dialogs
+import com.kotcrab.vis.ui.widget.VisDialog
+import com.kotcrab.vis.ui.widget.VisLabel
+import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.commands.GoGenomeEditor
 import io.github.some_example_name.old.commands.GoMenu
 import io.github.some_example_name.old.commands.GoReplace
@@ -28,10 +32,13 @@ import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.ui.CameraControl
 import io.github.some_example_name.old.core.ui.h
 import io.github.some_example_name.old.core.ui.makeStyledButton
+import io.github.some_example_name.old.core.ui.setupTitleSize
 import io.github.some_example_name.old.core.ui.w
 import io.github.some_example_name.old.features.editor.GenomeEditorScreen
 import io.github.some_example_name.old.features.menu.MenuScreen
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
+import io.github.some_example_name.old.game.applyCustomFontMedium
+import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.render.RenderSettings
 import io.github.some_example_name.render.debug.RenderSceneDump
 import java.io.File
@@ -39,8 +46,16 @@ import java.io.File
 class SimulationScreen(
     /** Рецепт мира из редактора. null — мир не из редактора (тест генома). */
     val world: WorldSpec?,
-    val genomeName: String?
+    val genomeName: String?,
+    /** Слот сохранённого мира: мир загружается из него, см. MapSave. */
+    val savedWorld: String? = null
 ) : Screen {
+
+    /** Рецепт рельефа текущего мира: у загруженного он приходит из сохранения. */
+    private var worldSpec = world
+
+    /** Куда сохраняется мир. null — ещё не сохранялся, первое сохранение заведёт новый слот. */
+    private var saveSlot = savedWorld
 
     private val simEntity = DISimulationContainer.simulationData
     private val simulationSystem = DISimulationContainer.simulationSystem
@@ -144,8 +159,15 @@ class SimulationScreen(
             camera = camera
         )
 
-        DISimulationContainer.worldTerrainManager.map = world?.buildMap()
-        simulationSystem.initMap()
+        // Чистый лист под любой мир. Прошлая сессия ставит isFinish, но её поток обычно
+        // останавливается раньше, чем доходит до тика, который бы его обработал. Тогда
+        // первый же тик ЭТОЙ сессии вызвал бы dispose() и стёр только что построенный —
+        // или только что загруженный — мир.
+        simulationSystem.dispose()
+        if (savedWorld == null || !loadSavedWorld(savedWorld)) {
+            DISimulationContainer.worldTerrainManager.map = worldSpec?.buildMap()
+            simulationSystem.initMap()
+        }
 
         // Поток симуляции стартует ТОЛЬКО после того, как мир создан.
         //
@@ -169,6 +191,62 @@ class SimulationScreen(
         // невидим; на Android те же десятки тысяч addParticle идут в разы дольше, и окно
         // гонки растягивалось на десятки тиков.
         simulationSystem.startThread()
+    }
+
+    /** false — мир не загрузился, игроку показана ошибка, и мир строится как новый. */
+    private fun loadSavedWorld(slot: String): Boolean = try {
+        worldSpec = DISimulationContainer.mapSave.load(slot)
+        // Рельеф не строится заново — он уже в загруженных частицах. Карта нужна
+        // только «Перезапуску».
+        DISimulationContainer.worldTerrainManager.map = worldSpec?.buildMap()
+        true
+    } catch (e: Exception) {
+        Gdx.app.error("MapSave", "не удалось загрузить мир $slot", e)
+        // Битый файл не перезаписываем: следующее сохранение уйдёт в новый слот.
+        saveSlot = null
+        showLoadError()
+        false
+    }
+
+    private fun showLoadError() {
+        val game = DIGameGlobalContainer.game
+        val bundle = DIGameGlobalContainer.bundle
+        VisDialog(bundle.get("dialog.worlds")).apply {
+            isModal = true
+            setupTitleSize(game)
+            val message = VisLabel(bundle.get("label.loadFailed"))
+            game.applyCustomFontMedium(message)
+            contentTable.add(message).pad(16f * Gdx.graphics.density)
+            closeOnEscape()
+            pack()
+            centerWindow()
+        }.show(stage)
+    }
+
+    /**
+     * Превью снимается в следующем кадре (см. RenderSystem.requestPreview), поэтому и само
+     * сохранение идёт оттуда же: в одном кадре с превью, чтобы оно показывало ровно
+     * сохранённый мир.
+     */
+    private fun saveWorld(button: VisTextButton) {
+        renderSystem.requestPreview(MapSave.PREVIEW_SIZE) { preview ->
+            val saved = try {
+                saveSlot = DISimulationContainer.mapSave.save(saveSlot, worldSpec, preview)
+                true
+            } catch (e: Exception) {
+                Gdx.app.error("MapSave", "не удалось сохранить мир", e)
+                false
+            }
+            flashText(button, if (saved) "label.saved" else "label.saveFailed")
+        }
+    }
+
+    /** Ненадолго подменить надпись на кнопке — единственный отклик на сохранение. */
+    private fun flashText(button: VisTextButton, key: String) {
+        val original = button.text.toString()
+        button.setText(DIGameGlobalContainer.bundle.get(key))
+        button.clearActions()
+        button.addAction(Actions.delay(1.5f, Actions.run { button.setText(original) }))
     }
 
     val keyCodes = intArrayOf(
@@ -415,10 +493,19 @@ class SimulationScreen(
             extraTextures
         )
 
+        val saveWorldButton = makeStyledButton(
+            DIGameGlobalContainer.bundle.get("button.save"),
+            DIGameGlobalContainer.game,
+            extraTextures
+        )
+
+        // Сохранение только у обычного мира: тест генома — временный мир, из которого
+        // возвращаются в редактор.
         val buttons = if (genomeName == null) {
             listOf(
                 menuButton, putOrganismToggle, selectGenomeButton, speedUpSimToggle,
-                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle, logReplayButton
+                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle,
+                logReplayButton, saveWorldButton
             )
         } else {
             listOf(
@@ -747,6 +834,12 @@ class SimulationScreen(
                     return
                 }
                 Dialogs.showOKDialog(stage, DIGameGlobalContainer.bundle.get("button.logReplay"), error)
+            }
+        })
+
+        saveWorldButton.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                saveWorld(saveWorldButton)
             }
         })
 

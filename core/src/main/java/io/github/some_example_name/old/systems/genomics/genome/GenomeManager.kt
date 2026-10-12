@@ -27,16 +27,29 @@ class GenomeManager(
         }
     }
 
-    private fun parseGenome(name: String): Genome {
-        return loadGenome(name).apply {
-            genomeStageInstruction = addInvertedDivideLinks()
-            dividedTimes = IntArray(genomeStageInstruction.size)
-            mutatedTimes = IntArray(genomeStageInstruction.size)
-            genomeStageInstruction.forEachIndexed { index, stage ->
-                stage.cellActions.forEach { (_, action) ->
-                    if (action.divide != null) dividedTimes[index]++
-                    if (action.mutate != null) mutatedTimes[index]++
-                }
+    /**
+     * Добавить геном организма из сохранённого мира, вернуть его индекс.
+     *
+     * В конец, а не вместо загруженных из папки: индексы в genomes — это и номера в диалоге
+     * выбора генома, и OrganEntity.genomeIndex. Сохранённый мир переназначает индексы
+     * своих организмов на добавленные, а список из папки остаётся тем, что видит игрок.
+     */
+    fun addSavedGenome(genome: Genome): Int {
+        genomes.add(genome.prepare())
+        return genomes.size - 1
+    }
+
+    private fun parseGenome(name: String): Genome = loadGenome(name).prepare()
+
+    /** Досчитывает @Transient-поля генома: и после чтения файла, и после загрузки мира. */
+    private fun Genome.prepare(): Genome = apply {
+        genomeStageInstruction = addInvertedDivideLinks()
+        dividedTimes = IntArray(genomeStageInstruction.size)
+        mutatedTimes = IntArray(genomeStageInstruction.size)
+        genomeStageInstruction.forEachIndexed { index, stage ->
+            stage.cellActions.forEach { (_, action) ->
+                if (action.divide != null) dividedTimes[index]++
+                if (action.mutate != null) mutatedTimes[index]++
             }
         }
     }

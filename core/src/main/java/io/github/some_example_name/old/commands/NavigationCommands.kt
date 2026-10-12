@@ -70,11 +70,14 @@ object GoSupport : Menu() {
 class GoSimulation(
     /** Рецепт мира, а не готовая карта: см. [WorldSpec]. null — мир из редактора генома. */
     val world: WorldSpec?,
-    val genomeName: String?
+    val genomeName: String?,
+    /** Слот сохранённого мира (MapSave): тогда мир загружается из него, а [world] не нужен. */
+    val savedWorld: String? = null
 ) : Menu() {
     override val name get() = "GoSimulation"
     override val detail
-        get() = listOfNotNull(world?.detail, genomeName).joinToString(", ").ifEmpty { "-" }
+        get() = listOfNotNull(world?.detail, genomeName, savedWorld?.let { "save=$it" })
+            .joinToString(", ").ifEmpty { "-" }
 }
 
 object EcoSystemScreenGlobalSettings : Menu() {

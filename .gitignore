@@ -6,6 +6,7 @@ gradle-app.setting
 /core/build/
 /render/build/
 /scene-dumps/
+/maps/
 /lwjgl2/build/
 /lwjgl3/build/
 /html/build/

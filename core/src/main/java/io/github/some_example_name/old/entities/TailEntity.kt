@@ -19,6 +19,10 @@ class TailEntity(
         speed[tailIndex] = 0f
     }
 
+    override fun persistFields(state: EntityState) {
+        state.floats(::speed)
+    }
+
     override fun onCopy() {
 
     }

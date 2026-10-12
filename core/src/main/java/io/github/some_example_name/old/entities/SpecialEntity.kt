@@ -191,6 +191,10 @@ class SpecialEntity(
     }
 
 
+    override fun persistFields(state: EntityState) {
+        state.ints(::specialTypeIndexes)
+    }
+
     override fun onCopy() {
 
     }

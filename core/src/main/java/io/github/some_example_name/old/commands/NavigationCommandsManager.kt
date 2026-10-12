@@ -96,7 +96,7 @@ class NavigationCommandsManager {
         GoSupport -> SupportScreen()
         EcoSystemScreenCellsSettings -> TODO()
         EcoSystemScreenGlobalSettings -> TODO()
-        is GoSimulation -> SimulationScreen(command.world, command.genomeName)
+        is GoSimulation -> SimulationScreen(command.world, command.genomeName, command.savedWorld)
     }
 
     private fun clearStack() {

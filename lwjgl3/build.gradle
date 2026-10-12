@@ -35,6 +35,10 @@ dependencies {
   implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
   implementation "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
   implementation project(':core')
+  // Сущности симуляции держат списки fastutil, а у core он implementation — без этой строки
+  // проверки из demo (saveRoundTrip) не видят типов aliveList. В сборку не добавляет ничего:
+  // в рантайме он и так приходит через core.
+  implementation "it.unimi.dsi:fastutil:8.5.16"
 
   if(enableGraalNative == 'true') {
     implementation "io.github.berstanio:gdx-svmhelper-backend-lwjgl3:$graalHelperVersion"
@@ -302,6 +306,19 @@ tasks.register('worldSpecCheck', JavaExec) {
   mainClass = 'io.github.some_example_name.lwjgl3.demo.WorldSpecCheckKt'
   workingDir = rootProject.projectDir
   jvmArgs '-Dfile.encoding=UTF-8'
+}
+
+// Регрессия сохранения мира: gradlew :lwjgl3:saveRoundTrip
+// Игра в окне сохраняет мир, загружает его и сверяет состояние побайтно; ненулевой код — регрессия.
+// -Pkeep оставляет файл сохранения в maps/.
+tasks.register('saveRoundTrip', JavaExec) {
+  group = 'verification'
+  description = 'Сохранение и загрузка мира восстанавливают его состояние побайтно'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.some_example_name.lwjgl3.demo.SaveRoundTripKt'
+  workingDir = rootProject.projectDir
+  jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+  if (project.hasProperty('keep')) systemProperty 'keep', 'true'
 }
 
 // Воспроизведение записанных мышиных действий: gradlew :lwjgl3:dragReplay -Plog=drag-log.txt

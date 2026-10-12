@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
+import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
@@ -50,6 +51,10 @@ class RenderSystem(
     private val pheromoneBuffer = PheromoneInstanceBuffer()
     private val frame = RenderFrame()
 
+    /** Ждёт ближайшего кадра, см. [requestPreview]. */
+    private var previewRequest: ((Pixmap) -> Unit)? = null
+    private var previewSize = 0
+
     fun create(
         fontMatrix: Matrix4,
         spriteBatch: SpriteBatch,
@@ -63,6 +68,16 @@ class RenderSystem(
         this.font = font
         this.shapeRenderer = shapeRenderer
         this.camera = camera
+    }
+
+    /**
+     * Снять превью мира в следующем кадре и отдать его в [onReady] — там же, в потоке
+     * рендера. Отложенно: снять можно лишь кадр, который только что нарисован, а кнопки
+     * срабатывают уже после отрисовки мира. Pixmap освобождается после [onReady].
+     */
+    fun requestPreview(size: Int, onReady: (Pixmap) -> Unit) {
+        previewSize = size
+        previewRequest = onReady
     }
 
     fun moveCamera(dx: Float, dy: Float) {
@@ -116,6 +131,17 @@ class RenderSystem(
             this.usePostProcess = usePostProcess
         }
         worldRenderer.render(frame)
+
+        // Сразу после конвейера: в кадре пока только мир, без отладочных линий и текста.
+        previewRequest?.let { onReady ->
+            previewRequest = null
+            val preview = worldRenderer.capturePreview(previewSize)
+            try {
+                onReady(preview)
+            } finally {
+                preview.dispose()
+            }
+        }
 
         if (!usePostProcess) {
             drawDebug(cellBuf, linkBuf, pheromoneBuf)

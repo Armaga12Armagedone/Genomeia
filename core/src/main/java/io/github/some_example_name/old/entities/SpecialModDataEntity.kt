@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.cells.SpecialModData
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 
 class SpecialModDataEntity(
     specialModDataStartMaxAmount: Int
@@ -19,6 +20,17 @@ class SpecialModDataEntity(
     fun deleteModData(modDataIndex: Int) {
         delete(modDataIndex)
         specialModData[modDataIndex] = null
+    }
+
+    override fun persistFields(state: EntityState) {
+        // Сами SpecialModData не сохраняются: формата у них нет, а создавать их сейчас
+        // некому (addModData в SpecialEntity закомментирован). Заведёте первый тип —
+        // научите его сохраняться, иначе он будет молча теряться при загрузке.
+        if (DEBUG_CHECKS && !state.isReading) {
+            check(specialModData.all { it == null }) {
+                "у SpecialModData появились данные, а сохранять их ещё не умеют"
+            }
+        }
     }
 
     override fun onCopy() {

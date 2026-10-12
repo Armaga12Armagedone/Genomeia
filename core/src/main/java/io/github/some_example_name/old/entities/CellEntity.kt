@@ -7,6 +7,7 @@ import io.github.some_example_name.old.core.DISimulationContainer.cellsSettings
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.utils.OrderedIntPairMap
 import io.github.some_example_name.old.systems.genomics.genome.CellAction
+import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
@@ -650,13 +651,117 @@ class CellEntity(
         specialEntity.delete(cell = cell, cellIndex = cellIndex)
     }
 
+    override fun persistFields(state: EntityState) {
+        state.ints(::particleIndexes)
+        state.ints(::cellGenomeId)
+        state.ints(::organIndex)
+        state.ints(::parentIndex)
+        state.floats(::angleCos)
+        state.floats(::angleSin)
+        state.floats(::angleDirectedCos)
+        state.floats(::angleDirectedSin)
+        state.floats(::angleCompensationCos)
+        state.floats(::angleCompensationSin)
+        state.floats(::energyNecessaryToDivide)
+        state.floats(::energyNecessaryToMutate)
+        state.booleans(::isDividedInThisStage)
+        state.booleans(::isMutateInThisStage)
+        state.bytes(::cellType)
+        state.floats(::energy)
+        state.floats(::maxEnergy)
+        state.booleans(::isNeural)
+        state.floats(::neuronImpulseInput)
+        state.floats(::neuronImpulseOutput)
+        state.booleans(::isOnEdge)
+        state.floats(::degreeOfShortening)
+        state.ints(::pheromoneType)
+        state.ints(::linkAmount)
+        state.ints(::cellLinks, perSlot = MAX_LINKS_PER_CELL)
+        state.ints(::cellLinkIds, perSlot = MAX_LINKS_PER_CELL)
+        state.ints(::neuralIndexes)
+        orphanCellCount = state.int("orphanCellCount", orphanCellCount)
+
+        // Порядок внутри списка сохраняется: Synapse ищет в нём выходную связь, и при двух
+        // подходящих побеждает последняя. Клетки — по возрастанию: порядок обхода хеш-таблицы
+        // зависит от истории вставок, и без сортировки одинаковый мир давал бы разные файлы.
+        state.packed(
+            "neuralConnections",
+            write = {
+                val packed = IntArrayList()
+                for (cellIndex in neuralConnections.keys.toIntArray().sorted()) {
+                    val links = neuralConnections.get(cellIndex)
+                    packed.add(cellIndex)
+                    packed.add(links.size)
+                    packed.addAll(links)
+                }
+                packed.toIntArray()
+            },
+            read = { packed ->
+                var i = 0
+                while (i < packed.size) {
+                    val cellIndex = packed[i]
+                    val size = packed[i + 1]
+                    neuralConnections.put(cellIndex, IntArrayList(packed, i + 2, size))
+                    i += 2 + size
+                }
+            }
+        )
+        // cellActions — ссылки внутрь генома, их сохраняет MapSave, см. cellActionStages.
+    }
+
+    /**
+     * Действия клеток для сохранения мира: пары [клетка, стадия генома], из которой взято
+     * её действие.
+     *
+     * Действие — ссылка внутрь генома, а не данные, поэтому хранится адрес: стадия плюс
+     * cellGenomeId. Стадия ищется по ссылке, а не берётся текущая стадия организма: сразу
+     * после смены стадии (justChangedStage) у клеток ещё лежат действия предыдущей — их
+     * перезапишет только следующий тик.
+     */
+    fun cellActionStages(genomes: List<Genome>): IntArray {
+        val packed = IntArrayList()
+        for (i in 0 until aliveList.size) {
+            val cellIndex = aliveList.getInt(i)
+            val action = cellActions[cellIndex] ?: continue
+            val organ = organIndex[cellIndex]
+            if (organ == -1) continue
+            val stages = genomes.getOrNull(organEntity.genomeIndex[organ])?.genomeStageInstruction ?: continue
+
+            // Почти всегда это текущая стадия или предыдущая, перебор всех — на всякий случай.
+            val current = organEntity.stage[organ]
+            val stage = (sequenceOf(current, current - 1) + stages.indices.asSequence())
+                .firstOrNull { it in stages.indices && stages[it].cellActions[cellGenomeId[cellIndex]] === action }
+                ?: continue
+            packed.add(cellIndex)
+            packed.add(stage)
+        }
+        return packed.toIntArray()
+    }
+
+    /** Обратное к [cellActionStages]. Геномы к этому моменту уже загружены и сопоставлены. */
+    fun restoreCellActions(actionStages: IntArray, genomes: List<Genome>) {
+        for (i in actionStages.indices step 2) {
+            val cellIndex = actionStages[i]
+            cellActions[cellIndex] = genomes[organEntity.genomeIndex[organIndex[cellIndex]]]
+                .genomeStageInstruction[actionStages[i + 1]]
+                .cellActions[cellGenomeId[cellIndex]]
+        }
+    }
+
+    override fun restoreAfterLoad() {
+        organToIdToIndex.clear()
+        for (i in 0 until aliveList.size) {
+            val cellIndex = aliveList.getInt(i)
+            organToIdToIndex.put(organIndex[cellIndex], cellGenomeId[cellIndex], cellIndex)
+        }
+    }
+
     override fun onCopy() {
 
     }
 
     override fun onPaste() {
 
-        //TODO map_save востанвить по данным - organToIdToIndex
     }
 
     override fun onClear(bound: Int) {

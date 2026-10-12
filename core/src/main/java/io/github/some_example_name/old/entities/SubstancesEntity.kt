@@ -67,6 +67,11 @@ class SubstancesEntity(
         }
     }
 
+    override fun persistFields(state: EntityState) {
+        state.ints(::particleIndex)
+        state.bytes(::substanceType)
+    }
+
     override fun onCopy() {
 
     }
