@@ -15,6 +15,7 @@ import io.github.some_example_name.old.editor.system.logic.ShowChangeRemoveDialo
 import io.github.some_example_name.old.editor.system.logic.ShowDivideDialog
 import io.github.some_example_name.old.editor.system.logic.ShowMutateDialog
 import io.github.some_example_name.old.editor.system.logic.ShowMutateOrDivideDialog
+import io.github.some_example_name.old.editor.system.logic.TryToCancelMutation
 import io.github.some_example_name.old.editor.system.logic.TryToChange
 import io.github.some_example_name.old.editor.system.logic.TryToDivide
 import io.github.some_example_name.old.editor.system.logic.TryToMutate
@@ -76,7 +77,8 @@ fun Stage.mutateOrDivideDialog(
 
 fun Stage.mutateActionDialog(
     command: ShowMutateDialog,
-    onMutate: (TryToMutate) -> Unit
+    onMutate: (TryToMutate) -> Unit,
+    onCancelMutation: (TryToCancelMutation) -> Unit
 ) {
     val dialogDivide = ActionDialog(
         clickedCell = command.clickedCell,
@@ -88,6 +90,9 @@ fun Stage.mutateActionDialog(
                     mutate = action.copy()
                 )
             )
+        },
+        onCancelMutation = {
+            onCancelMutation.invoke(TryToCancelMutation(clickedCellIndex = command.clickedCell.index))
         }
     )
     dialogDivide.show(this)

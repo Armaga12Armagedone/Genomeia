@@ -9,14 +9,13 @@ class ChangeDivideCommand(
     val divide: Action,
     stageInstruction: MutableList<GenomeStage>,
     currentTick: Int
-) : UndoRedoCommand(
+) : StageCommand(
     tick = currentTick,
     genomeStageInstruction = stageInstruction,
     doesNeedAddNewStage = false
 ) {
 
-    override fun execute(): StageResult {
-        val stage = genomeStageInstruction[tick]
+    override fun executeOnStage(stage: GenomeStage): StageResult {
         val oldValue = stage.cellActions[clickedCell.parentId] ?: throw Exception("Nothing to change")
         val existingDivide = oldValue.divide ?: throw Exception("Nothing to change")
 

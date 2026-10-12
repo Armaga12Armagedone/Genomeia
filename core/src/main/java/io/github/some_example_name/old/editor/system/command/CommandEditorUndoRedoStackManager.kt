@@ -27,7 +27,11 @@ class CommandEditorStackManager() {
     fun undo() {
         if (!undoStack.isEmpty()) {
             val command = undoStack.pop()
-            command.undo()
+            // Геном заменили мимо истории (открыли другой) — эта история к нему не относится.
+            if (!command.undo()) {
+                clear()
+                return
+            }
             redoStack.push(command)
             if (redoStack.size > MAX_COMMANDS) {
                 redoStack.removeElementAt(0)
@@ -39,12 +43,20 @@ class CommandEditorStackManager() {
     fun redo() {
         if (!redoStack.isEmpty()) {
             val command = redoStack.pop()
-            command.redo()
+            if (!command.redo()) {
+                clear()
+                return
+            }
             undoStack.push(command)
             if (undoStack.size > MAX_COMMANDS) {
                 undoStack.removeElementAt(0)
             }
             restartSimulationCallBack.restartSimulation()
         }
+    }
+
+    fun clear() {
+        undoStack.clear()
+        redoStack.clear()
     }
 }

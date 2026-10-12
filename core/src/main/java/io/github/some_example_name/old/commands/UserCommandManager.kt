@@ -8,8 +8,7 @@ import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.core.DISimulationContainer.worldCommandsManager
 import io.github.some_example_name.old.core.log.ActionLog
-import io.github.some_example_name.old.core.utils.collectParticles
-import io.github.some_example_name.old.core.utils.distanceTo
+import io.github.some_example_name.old.core.utils.pickParticle
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
@@ -116,20 +115,8 @@ class UserCommandManager(
             }
 
             is PlayerCommand.TouchDown -> {
-                val neighborsCellIndexes =
-                    gridManager.collectParticles(cmd.x.toInt(), cmd.y.toInt(), radius = 1)
-                grabbedParticleIndex = neighborsCellIndexes
-                    .minByOrNull {
-                        distanceTo(cmd.x, cmd.y, particleEntity.x[it], particleEntity.y[it])
-                    }?.takeIf {
-                        isDragging = false
-                        distanceTo(
-                            cmd.x,
-                            cmd.y,
-                            particleEntity.x[it],
-                            particleEntity.y[it]
-                        ) < particleEntity.radius[it]
-                    } ?: -1
+                grabbedParticleIndex = gridManager.pickParticle(cmd.x, cmd.y, particleEntity, cellEntity)
+                if (grabbedParticleIndex != -1) isDragging = false
 
                 tapX = cmd.x
                 tapY = cmd.y
@@ -156,19 +143,8 @@ class UserCommandManager(
             }
 
             is PlayerCommand.Tap -> {
-                val neighborsCellIndexes =
-                    gridManager.collectParticles(cmd.x.toInt(), cmd.y.toInt(), radius = 1)
-                val grabbedParticleIndexTap = neighborsCellIndexes
-                    .minByOrNull {
-                        distanceTo(cmd.x, cmd.y, particleEntity.x[it], particleEntity.y[it])
-                    }?.takeIf {
-                        distanceTo(
-                            cmd.x,
-                            cmd.y,
-                            particleEntity.x[it],
-                            particleEntity.y[it]
-                        ) < particleEntity.radius[it]
-                    } ?: -1
+                val grabbedParticleIndexTap =
+                    gridManager.pickParticle(cmd.x, cmd.y, particleEntity, cellEntity)
 
                 simulationData.selectedCellIndex = if (grabbedParticleIndexTap != -1) {
                     if (particleEntity.isCell[grabbedParticleIndexTap]) {
@@ -236,21 +212,9 @@ class UserCommandManager(
 
                             if (x > 0 && x < gridManager.gridWidth && y > 0 && y < gridManager.gridHeight) {
 
-                                val neighborsCellIndexes = gridManager.collectParticles(
-                                    x.toInt(),
-                                    y.toInt(),
-                                    radius = 1
-                                )
-                                val neighborIndex = neighborsCellIndexes.firstOrNull {
-                                    distanceTo(
-                                        x,
-                                        y,
-                                        particleEntity.x[it],
-                                        particleEntity.y[it]
-                                    ) < particleEntity.radius[it]
-                                }
-
-                                if (neighborIndex == null) {
+                                // Через pickParticle, а не только сетку: иначе субстанция
+                                // рождалась бы внутри тела, где клеток в сетке нет.
+                                if (gridManager.pickParticle(x, y, particleEntity, cellEntity) == -1) {
                                     val color = Color.RED.toIntBits()
                                     val radius = random.nextFloat() * (0.5f - 0.1f) + 0.1f
 

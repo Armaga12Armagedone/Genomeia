@@ -163,6 +163,7 @@ class EditorLogicSystem(
                 action = command.mutate
             )
             is TryToRemove -> tryActionManager.tryToRemove(clickedCellIndex = command.clickedCellIndex)
+            is TryToCancelMutation -> tryActionManager.tryToCancelMutation(clickedCellIndex = command.clickedCellIndex)
         }
     }
 }

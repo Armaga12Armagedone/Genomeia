@@ -16,13 +16,13 @@ class DivideCellCommand(
     val newPoint: Pair<Float, Float>,
     stageInstruction: MutableList<GenomeStage>,
     currentTick: Int
-) : UndoRedoCommand(
+) : StageCommand(
     tick = currentTick,
     genomeStageInstruction = stageInstruction,
     doesNeedAddNewStage = stageInstruction.size <= currentTick
 ) {
 
-    override fun execute(): StageResult {
+    override fun executeOnStage(stage: GenomeStage): StageResult {
         val justAddedCellX = newPoint.first
         val justAddedCellY = newPoint.second
 
@@ -44,7 +44,6 @@ class DivideCellCommand(
             physicalLink = physicalLink
         )
 
-        val stage = genomeStageInstruction[tick]
         val oldValue = stage.cellActions[clickedCell.id]
 
         val newValue = oldValue?.copy(divide = divideAction) ?: CellAction(divide = divideAction)

@@ -62,6 +62,10 @@ class TryToMutate(
     val mutate: Action
 ): UiEditorCommands
 
+class TryToCancelMutation(
+    val clickedCellIndex: Int
+): UiEditorCommands
+
 class TryToDivide(
     val clickedCellIndex: Int,
     val newDividedCellPosition: Pair<Float, Float>,
