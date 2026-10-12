@@ -165,7 +165,8 @@ class GenomeEditorScreen(
             )
             is ShowMutateDialog -> stage.mutateActionDialog(
                 command = uiScreenCommands,
-                onMutate = { editorLogicSystem.putUiCommand(it) }
+                onMutate = { editorLogicSystem.putUiCommand(it) },
+                onCancelMutation = { editorLogicSystem.putUiCommand(it) }
             )
             is ShowMutateOrDivideDialog -> stage.mutateOrDivideDialog(
                 command = uiScreenCommands,

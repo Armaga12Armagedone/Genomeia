@@ -16,15 +16,13 @@ class AddNeuralLinkCommand(
     val isLink1NeuralDirected: Boolean,
     stageInstruction: MutableList<GenomeStage>,
     currentTick: Int
-) : UndoRedoCommand(
+) : StageCommand(
     tick = currentTick,
     genomeStageInstruction = stageInstruction,
     doesNeedAddNewStage = stageInstruction.size <= currentTick
 ) {
 
-    override fun execute(): StageResult {
-        val stage = genomeStageInstruction[tick]
-
+    override fun executeOnStage(stage: GenomeStage): StageResult {
         // === 1. Определяем, что делать со связью (добавить / удалить) ===
         val linkData: LinkData? = when {
             linkIndex == -1 -> LinkData(

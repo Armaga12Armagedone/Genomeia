@@ -8,6 +8,7 @@ import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellsTy
 import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.editor.system.ActionDialogSystem
 import io.github.some_example_name.old.editor.system.isDirected
+import io.github.some_example_name.old.editor.undo_redo_commands.hasCellMutation
 import io.github.some_example_name.old.features.editor.colorPickerDialog
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
@@ -37,6 +38,7 @@ class ActionDialog(
     val onChange: ((Action) -> Unit)? = null,
     val onRemove: (() -> Unit)? = null,
     val onMutate: ((Action) -> Unit)? = null,
+    val onCancelMutation: (() -> Unit)? = null,
 ) : VisDialog("${bundle.get("button.cellId")} ${clickedCell.id}") {
 
     val actionSystem = ActionDialogSystem(actionDialogType, newDividedCellPosition, clickedCell)
@@ -185,6 +187,19 @@ class ActionDialog(
                     }
                 )
             }
+        }
+
+        //Отмена мутации — отдельной строкой под кнопками и только если на этой стадии
+        //клетка действительно мутирует
+        if (actionDialogType == ActionDialogType.MUTATION && clickedCell.mutate.hasCellMutation()) {
+            row()
+            visTextButton(
+                text = bundle.get("button.cancelMutation"),
+                onClick = {
+                    onCancelMutation?.invoke()
+                    fadeOut()
+                }
+            ) { center() }
         }
     }
 

@@ -18,6 +18,18 @@ dependencies {
   if(enableGraalNative == 'true') {
     implementation "io.github.berstanio:gdx-svmhelper-annotations:$graalHelperVersion"
   }
+
+  testImplementation "org.jetbrains.kotlin:kotlin-test:$kotlinVersion"
+  testImplementation "org.jetbrains.kotlin:kotlin-test-junit:$kotlinVersion"
+  testImplementation "junit:junit:4.13.2"
+}
+
+// Тесты :core гоняются без Gdx: в них нельзя трогать DIGenomeEditorContainer,
+// DIGameGlobalContainer и прочие object-контейнеры — их инициализация тянет OpenGL.
+// Команды редактора от этого свободны: это чистые функции над списком стадий.
+test {
+  useJUnit()
+  testLogging { events "passed", "skipped", "failed" }
 }
 
 jar {

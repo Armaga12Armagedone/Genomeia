@@ -5,6 +5,7 @@ import io.github.some_example_name.old.editor.system.CellSearchManager
 import io.github.some_example_name.old.editor.system.command.CommandEditorStackManager
 import io.github.some_example_name.old.editor.system.logic.ToEditorDataMapper
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
+import io.github.some_example_name.old.editor.undo_redo_commands.CancelMutationCommand
 import io.github.some_example_name.old.editor.undo_redo_commands.ChangeDivideCommand
 import io.github.some_example_name.old.editor.undo_redo_commands.DivideCellCommand
 import io.github.some_example_name.old.editor.undo_redo_commands.MutateCellCommand
@@ -41,6 +42,16 @@ class TryActionManager(
             id = -1,
             angle = null,
             physicalLink = hashMapOf()
+        )
+    }
+
+    fun tryToCancelMutation(clickedCellIndex: Int) {
+        commandEditorStackManager.executeCommand(
+            command = CancelMutationCommand(
+                currentTick = currentTick,
+                clickedCell = toEditorDataMapper.mapToEditorData(clickedCellIndex),
+                stageInstruction = editorSimulationSystem.genomeStageInstruction
+            )
         )
     }
 

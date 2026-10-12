@@ -122,11 +122,24 @@ class EditorSimulationSystem(
 
         // Редактор не двигает частицы, но создаёт их командами, поэтому сетку нужно
         // пересобрать: поиск клетки под курсором читает cellStart/particleIdx.
-        gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId, particleEntity.isInGrid)
+        //
+        // Вместо isInGrid — массив из одних true: в редакторе нет столкновений, поэтому
+        // выкидывать внутренние клетки незачем, а вот курсор до них дотягиваться обязан
+        // (выбор клетки, проверка наложения при переносе, место под новую клетку).
+        gridManager.rebuild(particleEntity.isAlive, particleEntity.gridId, allInGrid())
 
         cellEntity.aliveList.forEach { cellIndex ->
             energy[cellIndex] = 5.0f
         }
+    }
+
+    private var allInGridBuffer = BooleanArray(0)
+
+    /** Массив «все частицы в сетке» под текущую ёмкость частиц; пересоздаётся только при её смене. */
+    private fun allInGrid(): BooleanArray {
+        val size = particleEntity.isInGrid.size
+        if (allInGridBuffer.size != size) allInGridBuffer = BooleanArray(size) { true }
+        return allInGridBuffer
     }
 
     companion object {
