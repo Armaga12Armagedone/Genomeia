@@ -175,3 +175,6 @@ ios-moe/xcode/native/
 
 # Журнал игрока: перезаписывается при каждом запуске демо, разбор — gradlew :lwjgl3:playerReplay
 /player-log.txt
+
+# Рабочие копии веток Claude Code (git worktree) — не часть проекта
+/.claude/worktrees/
