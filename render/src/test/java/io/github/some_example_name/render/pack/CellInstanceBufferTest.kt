@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * Проверка раскладки инстанса клетки против ТОГО ЖЕ разбора, что делает GPU.
  *
  * Смысл этих тестов не в том, чтобы «покрыть класс», а в том, что раскладка живёт в трёх
- * местах сразу — здесь, в объявлении атрибутов ParticleRenderer и в circle_pc.vert — и
+ * местах сразу — здесь, в объявлении атрибутов CellGeometry и в шейдерах клеток — и
  * разъехаться они могут молча. Поэтому распаковка ниже написана не «как удобно», а
  * буквально повторяет то, что делает железо выборки атрибутов и вершинный шейдер:
  *
@@ -20,6 +20,7 @@ import kotlin.test.assertTrue
  *   cosA  = a_shape.x * 2.0 - 1.0
  *   ex_R  = 0.05 + a_shape.z * 0.7
  *   seed  = byteValue(a_type.y) + byteValue(a_type.z) * 256.0
+ *   isCell = младший бит byteValue(a_type.w) равен нулю     (nostalgic.vert)
  *
  * ВНИМАНИЕ: здесь намеренно ЛИТЕРАЛЫ, а не константы из CellInstanceBuffer. Тест сверяет
  * Kotlin с ШЕЙДЕРОМ, а шейдер про константы Kotlin ничего не знает — в нём голые числа.
@@ -52,6 +53,9 @@ class CellInstanceBufferTest {
 
     /** `seed = byteValue(a_type.y) + byteValue(a_type.z) * 256.0` */
     private fun shaderSeed(type: Int): Int = byteValue(type, 1) + byteValue(type, 2) * 256
+
+    /** nostalgic.vert: `isCell = mod(floor(a_type.w * 255.0 + 0.5), 2.0) < 1.0` */
+    private fun shaderIsCell(type: Int): Boolean = byteValue(type, 3) % 2 < 1
 
     private fun readInstance(data: ByteBuffer, index: Int): Instance {
         val base = index * CellInstanceBuffer.STRUCT_SIZE
@@ -179,6 +183,33 @@ class CellInstanceBufferTest {
 
         assertEquals(999, seedAtSlot1)
         assertEquals(seedAtSlot1, seedAtSlot0, "ключ не должен зависеть от слота в буфере")
+    }
+
+    @Test
+    fun `признак не-клетки едет своим байтом и не трогает тип и ключ`() {
+        // По нему ностальгический шейдер решает, рисовать ли ядро. Клетка — значение по
+        // умолчанию: ноль в байте флагов у всех, кто про флаги не знает (редактор, старые
+        // дампы), обязан означать клетку.
+        val cell = CellInstanceBuffer.type(cellType = 7, noiseSeed = 0xBEEF)
+        val notCell = CellInstanceBuffer.type(cellType = 7, noiseSeed = 0xBEEF, isCell = false)
+
+        assertTrue(shaderIsCell(cell), "по умолчанию — клетка")
+        assertTrue(!shaderIsCell(notCell), "не-клетка не распозналась")
+        assertEquals(0, byteValue(cell, 3), "у клетки байт флагов пустой")
+
+        for (packed in listOf(cell, notCell)) {
+            assertEquals(7, shaderCellType(packed), "флаг повредил тип")
+            assertEquals(0xBEEF, shaderSeed(packed), "флаг повредил ключ шума")
+        }
+
+        // И через putCell — тем путём, которым пишет стенд и редактор.
+        val data = CellInstanceBuffer(initialCapacity = 2).apply {
+            begin(2)
+            putCell(0f, 0f, 0, 1f, 0f, 0.3f, 0f, 3, 11)
+            putCell(0f, 0f, 0, 1f, 0f, 0.3f, 0f, 3, 11, isCell = false)
+        }.end()
+        assertTrue(shaderIsCell(readInstance(data, 0).type))
+        assertTrue(!shaderIsCell(readInstance(data, 1).type))
     }
 
     @Test

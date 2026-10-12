@@ -7,11 +7,15 @@ import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import java.util.Random
 
 /**
- * Сцена, собранная из ничего — чтобы стенд был полезен сразу, без дампа из игры.
+ * Сцены, собранные из ничего — чтобы стенд был полезен сразу, без дампа из игры.
  *
- * Показывает то, что в живом кадре ещё поди поймай:
+ * Их три, см. [Kind]. Выбираются свойством -Dgenomeia.synthetic=layers|body|dense или
+ * клавишей N в стенде.
+ *
+ * [Kind.LAYERS] показывает то, что в живом кадре ещё поди поймай:
  *  - ВСЕ слои TextureArray разом, по сетке — видно, какой тип чем рисуется;
  *  - развёртку радиуса по всему диапазону, который влезает в байт (0.05…0.75);
  *  - развёртку энергии — это радиус чёрной точки внутри клетки;
@@ -22,7 +26,33 @@ import kotlin.math.sqrt
  */
 object SyntheticScene {
 
-    class Scene(val cells: ByteBuffer, val pheromones: ByteBuffer)
+    enum class Kind {
+        /** Все слои текстур и развёртки радиуса, энергии и угла — см. шапку. */
+        LAYERS,
+
+        /**
+         * Небольшое тело из клеток вплотную плюс куча субстанций рядом — то, на чём видно
+         * ностальгический режим: границы Вороного, ядра у клеток и их отсутствие у
+         * не-клеток. Расстановка срисована с кадра первых версий игры.
+         */
+        BODY,
+
+        /**
+         * Нагрузочная: двадцать тысяч частиц решёткой внахлёст, экран закрыт целиком.
+         * На ней замеряют стоимость режимов — и вершинную работу (все инстансы), и
+         * фрагментную (каждый пиксель экрана под клеткой, с перекрытиями).
+         */
+        DENSE
+    }
+
+    /** Сцена вместе с камерой, на которую она рассчитана. */
+    class Scene(
+        val cells: ByteBuffer,
+        val pheromones: ByteBuffer,
+        val centerX: Float,
+        val centerY: Float,
+        val zoom: Float
+    )
 
     /** Совпадает с PheromonesManager.K/P в :core. Дублируется намеренно: см. RenderFrame. */
     const val PHEROMONE_K = 0.4f
@@ -31,15 +61,20 @@ object SyntheticScene {
     private const val SPACING = 1.6f
     private const val SWEEP_COUNT = 12
 
-    var CENTER_X = 0f
-        private set
-    var CENTER_Y = 0f
-        private set
-
     /** Видно примерно 24 мира по ширине окна 1280 px. */
-    const val ZOOM = 0.019f
+    private const val LAYERS_ZOOM = 0.019f
 
-    fun build(layerCount: Int = 27): Scene {
+    /**
+     * [nonCellLayer] — слой текстуры для не-клеток: в игре это not_cell.png, последний
+     * слой. У стенда порядок слоёв свой (по алфавиту), поэтому номер передаётся снаружи.
+     */
+    fun build(kind: Kind, layerCount: Int, nonCellLayer: Int): Scene = when (kind) {
+        Kind.LAYERS -> layers(layerCount)
+        Kind.BODY -> body(layerCount, nonCellLayer)
+        Kind.DENSE -> dense(layerCount, nonCellLayer)
+    }
+
+    private fun layers(layerCount: Int): Scene {
         val cells = CellInstanceBuffer()
         cells.begin()
 
@@ -120,8 +155,8 @@ object SyntheticScene {
         // и если центрироваться по сетке, они уезжают за правый край экрана.
         val width = maxOf((columns - 1) * SPACING, (SWEEP_COUNT - 1) * SPACING)
         val height = sweepY - 2 * SPACING
-        CENTER_X = width / 2f
-        CENTER_Y = height / 2f
+        val centerX = width / 2f
+        val centerY = height / 2f
 
         // ===== феромоны =====
         //
@@ -132,11 +167,153 @@ object SyntheticScene {
         // видно и само пятно, и его спад.
         val pheromones = PheromoneInstanceBuffer()
         pheromones.begin()
-        pheromones.put(x = CENTER_X, y = CENTER_Y, a = 0.25f, color = rgba(90, 200, 255))
-        pheromones.put(x = CENTER_X + 7f, y = CENTER_Y - 3f, a = 0.5f, color = rgba(255, 140, 90))
+        pheromones.put(x = centerX, y = centerY, a = 0.25f, color = rgba(90, 200, 255))
+        pheromones.put(x = centerX + 7f, y = centerY - 3f, a = 0.5f, color = rgba(255, 140, 90))
 
-        return Scene(cells = cells.end(), pheromones = pheromones.end())
+        return Scene(
+            cells = cells.end(),
+            pheromones = pheromones.end(),
+            centerX = centerX,
+            centerY = centerY,
+            zoom = LAYERS_ZOOM
+        )
     }
+
+    /**
+     * Клетка тела: x, y, радиус, цвет и энергия.
+     *
+     * Энергия — это радиус ядра в ностальгическом режиме. У большинства клеток 5, полный
+     * запас обычной клетки; у пары — меньше и больше, чтобы было видно, как ядро от неё
+     * зависит.
+     */
+    private class BodyCell(
+        val x: Float,
+        val y: Float,
+        val radius: Float,
+        val color: Int,
+        val energy: Float = 5f
+    )
+
+    private fun body(layerCount: Int, nonCellLayer: Int): Scene {
+        val cells = CellInstanceBuffer()
+        cells.begin()
+
+        // Тело: две колонки крупных клеток по бокам и узкая колонка мелких посередине —
+        // клетки стоят внахлёст, расстояние между центрами заметно меньше двух радиусов.
+        val big = 0.45f
+        val small = 0.33f
+        val organism = listOf(
+            BodyCell(0.00f, 0.90f, big, rgba(196, 0, 150), energy = 10f),
+            BodyCell(-0.57f, 0.53f, big, rgba(255, 192, 210)),
+            BodyCell(0.58f, 0.49f, big, rgba(255, 192, 210)),
+            BodyCell(-0.01f, 0.23f, small, rgba(240, 105, 180)),
+            BodyCell(-0.55f, -0.03f, big, rgba(0, 125, 0), energy = 2.5f),
+            BodyCell(0.55f, -0.01f, big, rgba(40, 140, 90)),
+            BodyCell(-0.01f, -0.38f, small, rgba(240, 105, 180)),
+            BodyCell(-0.52f, -0.71f, big, rgba(40, 140, 40)),
+            BodyCell(0.59f, -0.68f, big, rgba(55, 205, 55)),
+            BodyCell(0.02f, -1.04f, big, rgba(40, 150, 50), energy = 0f)
+        )
+        organism.forEachIndexed { i, cell ->
+            cells.putCell(
+                x = cell.x,
+                y = cell.y,
+                color = cell.color,
+                angleCos = 1f,
+                angleSin = 0f,
+                radius = cell.radius,
+                energy = cell.energy,
+                cellType = i % layerCount,
+                noiseSeed = 100 + i
+            )
+        }
+
+        // Субстанции: плотная куча слева, решёткой с разбросом — как еда у края экрана.
+        val substance = intArrayOf(
+            rgba(232, 130, 40), rgba(180, 92, 20), rgba(190, 40, 50),
+            rgba(222, 152, 72), rgba(200, 170, 176), rgba(170, 70, 30)
+        )
+        val random = Random(7)
+        var seed = 1000
+        for (column in 0 until 4) {
+            for (row in 0 until 12) {
+                val x = -4.6f + column * 0.68f + (row % 2) * 0.34f + random.nextFloat() * 0.12f
+                val y = -3.6f + row * 0.62f + random.nextFloat() * 0.12f
+                cells.putCell(
+                    x = x,
+                    y = y,
+                    color = substance[random.nextInt(substance.size)],
+                    angleCos = 1f,
+                    angleSin = 0f,
+                    radius = 0.36f + random.nextFloat() * 0.1f,
+                    energy = 0f,
+                    cellType = nonCellLayer,
+                    noiseSeed = seed++,
+                    isCell = false
+                )
+            }
+        }
+
+        return Scene(
+            cells = cells.end(),
+            pheromones = emptyPheromones(),
+            centerX = -1.4f,
+            centerY = -0.1f,
+            zoom = 0.0072f
+        )
+    }
+
+    private const val DENSE_COLUMNS = 200
+    private const val DENSE_ROWS = 100
+    private const val DENSE_SPACING = 0.8f
+
+    private fun dense(layerCount: Int, nonCellLayer: Int): Scene {
+        val cells = CellInstanceBuffer()
+        cells.begin(DENSE_COLUMNS * DENSE_ROWS)
+
+        val random = Random(11)
+        var seed = 0
+        for (row in 0 until DENSE_ROWS) {
+            for (column in 0 until DENSE_COLUMNS) {
+                // Каждая пятая — не-клетка, как субстанции в живом мире.
+                val isCell = random.nextInt(5) != 0
+                val x = column * DENSE_SPACING + (row % 2) * DENSE_SPACING * 0.5f +
+                    (random.nextFloat() - 0.5f) * 0.2f
+                val y = row * DENSE_SPACING * 0.87f + (random.nextFloat() - 0.5f) * 0.2f
+                val angle = random.nextFloat() * 2f * Math.PI.toFloat()
+                cells.putCell(
+                    x = x,
+                    y = y,
+                    color = rgba(
+                        60 + random.nextInt(190),
+                        60 + random.nextInt(190),
+                        60 + random.nextInt(190)
+                    ),
+                    angleCos = cos(angle),
+                    angleSin = sin(angle),
+                    // Радиус больше половины шага: соседи заходят друг на друга, как в теле.
+                    radius = 0.42f + random.nextFloat() * 0.18f,
+                    energy = random.nextFloat() * CellInstanceBuffer.ENERGY_SPAN,
+                    cellType = if (isCell) random.nextInt(layerCount) else nonCellLayer,
+                    noiseSeed = seed++ and 0xFFFF,
+                    isCell = isCell
+                )
+            }
+        }
+
+        // Камера смотрит в середину решётки: экран закрыт целиком, а примерно две трети
+        // инстансов вне кадра — их вершины всё равно считаются, как в большом мире.
+        return Scene(
+            cells = cells.end(),
+            pheromones = emptyPheromones(),
+            centerX = DENSE_COLUMNS * DENSE_SPACING / 2f,
+            centerY = DENSE_ROWS * DENSE_SPACING * 0.87f / 2f,
+            zoom = 0.06f
+        )
+    }
+
+    private fun emptyPheromones(): ByteBuffer =
+        PheromoneInstanceBuffer().apply { begin() }.end()
 
     /**
      * Цвет в том виде, в каком его ждёт unpackRGBA8: младший байт — красный.

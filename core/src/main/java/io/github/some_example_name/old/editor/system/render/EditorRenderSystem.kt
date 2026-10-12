@@ -10,7 +10,7 @@ import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.render.RenderFrame
-import io.github.some_example_name.render.RenderSettings
+import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.WorldRenderer
 import io.github.some_example_name.render.pack.CellInstanceBuffer
 import kotlin.math.cos
@@ -39,6 +39,17 @@ class EditorRenderSystem(
     private val frame = RenderFrame()
 
     var isUpdateBuffer = true
+
+    /**
+     * Режим рендера редактора — свой, выбирается списком на экране редактора и с режимом
+     * симуляции не связан. Смена режима требует перезаливки буфера (см. [fillBuffer]),
+     * поэтому выставлять его — через этот сеттер, он об этом позаботится.
+     */
+    var mode: RenderMode = RenderMode.REALISTIC
+        set(value) {
+            if (field != value) isUpdateBuffer = true
+            field = value
+        }
 
     fun create(
         shapeRenderer: ShapeRenderer,
@@ -73,7 +84,7 @@ class EditorRenderSystem(
             blurAmount = -0.04f
             zoom = camera.zoom
             vignetteEnabled = 0f
-            usePostProcess = RenderSettings.usePostProcess
+            mode = this@EditorRenderSystem.mode
         }
         worldRenderer.render(frame)
 
@@ -87,6 +98,12 @@ class EditorRenderSystem(
     private fun fillBuffer() {
         cellBuffer.begin()
 
+        // Энергии в записи роста нет. В отладке и реалистичном режиме от неё рисуется
+        // чёрная точка, и в редакторе её намеренно нет. В ностальгическом же ядро — это то,
+        // чем клетка отличается от субстанции, поэтому там клетки получают энергию, которую
+        // симуляция редактора и так держит у всех (EditorSimulationSystem: 5).
+        val energy = if (mode == RenderMode.NOSTALGIC) NOSTALGIC_ENERGY else 0f
+
         cellReplay.forEachInTick(currentTick) { cellType, index, _, angleCos, angleSin, color ->
             cellBuffer.putCell(
                 x = particleEntity.x[index],
@@ -95,8 +112,7 @@ class EditorRenderSystem(
                 angleCos = angleCos,
                 angleSin = angleSin,
                 radius = particleEntity.radius[index],
-                // В редакторе энергии нет: чёрная точка внутри клетки не рисуется.
-                energy = 0f,
+                energy = energy,
                 cellType = cellType.toInt(),
                 // Ключ шума — индекс частицы, как и в живом мире: он закреплён за клеткой
                 // и не зависит от порядка сборки буфера.
@@ -137,5 +153,8 @@ class EditorRenderSystem(
     private companion object {
         /** Слой в TextureArray, которым рисуется призрак будущей клетки. */
         const val GHOST_CELL_TYPE = 20
+
+        /** Энергия клеток редактора в ностальгическом режиме — см. [fillBuffer]. */
+        const val NOSTALGIC_ENERGY = 5f
     }
 }

@@ -19,6 +19,7 @@ import io.github.some_example_name.old.core.ui.visTable
 import io.github.some_example_name.old.core.ui.visTextButton
 import io.github.some_example_name.old.core.ui.w
 import io.github.some_example_name.old.features.simulation.GenomeListDialog
+import io.github.some_example_name.render.RenderMode
 
 class MenuScreen : VisDslScreen(
     background = Color(0f, 0f, 0f, 1f),
@@ -38,6 +39,9 @@ class MenuScreen : VisDslScreen(
     init {
         menuViewModel.startMenuSimulation()
         menuViewModel.renderSystem.isRenderUi = false
+        // Мир за меню — всегда реалистичный. У него свой RenderSystem, и выбор режима в
+        // симуляции или редакторе сюда не доходит; здесь это зафиксировано явно.
+        menuViewModel.renderSystem.mode = RenderMode.REALISTIC
 
         menuViewModel.renderSystem.create(
             fontMatrix = fontMatrix,

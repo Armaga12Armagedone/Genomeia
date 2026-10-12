@@ -3,6 +3,7 @@ package io.github.some_example_name.render.debug
 import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.math.Matrix4
 import io.github.some_example_name.render.RenderFrame
+import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.pack.CellInstanceBuffer
 import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
 import org.junit.Rule
@@ -62,9 +63,20 @@ class RenderSceneDumpTest {
             blurAmount = 2.5f
             zoom = 0.08f
             vignetteEnabled = 1f
-            usePostProcess = true
+            mode = RenderMode.NOSTALGIC
         }
         return Triple(frame, cells, pheromones)
+    }
+
+    @Test
+    fun `байт режима совместим со старым байтом usePostProcess`() {
+        // До выпадающего списка в дампе лежал usePostProcess: 0 — без постпроцесса
+        // (отладка), 1 — с ним. Номера режимов обязаны с ним совпадать, иначе старые
+        // дампы молча откроются не в том режиме.
+        assertEquals(RenderMode.DEBUG, RenderMode.fromDumpCode(0))
+        assertEquals(RenderMode.REALISTIC, RenderMode.fromDumpCode(1))
+        assertEquals(RenderMode.NOSTALGIC, RenderMode.fromDumpCode(2))
+        assertEquals(RenderMode.REALISTIC, RenderMode.fromDumpCode(77), "неизвестный — по умолчанию")
     }
 
     @Test
@@ -92,7 +104,7 @@ class RenderSceneDumpTest {
         assertEquals(0.08f, scene.zoom)
         assertEquals(2.5f, scene.blurAmount)
         assertEquals(1f, scene.vignetteEnabled)
-        assertTrue(scene.usePostProcess)
+        assertEquals(RenderMode.NOSTALGIC, scene.mode)
         assertEquals(0.4f, scene.pheromoneK)
         assertEquals(0.01f, scene.pheromoneP)
         assertEquals(listOf("cell_textures/eye.png", "cell_textures/not_cell.png"), scene.texturePaths)

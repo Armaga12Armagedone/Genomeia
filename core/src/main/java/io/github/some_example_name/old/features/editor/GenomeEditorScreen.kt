@@ -88,7 +88,8 @@ class GenomeEditorScreen(
         composeGenomeEditor.composeGenomeEditor(
             stage,
             editorSimulationSystem,
-            editorLogicSystem
+            editorLogicSystem,
+            renderSystem
         )
     }
 

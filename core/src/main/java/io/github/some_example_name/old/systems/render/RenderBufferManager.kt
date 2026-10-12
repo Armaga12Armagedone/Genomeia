@@ -11,7 +11,7 @@ import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
 import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.systems.simulation.SimulationData
-import io.github.some_example_name.render.RenderSettings
+import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.pack.CellInstanceBuffer
 import kotlin.math.round
 import java.util.concurrent.atomic.AtomicInteger
@@ -29,6 +29,19 @@ class RenderBufferManager(
     initialLinkCapacity: Int = 50_000,
     initialPheromoneCapacity: Int = 1_000
 ) {
+
+    /**
+     * Режим рендера этого мира. Свой у каждого мира: у симуляции его выбирают списком,
+     * а мир в фоне меню всегда рисуется реалистично и чужой выбор не видит.
+     *
+     * Живёт здесь, а не в RenderSystem, потому что читает его поток симуляции: по нему
+     * [updateBuffer] решает, заполнять ли буфер связей и направляющие углы, — в режимах
+     * без отладочных линий это работа впустую. Пишет же его GL-поток (список в экране
+     * симуляции), отсюда @Volatile: без него поток симуляции имел полное право не увидеть
+     * переключение никогда. Переключают руками раз в минуты, цена volatile-чтения ничто.
+     */
+    @Volatile
+    var mode: RenderMode = RenderMode.REALISTIC
 
     // Двойные буферы
     private val cellBuffers = arrayOf(
@@ -211,7 +224,7 @@ class RenderBufferManager(
 
         // Тип «не клетка» один на всех — считается один раз, а не на каждой частице.
         val nonCellType = (cellList.size + 1)
-        val writeDirected = !RenderSettings.usePostProcess
+        val writeDirected = mode.drawsDebugOverlay
 
         for (i in 0 until nonCells.size) {
             val particleIndex = nonCells.getInt(i)
@@ -230,7 +243,9 @@ class RenderBufferManager(
             )
             back.type[writeIndex] = CellInstanceBuffer.type(
                 cellType = nonCellType,
-                noiseSeed = particleIndex
+                noiseSeed = particleIndex,
+                // Без ядра в ностальгическом режиме: ядро — признак клетки.
+                isCell = false
             )
 
             if (writeDirected) {
@@ -286,7 +301,7 @@ class RenderBufferManager(
             noiseSeed = particleIndex
         )
 
-        if (!RenderSettings.usePostProcess) {
+        if (mode.drawsDebugOverlay) {
             val cell = cellList[cellType]
             val length = when {
                 cell is Eye -> specialEntity.getVisibilityRange(cellIndex)
@@ -351,7 +366,7 @@ class RenderBufferManager(
 
         // ==================== LINK ====================
         val linkBack = linkBuffers[frameBackIndex]
-        if (!RenderSettings.usePostProcess) {
+        if (mode.drawsDebugOverlay) {
             val needed = linkEntity.aliveList.size + neuralLinkEntity.aliveList.size
             val back = linkBack
 

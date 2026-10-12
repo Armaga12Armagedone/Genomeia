@@ -2,6 +2,7 @@ package io.github.some_example_name.render.debug
 
 import com.badlogic.gdx.files.FileHandle
 import io.github.some_example_name.render.RenderFrame
+import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.pack.CellInstanceBuffer
 import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
 import java.nio.ByteBuffer
@@ -38,7 +39,7 @@ import java.nio.ByteOrder
  *   zoom             float
  *   blurAmount       float
  *   vignetteEnabled  float
- *   usePostProcess   byte    (0/1)
+ *   mode             byte    RenderMode.dumpCode: 0 отладка, 1 реалистичный, 2 ностальгический
  *   pheromoneK       float
  *   pheromoneP       float
  *   texturePaths     int count, далее для каждого: int длина + UTF-8 байты
@@ -78,7 +79,7 @@ object RenderSceneDump {
         val zoom: Float,
         val blurAmount: Float,
         val vignetteEnabled: Float,
-        val usePostProcess: Boolean,
+        val mode: RenderMode,
         val pheromoneK: Float,
         val pheromoneP: Float,
         val texturePaths: List<String>,
@@ -128,7 +129,7 @@ object RenderSceneDump {
         out.putFloat(zoom)
         out.putFloat(frame.blurAmount)
         out.putFloat(frame.vignetteEnabled)
-        out.put(if (frame.usePostProcess) 1 else 0)
+        out.put(frame.mode.dumpCode.toByte())
         out.putFloat(frame.pheromoneK)
         out.putFloat(frame.pheromoneP)
 
@@ -169,7 +170,9 @@ object RenderSceneDump {
         val zoom = input.float
         val blurAmount = input.float
         val vignetteEnabled = input.float
-        val usePostProcess = input.get().toInt() != 0
+        // Раньше здесь был байт usePostProcess (0/1). Коды первых двух режимов
+        // совпадают с ним намеренно — старые дампы читаются без миграции.
+        val mode = RenderMode.fromDumpCode(input.get().toInt())
         val pheromoneK = input.float
         val pheromoneP = input.float
 
@@ -200,7 +203,7 @@ object RenderSceneDump {
             zoom = zoom,
             blurAmount = blurAmount,
             vignetteEnabled = vignetteEnabled,
-            usePostProcess = usePostProcess,
+            mode = mode,
             pheromoneK = pheromoneK,
             pheromoneP = pheromoneP,
             texturePaths = texturePaths,
