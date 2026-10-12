@@ -204,7 +204,8 @@ class ActionDialog(
     }
 
     fun VisTable.composeDynamic(actionSystem: ActionDialogSystem, getCircleWidgetFrom: () -> CircleWidget?) {
-        if (actionSystem.isNeural()) neuralCompose(actionSystem)
+        if (actionSystem.isSynapse()) synapseCompose(actionSystem)
+        else if (actionSystem.isNeural()) neuralCompose(actionSystem)
         if (actionSystem.isDirected()) angelDirectedCompose(actionSystem, getCircleWidgetFrom)
         if (actionSystem.isPheromone()) pheromoneCompose(actionSystem)
         if (actionSystem.isEye()) eyeCompose(actionSystem)

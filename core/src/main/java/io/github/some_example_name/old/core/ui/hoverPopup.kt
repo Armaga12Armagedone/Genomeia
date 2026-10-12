@@ -1,11 +1,15 @@
 package io.github.some_example_name.old.core.ui
 
+import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.scenes.scene2d.Action
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.InputListener
 import com.badlogic.gdx.scenes.scene2d.Stage
+import com.badlogic.gdx.scenes.scene2d.Touchable
+import com.badlogic.gdx.scenes.scene2d.actions.Actions
 import com.badlogic.gdx.scenes.scene2d.utils.NinePatchDrawable
 import com.kotcrab.vis.ui.widget.VisTable
 
@@ -90,87 +94,111 @@ fun hideMiniDialog(dialog: VisTable) {
     dialog.remove()
 }
 
+/** Сколько держать палец на элементе, чтобы всплыла подсказка: обычный тап её не мигает. */
+private const val LONG_PRESS_SECONDS = 0.4f
+
+private val isTouchScreen: Boolean
+    get() = Gdx.app.type == Application.ApplicationType.Android ||
+        Gdx.app.type == Application.ApplicationType.iOS
+
 /**
- * Автоматический hoverPopup для Actor (UI-элементы).
- * Используй так же, как раньше — теперь с красивым фоном и умным позиционированием.
+ * Всплывающая подсказка для UI-элемента: мышью — при наведении, на сенсорном экране —
+ * пока палец зажат на элементе.
+ *
+ * Подсказка не принимает ввод: она не перехватывает наведение у элемента и не мешает
+ * модальному диалогу, поверх которого показана.
  */
 fun Actor.hoverPopup(
     init: VisTable.() -> Unit
 ): Actor {
     val target = this
     var tooltip: VisTable? = null
-    var isTouchInitiated = false
+    var pendingShow: Action? = null
 
-    fun hidePopup() {
-        tooltip?.remove()
-        tooltip = null
-        isTouchInitiated = false
+    fun cancelPendingShow() {
+        pendingShow?.let { target.removeAction(it) }
+        pendingShow = null
     }
 
-    fun showPopup(event: InputEvent?) {
-        if (tooltip != null) return
+    fun hidePopup() {
+        cancelPendingShow()
+        tooltip?.remove()
+        tooltip = null
+    }
 
-        val content = VisTable(true).apply {
+    fun showPopup(stageX: Float, stageY: Float) {
+        if (tooltip != null) return
+        val stg = target.stage ?: return
+
+        val content = object : VisTable(true) {
+            // Подсказка лежит на сцене отдельно от элемента. Если диалог закрыли, пока она
+            // видна, exit элементу уже не придёт — без этой проверки она бы так и висела.
+            override fun act(delta: Float) {
+                super.act(delta)
+                if (target.stage == null) {
+                    hidePopup()
+                    return
+                }
+                // Окно по клику поднимает себя наверх (Window.toFront) и закрыло бы подсказку
+                // до следующего появления. Если она уже сверху, toFront ничего не делает.
+                toFront()
+            }
+        }.apply {
             background = getPopupBackground()
             defaults().pad(12f.dp(), 16f.dp(), 12f.dp(), 16f.dp())
+            touchable = Touchable.disabled
             init()
         }
 
         tooltip = content
-        val stg = target.stage ?: return
         stg.addActor(content)
-
         content.pack()
-
-        val sx = event?.stageX ?: Gdx.input.x.toFloat()
-        val sy = event?.stageY ?: Gdx.input.y.toFloat()
-        positionPopupSmart(content, sx, sy, stg)
-
-        // Слушатель на самом попапе (чтобы не закрывался при наведении на него)
-        content.addListener(object : InputListener() {
-            override fun exit(event: InputEvent?, x: Float, y: Float, pointer: Int, toActor: Actor?) {
-                if (toActor != target) hidePopup()
-            }
-        })
+        positionPopupSmart(content, stageX, stageY, stg)
     }
 
     val listener = object : InputListener() {
-        override fun enter(event: InputEvent?, x: Float, y: Float, pointer: Int, fromActor: Actor?) {
-            if (tooltip == null && event != null) {
-                showPopup(event)
-                isTouchInitiated = pointer != -1
-            }
+        // Мышь без нажатия приходит с pointer == -1. Касания тоже шлют enter/exit, но
+        // с pointer >= 0 — на сенсорном экране подсказку открывает только зажатие.
+        override fun enter(event: InputEvent, x: Float, y: Float, pointer: Int, fromActor: Actor?) {
+            if (pointer == -1 && !isTouchScreen) showPopup(event.stageX, event.stageY)
         }
 
-        override fun exit(event: InputEvent?, x: Float, y: Float, pointer: Int, toActor: Actor?) {
-            if (toActor != tooltip) hidePopup()
+        override fun exit(event: InputEvent, x: Float, y: Float, pointer: Int, toActor: Actor?) {
+            if (pointer == -1 && !isTouchScreen) hidePopup()
         }
 
-        override fun mouseMoved(event: InputEvent?, x: Float, y: Float): Boolean {
-            tooltip?.let { t ->
-                val stg = stage ?: return false
-                positionPopupSmart(t, event!!.stageX, event.stageY, stg)
-            }
+        override fun mouseMoved(event: InputEvent, x: Float, y: Float): Boolean {
+            val t = tooltip ?: return false
+            val stg = target.stage ?: return false
+            positionPopupSmart(t, event.stageX, event.stageY, stg)
             return false
         }
 
-        override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-            if (tooltip == null && event != null) {
-                showPopup(event)
-                isTouchInitiated = pointer != -1
-            }
-            return false
+        // true нужен, чтобы получить touchUp и touchDragged. Всплытие события к родителям
+        // это не останавливает, а другие слушатели элемента (у поля ввода — свой) его
+        // всё равно получают.
+        override fun touchDown(event: InputEvent, x: Float, y: Float, pointer: Int, button: Int): Boolean {
+            if (!isTouchScreen) return false
+
+            cancelPendingShow()
+            val stageX = event.stageX
+            val stageY = event.stageY
+            val show = Actions.delay(LONG_PRESS_SECONDS, Actions.run {
+                pendingShow = null
+                showPopup(stageX, stageY)
+            })
+            pendingShow = show
+            target.addAction(show)
+            return true
         }
 
-        override fun touchDragged(event: InputEvent?, x: Float, y: Float, pointer: Int) {
-            tooltip?.let { t ->
-                val stg = stage ?: return
-                positionPopupSmart(t, event!!.stageX, event.stageY, stg)
-            }
+        override fun touchDragged(event: InputEvent, x: Float, y: Float, pointer: Int) {
+            // Палец ушёл с элемента — это уже не зажатие, а прокрутка или промах.
+            if (target.hit(x, y, false) == null) hidePopup()
         }
 
-        override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-            if (isTouchInitiated) hidePopup()
+        override fun touchUp(event: InputEvent, x: Float, y: Float, pointer: Int, button: Int) {
+            hidePopup()
         }
     }
 
