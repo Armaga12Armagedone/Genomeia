@@ -73,15 +73,18 @@ class SettingsViewModel {
             is SettingsIntent.SetMusicVolume -> {
                 GlobalSettings.MUSIC_VOLUME = intent.value
                 game.currentMusic.volume = intent.value / 100f
+                UserPreferences.save()
             }
 
             is SettingsIntent.SetSoundVolume -> {
                 GlobalSettings.SOUND_VOLUME = intent.value
+                UserPreferences.save()
             }
 
             is SettingsIntent.SetLanguage -> {
                 GlobalSettings.currentLanguageTag = intent.languageTag
                 DIGameGlobalContainer.setLanguage(Locale.forLanguageTag(intent.languageTag))
+                UserPreferences.save()
                 onLanguageChanged?.invoke()
             }
 

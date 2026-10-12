@@ -32,6 +32,7 @@ import io.github.some_example_name.old.core.DevStartup
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.features.settings.GlobalSettings.MUSIC_VOLUME
+import io.github.some_example_name.old.features.settings.UserPreferences
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.features.menu.MenuScreen
 import kotlin.math.max
@@ -72,6 +73,8 @@ class MyGame(
         BugSession.start()
         DIGameGlobalContainer.fileProvider = multiPlatformFileProvider
         DIGameGlobalContainer.game = this
+        // Звук и язык игрока: до первого экрана и до музыки, чтобы они стартовали с сохранёнными.
+        UserPreferences.load()
         DISimulationContainer
         DIGenomeEditorContainer
 
