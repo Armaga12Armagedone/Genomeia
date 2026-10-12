@@ -18,9 +18,15 @@ import io.github.some_example_name.old.core.ui.makeStyledButton
 import io.github.some_example_name.old.core.ui.makeStyledSlider
 import io.github.some_example_name.old.core.ui.setupTitleSize
 
+/**
+ * Скорость симуляции. Сам диалог ничего не меняет: значения уходят командами через
+ * [onTargetUps] и [onMaxSpeed], а показывает он то, что лежит в SimulationData.
+ */
 class SpeedUpDialog(
     val game: MyGame,
-    val bundle: I18NBundle
+    val bundle: I18NBundle,
+    val onTargetUps: (Int) -> Unit,
+    val onMaxSpeed: (Boolean) -> Unit
 ) : VisDialog("Speed up") {
 
     private val textures = mutableListOf<Texture>()
@@ -40,7 +46,7 @@ class SpeedUpDialog(
             value = DISimulationContainer.simulationData.targetUPS.toFloat()
             addListener { e ->
                 if (valueChanged(e)) {
-                    DISimulationContainer.simulationData.targetUPS = value.toInt()
+                    onTargetUps(value.toInt())
                     upsLabel.setText("Target ups: ${DISimulationContainer.simulationData.targetUPS}")
                 }
                 false
@@ -52,7 +58,7 @@ class SpeedUpDialog(
             isChecked = DISimulationContainer.simulationData.maxSpeed
             addListener(object : ChangeListener() {
                 override fun changed(event: ChangeEvent, actor: Actor?) {
-                    DISimulationContainer.simulationData.maxSpeed = isChecked
+                    onMaxSpeed(isChecked)
                 }
             })
         }

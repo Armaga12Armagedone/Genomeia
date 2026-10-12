@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.features.devsupport
 
+import io.github.some_example_name.old.commands.GameCommand
 import com.badlogic.gdx.Gdx
 import io.github.some_example_name.old.core.log.ActionLog
 
@@ -10,9 +11,7 @@ data class CryptoWallet(
 )
 
 /** Что игрок хочет сделать на экране поддержки. */
-sealed interface SupportIntent {
-    val name: String
-    val detail: String get() = ""
+sealed interface SupportIntent : GameCommand {
 
     /**
      * @param title именно название кошелька, а не адрес: в журнал не кладут содержимое
@@ -40,7 +39,7 @@ class SupportViewModel {
     )
 
     fun handle(intent: SupportIntent) {
-        ActionLog.record(LOG_SOURCE, intent.name, intent.detail)
+        ActionLog.record(LOG_SOURCE, intent)
 
         when (intent) {
             is SupportIntent.CopyAddress -> {

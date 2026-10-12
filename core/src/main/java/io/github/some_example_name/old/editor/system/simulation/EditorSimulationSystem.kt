@@ -88,7 +88,7 @@ class EditorSimulationSystem(
         entityList.forEach { it.clear() }
         newGenome()
 
-        userCommandManager.push(
+        userCommandManager.pushInternal(
             PlayerCommand.Tap(
                 gridManager.gridWidth * 0.5f,
                 gridManager.gridHeight * 0.5f

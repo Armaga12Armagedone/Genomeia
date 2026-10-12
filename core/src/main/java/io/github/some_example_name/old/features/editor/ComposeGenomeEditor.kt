@@ -2,6 +2,7 @@ package io.github.some_example_name.old.features.editor
 
 import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.Align
 import com.kotcrab.vis.ui.widget.VisLabel
@@ -9,10 +10,10 @@ import com.kotcrab.vis.ui.widget.VisSlider
 import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isNeuralLinking
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isRightClick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.linkColor
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.previousCtrlClicked
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.showPhysicalLink
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.symmetryManager
 import io.github.some_example_name.old.editor.system.logic.CtrlY
@@ -22,6 +23,12 @@ import io.github.some_example_name.old.editor.system.logic.GoToEndOfTimeLine
 import io.github.some_example_name.old.editor.system.logic.GoToStartOfTimeLine
 import io.github.some_example_name.old.editor.system.logic.NextTickButtonTap
 import io.github.some_example_name.old.editor.system.logic.PrevTickButtonTap
+import io.github.some_example_name.old.editor.system.logic.SetNeuralLinkColor
+import io.github.some_example_name.old.editor.system.logic.SetNeuralLinking
+import io.github.some_example_name.old.editor.system.logic.SetRenderMode
+import io.github.some_example_name.old.editor.system.logic.SetRepeatLastAction
+import io.github.some_example_name.old.editor.system.logic.SetShowPhysicalLinks
+import io.github.some_example_name.old.editor.system.logic.SetSymmetry
 import io.github.some_example_name.old.editor.system.logic.TimeSlider
 import io.github.some_example_name.old.editor.system.render.EditorRenderSystem
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
@@ -40,9 +47,12 @@ import io.github.some_example_name.old.core.ui.visTable
 import io.github.some_example_name.old.core.ui.visTextButton
 import io.github.some_example_name.old.core.ui.visToggleButton
 
+/**
+ * Вёрстка редактора генома. Состояние редактора здесь не меняется: каждая кнопка
+ * отдаёт команду в EditorLogicSystem.putUiCommand.
+ */
 class ComposeGenomeEditor {
 
-    var isCtrl = false
     var isProgrammaticChange = false
 
     lateinit var tickLabel: VisLabel
@@ -69,47 +79,49 @@ class ComposeGenomeEditor {
                 verticalSpacing = 8.dp()
             ) {
                 visLeftArrowButton(onClick = {
-                    stage.saveDialog(isGoToMenu = true, genome = editorSimulationSystem.getGenome())
+                    stage.saveDialog(isGoToMenu = true, genomeName = editorSimulationSystem.getGenome().name, editorLogicSystem)
                 })
 
                 visTextButton(bundle.get("button.saveGenome"), onClick = {
-                    stage.saveDialog(isGoToMenu = false, genome = editorSimulationSystem.getGenome())
+                    stage.saveDialog(isGoToMenu = false, genomeName = editorSimulationSystem.getGenome().name, editorLogicSystem)
                 })
 
                 visToggleButton(
                     text = bundle.get("button.showPhysicalLink"),
                     checked = showPhysicalLink,
                     onCheckedChange = {
-                        showPhysicalLink = it
+                        editorLogicSystem.putUiCommand(SetShowPhysicalLinks(it))
                     }
                 )
 
                 visTextButton("Neural link color", onClick = {
                     stage.colorPickerDialog(
                         initColor = linkColor,
-                        onFinished = { linkColor = it }
+                        onFinished = { editorLogicSystem.putUiCommand(SetNeuralLinkColor(Color.rgba8888(it))) }
                     )
                 })
 
                 visTextButton("Symmetry", onClick = {
-                    SymmetryDialog(symmetryManager).show(stage)
+                    SymmetryDialog(
+                        current = symmetryManager.symmetryMode,
+                        onApply = { editorLogicSystem.putUiCommand(SetSymmetry(it)) }
+                    ).show(stage)
                 })
 
                 // Режим — свой у редактора, с режимом симуляции не связан.
                 add(
                     renderModeSelectBox(
                         selected = editorRenderSystem.mode,
-                        onSelect = { editorRenderSystem.mode = it }
+                        onSelect = { editorLogicSystem.putUiCommand(SetRenderMode(it)) }
                     )
                 )
 
                 if (Gdx.app.type == Application.ApplicationType.Android) {
                     visToggleButton(
                         text = bundle.get("button.neural-linking"),
-                        checked = isCtrl,
+                        checked = isNeuralLinking,
                         onCheckedChange = {
-                            isCtrl = it
-                            if (!isCtrl) previousCtrlClicked = -1
+                            editorLogicSystem.putUiCommand(SetNeuralLinking(it))
                         }
                     )
 
@@ -117,7 +129,7 @@ class ComposeGenomeEditor {
                         text = bundle.get("button.performLastAction"),
                         checked = isRightClick,
                         onCheckedChange = {
-                            isRightClick = it
+                            editorLogicSystem.putUiCommand(SetRepeatLastAction(it))
                         }
                     )
                 }

@@ -1,5 +1,7 @@
 package io.github.some_example_name.old.core.log
 
+import io.github.some_example_name.old.commands.GameCommand
+
 /**
  * Кольцевой журнал действий игрока.
  *
@@ -68,6 +70,10 @@ object ActionLog {
             sink?.invoke(entry)
         }
     }
+
+    /** Запись команды игрока: обработчики команд зовут именно это, а не строковую версию. */
+    fun record(source: String, command: GameCommand, coalesce: Boolean = true) =
+        record(source, command.name, command.detail, coalesce)
 
     fun tail(count: Int = CAPACITY): List<Entry> = synchronized(lock) {
         entries.takeLast(count.coerceAtLeast(0))

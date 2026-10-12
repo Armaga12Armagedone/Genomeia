@@ -19,8 +19,12 @@ import io.github.some_example_name.old.editor.system.logic.PanScreen
 import io.github.some_example_name.old.editor.system.logic.TapScreen
 import io.github.some_example_name.old.editor.system.logic.TouchDown
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isNeuralLinking
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isRightClick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.previousCtrlClicked
+import io.github.some_example_name.old.editor.system.logic.SetNeuralLinking
+import io.github.some_example_name.old.editor.system.logic.ZoomCamera
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.uiScreenCommands
 import io.github.some_example_name.old.editor.system.logic.ShowChangeRemoveDialog
 import io.github.some_example_name.old.editor.system.logic.ShowDivideDialog
@@ -66,19 +70,31 @@ class GenomeEditorScreen(
             editorLogicSystem.putUiCommand(TouchDown(x, y))
         },
         onTap = { x, y, isLeft ->
-            editorLogicSystem.putUiCommand(TapScreen(x, y, isLeft, composeGenomeEditor.isCtrl))
+            // На телефоне кнопки мыши нет: «правым кликом» там считается нажатие в режиме
+            // «повторить последнее действие», а в режиме нейросвязей клик всегда левый.
+            // Решается здесь, а не в обработчике: команда не должна зависеть от платформы.
+            val isDesktop = Gdx.app.type == Application.ApplicationType.Desktop
+            val isLeftClick = if (isDesktop) isLeft else isNeuralLinking || !isRightClick
+            editorLogicSystem.putUiCommand(TapScreen(x, y, isLeftClick, isNeuralLinking))
         },
         onFling = {
             editorLogicSystem.putUiCommand(FlingScreen)
         },
         onPan = { x, y, dx, dy ->
             editorLogicSystem.putUiCommand(PanScreen(x, y, dx, dy))
+        },
+        onZoom = { zoom, x, y ->
+            editorLogicSystem.putUiCommand(ZoomCamera(zoom, x, y))
         }
     )
 
     override fun show() {
         editorSimulationSystem.reinitGenome(genomeName)
         currentTick = 0
+        // Редактор открывается с чистым режимом нейросвязей: состояние живёт в контейнере
+        // и иначе пережило бы прошлый заход.
+        isNeuralLinking = false
+        previousCtrlClicked = -1
         editorLogicSystem.restartSimulation()
 
         Gdx.input.inputProcessor = cameraControl.getInputMultiplexer(stage)
@@ -137,9 +153,11 @@ class GenomeEditorScreen(
             editorLogicSystem.putUiCommand(CtrlY)
         }
 
+        // На десктопе режим нейросвязей — пока зажат Ctrl. Команда только на смену
+        // состояния: опрос каждый кадр, а журналу нужно нажатие, а не кадр.
         if (Gdx.app.type == Application.ApplicationType.Desktop) {
-            composeGenomeEditor.isCtrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
-            if (!composeGenomeEditor.isCtrl) previousCtrlClicked = -1
+            val ctrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
+            if (ctrl != isNeuralLinking) editorLogicSystem.putUiCommand(SetNeuralLinking(ctrl))
         }
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {

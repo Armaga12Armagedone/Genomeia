@@ -1,11 +1,11 @@
 package io.github.some_example_name.old.commands
 
-sealed interface PlayerCommand {
-    /** Стабильное имя для журнала действий: минификатор его не тронет. */
-    val name: String
-
-    /** Короткая сводка параметров. Координаты округляются: доли клетки в логе не нужны. */
-    val detail: String get() = ""
+/**
+ * Касание мира в симуляции. Применяется потоком симуляции в фазе команд игрока, поэтому
+ * и в запись сессии (LogSaver) попадает с номером тика, в котором применилась. В [detail] координаты округлены:
+ * доли клетки в журнале не нужны.
+ */
+sealed interface PlayerCommand : GameCommand {
 
     data class TouchDown(val x: Float, val y: Float, val isLeftButton: Boolean) : PlayerCommand {
         override val name get() = "TouchDown"

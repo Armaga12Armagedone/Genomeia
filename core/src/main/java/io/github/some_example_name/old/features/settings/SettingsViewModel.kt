@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.features.settings
 
+import io.github.some_example_name.old.commands.GameCommand
 import com.badlogic.gdx.Gdx
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
@@ -11,9 +12,7 @@ enum class SettingsTab {
 }
 
 /** Что игрок хочет сделать в настройках. */
-sealed interface SettingsIntent {
-    val name: String
-    val detail: String get() = ""
+sealed interface SettingsIntent : GameCommand {
 
     data class SelectTab(val tab: SettingsTab) : SettingsIntent {
         override val name get() = "SelectTab"
@@ -35,6 +34,12 @@ sealed interface SettingsIntent {
         override val detail get() = locale.toLanguageTag()
     }
 
+    /** Запись сессии в debug.bin для кнопки «Повтор сессии». Действует со следующей сессии. */
+    data class SetSessionRecording(val enabled: Boolean) : SettingsIntent {
+        override val name get() = "SetSessionRecording"
+        override val detail get() = enabled.toString()
+    }
+
     data object OpenGithub : SettingsIntent {
         override val name get() = "OpenGithub"
     }
@@ -51,12 +56,13 @@ class SettingsViewModel {
 
     val musicVolume: Int get() = GlobalSettings.MUSIC_VOLUME
     val soundVolume: Int get() = GlobalSettings.SOUND_VOLUME
+    val isSessionRecording: Boolean get() = GlobalSettings.DEBUG_MODE
 
     /** Экран подписывается сюда, чтобы перерисоваться после смены языка. */
     var onLanguageChanged: (() -> Unit)? = null
 
     fun handle(intent: SettingsIntent) {
-        ActionLog.record(LOG_SOURCE, intent.name, intent.detail)
+        ActionLog.record(LOG_SOURCE, intent)
 
         when (intent) {
             is SettingsIntent.SelectTab -> currentTab = intent.tab
@@ -75,6 +81,8 @@ class SettingsViewModel {
                 DIGameGlobalContainer.setLanguage(intent.locale)
                 onLanguageChanged?.invoke()
             }
+
+            is SettingsIntent.SetSessionRecording -> GlobalSettings.DEBUG_MODE = intent.enabled
 
             is SettingsIntent.OpenGithub -> Gdx.net.openURI(GITHUB_URL)
         }

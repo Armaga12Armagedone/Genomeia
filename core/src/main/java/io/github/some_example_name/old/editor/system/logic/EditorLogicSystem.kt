@@ -1,16 +1,23 @@
 package io.github.some_example_name.old.editor.system.logic
 
-import com.badlogic.gdx.Application
-import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.OrthographicCamera
+import io.github.some_example_name.old.core.DIGameGlobalContainer
+import io.github.some_example_name.old.core.log.ActionLog
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.editor.system.command.CommandEditorStackManager
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.grabbedCellIndex
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isDruggingCamera
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isNeuralLinking
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isRightClick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastGrabbedCellX
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastGrabbedCellY
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.linkColor
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.nextStageTick
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.previousCtrlClicked
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.showPhysicalLink
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.uiScreenCommands
 import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.system.CellSearchManager
@@ -20,6 +27,7 @@ import io.github.some_example_name.old.editor.system.simulation.EditorSimulation
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
+import io.github.some_example_name.old.systems.genomics.genome.saveGenome
 import io.github.some_example_name.old.systems.physics.GridManager
 import kotlin.system.measureNanoTime
 
@@ -59,7 +67,17 @@ class EditorLogicSystem(
         if (lastTick < currentTick) currentTick = lastTick
     }
 
+    /**
+     * Единственный вход для действий игрока в редакторе генома: экран только собирает
+     * команду из жеста или кнопки, а состояние редактора меняется здесь.
+     */
     fun putUiCommand(command: UiEditorCommands) {
+        ActionLog.record(LOG_SOURCE, command)
+        applyCommand(command)
+        dropStaleNeuralLinkStart()
+    }
+
+    private fun applyCommand(command: UiEditorCommands) {
         when (command) {
             CtrlY -> commandEditorStackManager.redo()
 
@@ -117,12 +135,10 @@ class EditorLogicSystem(
                     val clickedIndex = it.first
                     val clickedCell = toEditorDataMapper.mapToEditorData(clickedIndex)
                     grabbedCellIndex = -1
-                    val isDesktop = Gdx.app.type == Application.ApplicationType.Desktop
 
-                    val isLeftClick = if (isDesktop) command.isLeft else command.isCtrl || !isRightClick
-
+                    // Левый ли это клик, решено ещё при создании команды (см. TapScreen).
                     when {
-                        isLeftClick -> leftRightClickManager.leftClick(clickedIndex, clickedCell, command.isCtrl)
+                        command.isLeft -> leftRightClickManager.leftClick(clickedIndex, clickedCell, command.isCtrl)
                         !command.isCtrl -> leftRightClickManager.rightClick(clickedIndex, clickedCell)
                     }
                 }
@@ -164,6 +180,75 @@ class EditorLogicSystem(
             )
             is TryToRemove -> tryActionManager.tryToRemove(clickedCellIndex = command.clickedCellIndex)
             is TryToCancelMutation -> tryActionManager.tryToCancelMutation(clickedCellIndex = command.clickedCellIndex)
+
+            is SetNeuralLinking -> {
+                isNeuralLinking = command.enabled
+                if (!command.enabled) previousCtrlClicked = -1
+            }
+
+            is SetRepeatLastAction -> isRightClick = command.enabled
+
+            is SetNeuralLinkColor -> linkColor = Color(command.rgba8888)
+
+            is SetSymmetry -> DIGenomeEditorContainer.symmetryManager.symmetryMode = command.mode
+
+            is SetShowPhysicalLinks -> showPhysicalLink = command.visible
+
+            is SetRenderMode -> DIGenomeEditorContainer.editorRenderSystem.mode = command.mode
+
+            is SaveGenome -> saveCurrentGenome(command.genomeName)
+
+            is ExportGenome ->
+                DIGameGlobalContainer.game.multiPlatformFileProvider.exportGenome("genomes/${command.genomeName}.genome")
+
+            is ZoomCamera -> {
+                camera.zoom = command.zoom
+                camera.position.x = command.x
+                camera.position.y = command.y
+                camera.update()
+            }
         }
+    }
+
+    /**
+     * Начатая нейросвязь тянется от клетки, которой на текущей стадии больше нет (сдвинули
+     * время, отменили деление) — забываем её.
+     *
+     * Раньше это делал рендер, прямо при рисовании линии к курсору. Тогда состояние
+     * редактора менялось не командой, а кадром, и повтор по журналу без окна расходился
+     * бы с тем, что видел игрок. Здесь — после каждой команды: только они и меняют
+     * стадию и геном, так что результат тот же.
+     */
+    private fun dropStaleNeuralLinkStart() {
+        if (previousCtrlClicked != -1 && cellReplay.getCellIndex(nextStageTick, previousCtrlClicked) == null) {
+            previousCtrlClicked = -1
+        }
+    }
+
+    /**
+     * Запись генома в файл. Тело в этот момент уже выращено в сущностях редактора,
+     * поэтому раскладка считается прямо по ним. Организм в редакторе всегда один, с
+     * organIndex = 0.
+     */
+    private fun saveCurrentGenome(genomeName: String) {
+        val layout = DIGenomeEditorContainer.rcmSort.bake()
+
+        // Выгрузка топологии для стенда физики. Здесь же, потому что момент тот
+        // самый: тело выращено целиком и отработало последний тик, значит координаты
+        // это реальная поза покоя. Путь к файлу уходит в лог.
+        DIGenomeEditorContainer.bodyExport.exportToFile()
+
+        val genome = editorSimulationSystem.getGenome().copy(
+            name = genomeName,
+            cellsAmount = cellEntity.aliveList.size,
+            linksAmount = linkEntity.aliveList.size,
+            neuralLinksAmount = DIGenomeEditorContainer.neuralLinkEntity.aliveList.size,
+            sortedGraph = layout
+        )
+        saveGenome(genome, genomeName)
+    }
+
+    private companion object {
+        const val LOG_SOURCE = "Editor"
     }
 }

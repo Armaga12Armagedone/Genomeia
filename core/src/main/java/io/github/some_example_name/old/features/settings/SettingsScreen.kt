@@ -145,8 +145,8 @@ class SettingsScreen : VisDslScreen(
         // симуляцию или «Перезапустить»).
         visToggleButton(
             text = bundle.get("settings.debug_mode"),
-            checked = GlobalSettings.DEBUG_MODE,
-            onCheckedChange = { GlobalSettings.DEBUG_MODE = it }
+            checked = viewModel.isSessionRecording,
+            onCheckedChange = { viewModel.handle(SettingsIntent.SetSessionRecording(it)) }
         )
     }
 

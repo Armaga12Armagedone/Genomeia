@@ -186,9 +186,10 @@ class DrawingHelperElements(
                 val y = particleEntity.y[clickedCell.first]
                 shapeRenderer.circle(x, y,  0.125f, 32)
             }
-        } else {
-            previousCtrlClicked = -1
         }
+        // Если клетки, от которой тянули связь, на стадии уже нет, — здесь только не
+        // рисуем линию. Забывает её EditorLogicSystem после команды: рендер состояние
+        // редактора не меняет.
 
         shapeRenderer.end()
     }

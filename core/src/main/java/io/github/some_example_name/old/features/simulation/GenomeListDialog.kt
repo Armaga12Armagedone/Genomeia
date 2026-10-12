@@ -27,10 +27,13 @@ class GenomeListDialog(
     val import: String,
     val onNew: () -> Unit,
     val onNext: (String) -> Unit,
-    val onRestart: () -> Unit,
     val game: MyGame,
     val onResize: (() -> Unit) -> Unit,
-    val isMenu: Boolean
+    /**
+     * Импорт файла генома (только Android). null — кнопки нет. Сам импорт делает
+     * обработчик команды; закрыть диалог по его окончании — забота того, кто его открыл.
+     */
+    val onImport: (() -> Unit)? = null
 ) : VisDialog(title) {
     var selectedIndex = selectedGenomeIndex ?: 0
     val scrollPane: ScrollPane
@@ -146,11 +149,11 @@ class GenomeListDialog(
             bottomButtonTable.add(it).height(btnH)
         }
 
-        if (Gdx.app.type == Application.ApplicationType.Android && isMenu) {
+        if (Gdx.app.type == Application.ApplicationType.Android && onImport != null) {
             makeStyledButton(import, game, textures).also {
                 it.addListener(object : ClickListener() {
                     override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                        game.multiPlatformFileProvider.importGenome { _ -> onRestart.invoke(); fadeOut() }
+                        onImport.invoke()
                     }
                 })
                 bottomButtonTable.add(it).height(btnH)

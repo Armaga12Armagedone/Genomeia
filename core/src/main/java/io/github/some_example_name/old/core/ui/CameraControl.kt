@@ -21,7 +21,13 @@ class CameraControl(
     val onTouchDown: (x: Float, y: Float, isLeft: Boolean) -> Unit,
     val onTap: (x: Float, y: Float, isLeft: Boolean) -> Unit,
     val onFling: () -> Unit,
-    val onPan: (x: Float, y: Float, dx: Float, dy: Float) -> Unit
+    val onPan: (x: Float, y: Float, dx: Float, dy: Float) -> Unit,
+    /**
+     * Новый масштаб камеры и её положение после колеса или щипка. Жест только считает,
+     * куда надо встать, а применяет [setZoom] обработчик команды — так масштаб попадает
+     * в журнал, как и всё остальное. По умолчанию применяется сразу.
+     */
+    val onZoom: ((zoom: Float, x: Float, y: Float) -> Unit)? = null
 ): GestureListener {
 
     private var initialZoom = 0f
@@ -55,16 +61,8 @@ class CameraControl(
             ))
         multiplexer.addProcessor(object : InputAdapter() {
             override fun scrolled(amountX: Float, amountY: Float): Boolean {
-                val screenPos = Vector3(Gdx.input.x.toFloat(), Gdx.input.y.toFloat(), 0f)
-                val worldBefore = camera.unproject(screenPos.cpy())
-
                 val zoomFactor = if (amountY > 0) 1.05f else 0.95f
-                camera.zoom = MathUtils.clamp(camera.zoom * zoomFactor, 0.001f, 1000f)
-                camera.update()
-
-                val worldAfter = camera.unproject(screenPos) // можно без cpy, т.к. мы его больше не используем
-                camera.position.add(worldBefore.x - worldAfter.x, worldBefore.y - worldAfter.y, 0f)
-                camera.update()
+                zoomAround(Gdx.input.x.toFloat(), Gdx.input.y.toFloat(), camera.zoom * zoomFactor)
                 return true
             }
         })
@@ -132,18 +130,42 @@ class CameraControl(
     ): Boolean = false
 
     override fun zoom(initialDistance: Float, distance: Float): Boolean {
-        if (currentPinchCenter == null) return false
-        val centerX = currentPinchCenter!!.x
-        val centerY = currentPinchCenter!!.y
-        val screenPos = Vector3(centerX, centerY, 0f)
+        val center = currentPinchCenter ?: return false
+        zoomAround(center.x, center.y, initialZoom * (initialDistance / distance))
+        return true
+    }
+
+    /**
+     * Масштаб вокруг точки экрана: точка под пальцем (курсором) остаётся на месте.
+     *
+     * Положение считается пробным применением масштаба к камере, после чего камера
+     * возвращается как была: применяет результат обработчик команды ([onZoom]).
+     */
+    private fun zoomAround(screenX: Float, screenY: Float, targetZoom: Float) {
+        val screenPos = Vector3(screenX, screenY, 0f)
         val worldBefore = camera.unproject(screenPos.cpy())
-        val ratio = initialDistance / distance
-        camera.zoom = initialZoom * ratio
-        camera.zoom = MathUtils.clamp(camera.zoom, 0.001f, 1000f)
+
+        val oldZoom = camera.zoom
+        camera.zoom = MathUtils.clamp(targetZoom, 0.001f, 1000f)
         camera.update()
         val worldAfter = camera.unproject(screenPos.cpy())
-        camera.position.add(worldBefore.x - worldAfter.x, worldBefore.y - worldAfter.y, 0f)
-        return true
+        val newZoom = camera.zoom
+        val newX = camera.position.x + worldBefore.x - worldAfter.x
+        val newY = camera.position.y + worldBefore.y - worldAfter.y
+
+        camera.zoom = oldZoom
+        camera.update()
+
+        val handler = onZoom
+        if (handler != null) handler(newZoom, newX, newY) else setZoom(newZoom, newX, newY)
+    }
+
+    /** Применить масштаб и положение камеры — из обработчика команды. */
+    fun setZoom(zoom: Float, x: Float, y: Float) {
+        camera.zoom = zoom
+        camera.position.x = x
+        camera.position.y = y
+        camera.update()
     }
 
     override fun pinch(

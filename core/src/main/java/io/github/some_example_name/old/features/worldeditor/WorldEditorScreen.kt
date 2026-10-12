@@ -51,8 +51,6 @@ class WorldEditorScreen : VisDslScreen(background = Color(0.1f, 0.1f, 0.1f, 1f))
         emptyColor = Color.BLACK
     )
 
-    private var isSettingsOpen = false
-
     /**
      * Панель встаёт колонкой справа только на заметно широком экране. На квадратном и на
      * вытянутом вверх колонка съедает ровно ту ширину, по которой квадратная карта и
@@ -85,9 +83,9 @@ class WorldEditorScreen : VisDslScreen(background = Color(0.1f, 0.1f, 0.1f, 1f))
 
             visToggleButton(
                 text = bundle.get("button.settings"),
-                checked = isSettingsOpen,
+                checked = viewModel.isSettingsOpen,
                 onCheckedChange = { checked ->
-                    isSettingsOpen = checked
+                    viewModel.handle(WorldEditorIntent.SetSettingsOpen(checked))
                     // Перекладываем экран не изнутри обработчика события, а следующим кадром:
                     // иначе кнопка сносит саму себя прямо во время обхода слушателей.
                     Gdx.app.postRunnable { recompose() }
@@ -99,7 +97,7 @@ class WorldEditorScreen : VisDslScreen(background = Color(0.1f, 0.1f, 0.1f, 1f))
     // ==================== Центр: холст и панель настроек ====================
 
     private fun VisTable.content() {
-        if (!isSettingsOpen) {
+        if (!viewModel.isSettingsOpen) {
             add(canvas).grow().pad(GAP.dp())
             return
         }
@@ -204,7 +202,7 @@ class WorldEditorScreen : VisDslScreen(background = Color(0.1f, 0.1f, 0.1f, 1f))
             visTextButton(
                 text = bundle.get("button.newSeed"),
                 onClick = {
-                    viewModel.handle(WorldEditorIntent.NewSeed)
+                    viewModel.handle(WorldEditorIntent.newSeed())
                     // Присвоение дёрнет onTextChange, но setSeed на тот же сид — это no-op.
                     seedField?.text = viewModel.seed
                 }

@@ -2,22 +2,12 @@ package io.github.some_example_name.old.commands
 
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
 
-sealed class NavigationCommands {
-    /**
-     * Стабильное имя команды.
-     *
-     * Именно оно уходит в журнал и понимается [navigationCommandByName] — поэтому это
-     * не `this::class.simpleName`: имена классов режет минификатор, а лог краша должен
-     * читаться и в релизной сборке.
-     */
-    abstract val name: String
+sealed class NavigationCommands : GameCommand {
+    /** Именно это имя понимает [navigationCommandByName]. */
+    abstract override val name: String
 
-    /** Короткая сводка параметров для журнала. Сводка, а не дамп. */
-    open val detail: String get() = ""
+    override val detail: String get() = ""
 }
-
-val NavigationCommands.logName: String
-    get() = if (detail.isEmpty()) name else "$name($detail)"
 
 object GoExit : NavigationCommands() {
     override val name get() = "GoExit"

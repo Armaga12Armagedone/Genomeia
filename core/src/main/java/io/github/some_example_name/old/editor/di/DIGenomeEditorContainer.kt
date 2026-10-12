@@ -63,6 +63,8 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     override var isDruggingCamera = false
     override var isRightClick = false
     var showPhysicalLink = true
+    /** Режим нейросвязей: Ctrl на десктопе, кнопка на телефоне. Меняется командой SetNeuralLinking. */
+    var isNeuralLinking = false
     var previousCtrlClicked = -1
     var linkColor: Color = Color.CYAN
 

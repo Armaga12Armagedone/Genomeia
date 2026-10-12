@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.features.menu
 
+import io.github.some_example_name.old.commands.GameCommand
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Input
 import com.badlogic.gdx.graphics.Camera
@@ -23,9 +24,7 @@ import io.github.some_example_name.old.systems.render.RenderSystem
 import io.github.some_example_name.old.systems.simulation.SingleThreadSimulationSystem
 
 /** Что игрок хочет сделать в главном меню. */
-sealed interface MenuIntent {
-    val name: String
-    val detail: String get() = ""
+sealed interface MenuIntent : GameCommand {
 
     data object OpenWorldEditor : MenuIntent {
         override val name get() = "OpenWorldEditor"
@@ -49,6 +48,11 @@ sealed interface MenuIntent {
     data class OpenGenomeEditor(val genomeName: String?) : MenuIntent {
         override val name get() = "OpenGenomeEditor"
         override val detail get() = genomeName ?: "new"
+    }
+
+    /** Android: импорт файла генома через системный выбор файла. */
+    data object ImportGenome : MenuIntent {
+        override val name get() = "ImportGenome"
     }
 
     data object OpenSettings : MenuIntent {
@@ -86,6 +90,9 @@ class MenuViewModel(
 
     private val navigation = DIGameGlobalContainer.navigationCommandsManager
 
+    /** Импорт закончился (выбран файл или отменён) — экран закрывает диалог списка. */
+    var onGenomeImportFinished: (() -> Unit)? = null
+
     private var tiltX = 0f
     private var tiltY = 0f
 
@@ -101,7 +108,7 @@ class MenuViewModel(
      * окажется заблокирован или перенаправлен, они разойдутся, и в логе это будет видно.
      */
     fun handle(intent: MenuIntent): MenuEffect {
-        ActionLog.record(LOG_SOURCE, intent.name, intent.detail)
+        ActionLog.record(LOG_SOURCE, intent)
 
         return when (intent) {
             is MenuIntent.OpenWorldEditor -> {
@@ -136,6 +143,17 @@ class MenuViewModel(
 
             is MenuIntent.OpenGenomeEditor -> {
                 navigation.performCommand(GoGenomeEditor(intent.genomeName))
+                MenuEffect.None
+            }
+
+            is MenuIntent.ImportGenome -> {
+                // Какой файл выберет игрок, решает система, а не игра, поэтому команда
+                // только запускает выбор, а его итог дописывается в журнал отдельной
+                // строкой. Для повтора по журналу сам файл придётся приложить.
+                DIGameGlobalContainer.fileProvider.importGenome { file ->
+                    ActionLog.record(LOG_SOURCE, "GenomeImported", file?.name() ?: "cancelled")
+                    onGenomeImportFinished?.invoke()
+                }
                 MenuEffect.None
             }
 

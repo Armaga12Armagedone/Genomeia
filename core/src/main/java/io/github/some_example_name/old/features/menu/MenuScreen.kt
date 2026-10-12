@@ -101,20 +101,23 @@ class MenuScreen : VisDslScreen(
         when (effect) {
             is MenuEffect.None -> Unit
 
-            is MenuEffect.ShowGenomeList -> GenomeListDialog(
-                genomesList = effect.genomes,
-                selectedGenomeIndex = null,
-                title = bundle.get("button.selectGenome"),
-                new = bundle.get("button.new"),
-                select = bundle.get("button.select"),
-                import = bundle.get("button.import"),
-                onNew = { menuViewModel.handle(MenuIntent.OpenGenomeEditor(null)) },
-                onNext = { name -> menuViewModel.handle(MenuIntent.OpenGenomeEditor(name)) },
-                onRestart = {},
-                game = game,
-                onResize = { h -> onResize = if (h == {}) null else h },
-                isMenu = true
-            ).show(stage)
+            is MenuEffect.ShowGenomeList -> {
+                val dialog = GenomeListDialog(
+                    genomesList = effect.genomes,
+                    selectedGenomeIndex = null,
+                    title = bundle.get("button.selectGenome"),
+                    new = bundle.get("button.new"),
+                    select = bundle.get("button.select"),
+                    import = bundle.get("button.import"),
+                    onNew = { menuViewModel.handle(MenuIntent.OpenGenomeEditor(null)) },
+                    onNext = { name -> menuViewModel.handle(MenuIntent.OpenGenomeEditor(name)) },
+                    game = game,
+                    onResize = { h -> onResize = if (h == {}) null else h },
+                    onImport = { menuViewModel.handle(MenuIntent.ImportGenome) }
+                )
+                menuViewModel.onGenomeImportFinished = { dialog.fadeOut() }
+                dialog.show(stage)
+            }
 
             is MenuEffect.ShowWorldList -> MapSelect(
                 game = game,

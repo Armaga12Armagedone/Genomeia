@@ -10,7 +10,10 @@ import io.github.some_example_name.old.commands.GoSimulation
 import io.github.some_example_name.old.core.DIGameGlobalContainer.navigationCommandsManager
 import io.github.some_example_name.old.core.color_picker.ColorPicker
 import io.github.some_example_name.old.editor.system.logic.DivideDialog
+import io.github.some_example_name.old.editor.system.logic.EditorLogicSystem
+import io.github.some_example_name.old.editor.system.logic.ExportGenome
 import io.github.some_example_name.old.editor.system.logic.MutateDialog
+import io.github.some_example_name.old.editor.system.logic.SaveGenome
 import io.github.some_example_name.old.editor.system.logic.ShowChangeRemoveDialog
 import io.github.some_example_name.old.editor.system.logic.ShowDivideDialog
 import io.github.some_example_name.old.editor.system.logic.ShowMutateDialog
@@ -23,8 +26,6 @@ import io.github.some_example_name.old.editor.system.logic.TryToRemove
 import io.github.some_example_name.old.features.editor.dialog.ActionDialog
 import io.github.some_example_name.old.features.editor.dialog.ActionDialogType
 import io.github.some_example_name.old.features.editor.dialog.MutateOrDivideDialog
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
-import io.github.some_example_name.old.systems.genomics.genome.Genome
 
 fun Stage.changeRemoveActionDialog(
     command: ShowChangeRemoveDialog,
@@ -145,36 +146,29 @@ fun Stage.colorPickerDialog(
 }
 
 
+/**
+ * Диалог сохранения генома. Каждая его кнопка — одна или две команды подряд: сохранение
+ * идёт командой редактора (SaveGenome), переходы — командами навигации.
+ */
 fun Stage.saveDialog(
     isGoToMenu: Boolean,
-    genome: Genome
+    genomeName: String,
+    editorLogicSystem: EditorLogicSystem
 ) {
     SaveGenomeDialog(
-        genome = genome,
-        bake = { toSave ->
-            // Тело в этот момент уже выращено в сущностях редактора, поэтому раскладка
-            // считается прямо по ним. Организм в редакторе всегда один, с organIndex = 0.
-            val layout = DIGenomeEditorContainer.rcmSort.bake()
-
-            // Выгрузка топологии для стенда физики. Здесь же, потому что момент тот
-            // самый: тело выращено целиком и отработало последний тик, значит координаты
-            // это реальная поза покоя. Путь к файлу уходит в лог.
-            DIGenomeEditorContainer.bodyExport.exportToFile()
-
-            val cellEntity = DIGenomeEditorContainer.cellEntity
-            toSave.copy(
-                cellsAmount = cellEntity.aliveList.size,
-                linksAmount = DIGenomeEditorContainer.linkEntity.aliveList.size,
-                neuralLinksAmount = DIGenomeEditorContainer.neuralLinkEntity.aliveList.size,
-                sortedGraph = layout
-            )
-        },
+        genomeName = genomeName,
+        onSave = { name -> editorLogicSystem.putUiCommand(SaveGenome(name)) },
         // Оба перехода идут через менеджер, а не через game.screen = ...: только так они
         // попадают в журнал действий, и только так чистится стек прошлого маршрута.
-        onSaveAndTest = { genomeNameForTest ->
+        onSaveAndTest = { name ->
+            editorLogicSystem.putUiCommand(SaveGenome(name))
             navigationCommandsManager.performCommand(
-                GoReplace(GoSimulation(world = null, genomeName = genomeNameForTest))
+                GoReplace(GoSimulation(world = null, genomeName = name))
             )
+        },
+        onSaveAndExport = { name ->
+            editorLogicSystem.putUiCommand(SaveGenome(name))
+            editorLogicSystem.putUiCommand(ExportGenome(name))
         },
         onGoMenu = {
             navigationCommandsManager.performCommand(GoReplace(GoMenu))

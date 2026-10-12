@@ -1,14 +1,18 @@
 package io.github.some_example_name.old.features.worldeditor
 
+import io.github.some_example_name.old.commands.GameCommand
 import io.github.some_example_name.old.core.log.ActionLog
 
 /** Что игрок хочет сделать в редакторе мира. Один тип на все действия экрана. */
-sealed interface WorldEditorIntent {
-    val name: String
-    val detail: String get() = ""
+sealed interface WorldEditorIntent : GameCommand {
 
-    data object NewSeed : WorldEditorIntent {
+    /**
+     * Кнопка «Новый сид». Сам сид выбирается при создании команды ([newSeed]) и едет в ней:
+     * случайность внутри обработчика при повторе по журналу дала бы другую карту.
+     */
+    data class NewSeed(val seed: String) : WorldEditorIntent {
         override val name get() = "NewSeed"
+        override val detail get() = seed
     }
 
     data class SetSeed(val seed: String) : WorldEditorIntent {
@@ -49,6 +53,18 @@ sealed interface WorldEditorIntent {
     data object ClearMap : WorldEditorIntent {
         override val name get() = "ClearMap"
     }
+
+    /** Показать или спрятать панель настроек генератора рядом с холстом. */
+    data class SetSettingsOpen(val open: Boolean) : WorldEditorIntent {
+        override val name get() = "SetSettingsOpen"
+        override val detail get() = open.toString()
+    }
+
+    companion object {
+        private const val SEED_LENGTH = 8
+
+        fun newSeed(): NewSeed = NewSeed((1..SEED_LENGTH).map { ('0'..'9').random() }.joinToString(""))
+    }
 }
 
 /**
@@ -77,11 +93,11 @@ class WorldEditorViewModel(
         const val BRUSH_SIZE_MIN = 0f
         const val BRUSH_SIZE_MAX = 20f
 
-        private const val SEED_LENGTH = 8
         private const val LOG_SOURCE = "WorldEditor"
     }
 
-    var seed: String = randomSeed()
+    /** Задаётся первой же командой, см. init. */
+    var seed: String = ""
         private set
 
     /**
@@ -102,10 +118,13 @@ class WorldEditorViewModel(
     var useCircleBrush: Boolean = true
         private set
 
+    var isSettingsOpen: Boolean = false
+        private set
+
     /** Правки поверх сгенерированной карты — то, из чего собирается [WorldSpec]. */
     private val edits = mutableListOf<WorldEdit>()
 
-    var map: Array<BooleanArray> = generate()
+    var map: Array<BooleanArray> = emptyArray()
         private set
 
     /**
@@ -116,12 +135,18 @@ class WorldEditorViewModel(
     var mapVersion: Int = 0
         private set
 
+    init {
+        // Стартовый сид — тоже команда, а не тихая случайность в конструкторе: иначе
+        // повтор по журналу начался бы с другой карты, и все мазки легли бы не туда.
+        handle(WorldEditorIntent.newSeed())
+    }
+
     fun handle(intent: WorldEditorIntent) {
-        ActionLog.record(LOG_SOURCE, intent.name, intent.detail)
+        ActionLog.record(LOG_SOURCE, intent)
 
         when (intent) {
             is WorldEditorIntent.NewSeed -> {
-                seed = randomSeed()
+                seed = intent.seed
                 regenerate()
             }
 
@@ -163,6 +188,8 @@ class WorldEditorViewModel(
             )
 
             is WorldEditorIntent.ClearMap -> applyEdit(WorldEdit.Clear)
+
+            is WorldEditorIntent.SetSettingsOpen -> isSettingsOpen = intent.open
         }
     }
 
@@ -193,7 +220,4 @@ class WorldEditorViewModel(
 
     private fun generate(): Array<BooleanArray> =
         worldGenerator.generateWorld(gridWidth, gridHeight, seed.hashCode().toLong())
-
-    private fun randomSeed(): String =
-        (1..SEED_LENGTH).map { ('0'..'9').random() }.joinToString("")
 }
