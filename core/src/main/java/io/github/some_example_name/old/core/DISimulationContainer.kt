@@ -40,6 +40,8 @@ import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
 import io.github.some_example_name.old.systems.physics.CollisionManager
 import io.github.some_example_name.old.systems.physics.MovementManager
 import kotlin.getValue
+import io.github.some_example_name.old.systems.debug.LogReplay
+import io.github.some_example_name.old.systems.debug.LogSaver
 
 object DISimulationContainer : DIContext, Disposable {
 
@@ -56,6 +58,8 @@ object DISimulationContainer : DIContext, Disposable {
     var energyTransportRate = substrateSettings.data.rateOfEnergyTransferInLinks * 8f
     var linkMaxLength2 = 3f * 3f
     var cellsSettings = substrateSettings.cellsSettings
+    val logSaver = LogSaver()
+    val logReplay = LogReplay()
 
     init {
         if (gridHeight % heightMultiplier != 0) throw Exception("gridHeight should be a multiple of (halfChunkHeight * 2 * 2)")
@@ -203,7 +207,9 @@ object DISimulationContainer : DIContext, Disposable {
         gridManager = gridManager,
         particleEntity = particleEntity,
         zygote = zygote,
-        isEditor = false
+        isEditor = false,
+        logSaver = logSaver,
+        logReplay = logReplay
     )
 
     override val worldCommandsManager = WorldCommandsManager(
@@ -350,7 +356,9 @@ object DISimulationContainer : DIContext, Disposable {
             renderBufferManager = renderBufferManager,
             pheromonesManager = pheromonesManager,
             movementManager = movementManager,
-            worldTerrainManager = worldTerrainManager
+            worldTerrainManager = worldTerrainManager,
+            logSaver = logSaver,
+            logReplay = logReplay
         )
     }
 
