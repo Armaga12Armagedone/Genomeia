@@ -9,7 +9,9 @@ import com.badlogic.gdx.graphics.VertexAttributes
 import com.badlogic.gdx.graphics.glutils.FrameBuffer
 import com.badlogic.gdx.graphics.glutils.ShaderProgram
 import io.github.some_example_name.render.components.BlurPostProcessRenderer
+import io.github.some_example_name.render.components.CellGeometry
 import io.github.some_example_name.render.components.DistortRenderer
+import io.github.some_example_name.render.components.NostalgicRenderer
 import io.github.some_example_name.render.components.ParticleRenderer
 import io.github.some_example_name.render.components.PheromoneRenderer
 import io.github.some_example_name.render.components.PostProcessRenderer
@@ -23,20 +25,29 @@ import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
  * Единственная точка входа модуля рендера: отдаёшь [RenderFrame] — получаешь картинку.
  *
  * Конвейер выполняется по порядку:
- *  1. ParticleRenderer      — клетки инстансингом в scene FBO
- *  2. PostProcessRenderer   — собель и пастельная стилизация
- *  3. DistortRenderer       — хроматическая аберрация
- *  4. BlurPostProcessRenderer — гауссов блюр
- *  5. PheromoneRenderer     — феромоны поверх
- *  6. VignetteRenderer      — виньетка, единственный проход прямо в экран
+ *  1. ParticleRenderer      — клетки инстансингом в scene FBO (в отладке — прямо в экран)
+ *  2. NostalgicRenderer     — клетки ностальгического режима, сам выводит кадр на экран
+ *  3. PostProcessRenderer   — собель и пастельная стилизация
+ *  4. DistortRenderer       — хроматическая аберрация
+ *  5. BlurPostProcessRenderer — гауссов блюр
+ *  6. PheromoneRenderer     — феромоны поверх
+ *  7. VignetteRenderer      — виньетка, единственный проход прямо в экран
+ *
+ * Какие из них работают, решает [RenderFrame.mode]: проход, которому в этом режиме делать
+ * нечего, сразу возвращается. В реалистичном режиме идут все, кроме второго; в отладочном
+ * — только первый; в ностальгическом — только второй.
  *
  * Порядок задаётся списком [components] — чтобы вставить свой проход, достаточно
  * добавить [RenderComponent] в нужную позицию.
  *
+ * Клетки заливаются на GPU один раз за кадр, до всех проходов, в общую [CellGeometry] —
+ * её рисуют и ParticleRenderer, и NostalgicRenderer.
+ *
  * ПРО ВЛАДЕНИЕ И ЖИЗНЕННЫЙ ЦИКЛ
  * -----------------------------
- * Экземпляр владеет ВСЕМИ своими GL-ресурсами: меш, три FBO, шейдеры и текстуры внутри
- * компонентов. Отсюда правило: у кого экземпляр — тот и зовёт [dispose], и только он.
+ * Экземпляр владеет ВСЕМИ своими GL-ресурсами: меш, геометрия клеток, три FBO, шейдеры
+ * и текстуры внутри компонентов. Отсюда правило: у кого экземпляр — тот и зовёт
+ * [dispose], и только он.
  *
  * Раньше это правило было нарушено, и молча. Один ShaderManager лежал синглтоном в
  * DIGameGlobalContainer, а пользовались им три экрана сразу — меню, симуляция и редактор
@@ -60,6 +71,7 @@ class WorldRenderer(
 
     // Общие ресурсы
     private lateinit var mesh: Mesh
+    private val cellGeometry = CellGeometry()
     private lateinit var fbo: FrameBuffer
     private lateinit var blurFbo: FrameBuffer
     private lateinit var distortFbo: FrameBuffer
@@ -95,9 +107,11 @@ class WorldRenderer(
     private fun create() {
         createFullscreenMesh()
         createFBOs()
+        cellGeometry.create()
 
         // Порядок в списке = порядок проходов.
-        components.add(ParticleRenderer(texturePaths))
+        components.add(ParticleRenderer(texturePaths, cellGeometry))
+        components.add(NostalgicRenderer(cellGeometry))
         components.add(PostProcessRenderer())
         components.add(DistortRenderer())
         components.add(BlurPostProcessRenderer())
@@ -123,7 +137,7 @@ class WorldRenderer(
         val width = Gdx.graphics.width.coerceAtLeast(1)
         val height = Gdx.graphics.height.coerceAtLeast(1)
 
-        fbo = FrameBuffer(Pixmap.Format.RGBA8888, width, height, true)
+        fbo = createSceneFbo(width, height)
         println("✅ FBO создан: ${width}×${height} (для пост-процессинга)")
 
         blurFbo = FrameBuffer(Pixmap.Format.RGBA8888, width, height, false)
@@ -137,12 +151,23 @@ class WorldRenderer(
         currentHeight = height
     }
 
+    /**
+     * Scene FBO — с глубиной И stencil.
+     *
+     * Stencil нужен ностальгическому режиму: по нему считается контур (NostalgicRenderer).
+     * Остальные режимы его не трогают — тест stencil у них выключен. Глубина с ним
+     * становится пакованной D24S8 вместо отдельного D16, то есть заодно точнее; лишняя
+     * память — два байта на пиксель.
+     */
+    private fun createSceneFbo(width: Int, height: Int): FrameBuffer =
+        FrameBuffer(Pixmap.Format.RGBA8888, width, height, true, true)
+
     fun resize(width: Int, height: Int) {
         val safeW = width.coerceAtLeast(1)
         val safeH = height.coerceAtLeast(1)
 
         if (::fbo.isInitialized) fbo.dispose()
-        fbo = FrameBuffer(Pixmap.Format.RGBA8888, safeW, safeH, true)
+        fbo = createSceneFbo(safeW, safeH)
 
         if (::blurFbo.isInitialized) blurFbo.dispose()
         blurFbo = FrameBuffer(Pixmap.Format.RGBA8888, safeW, safeH, false)
@@ -166,13 +191,17 @@ class WorldRenderer(
     fun render(frame: RenderFrame) {
         val cells = frame.cells
 
+        // Один раз за кадр и до всех проходов: сколько бы их ни рисовало клетки, байты
+        // едут на GPU единожды.
+        if (frame.uploadCells && cells != null) {
+            cellGeometry.upload(cells)
+        }
+
         renderContext.apply {
             fullscreenMesh = mesh
             cameraProjection = frame.cameraProjection
 
-            particleData = cells
             numInstances = cells?.let { it.remaining() / CellInstanceBuffer.STRUCT_SIZE } ?: 0
-            isNewFrame = frame.uploadCells
 
             pheromoneData = frame.pheromones
             numPheromoneInstances =
@@ -183,7 +212,7 @@ class WorldRenderer(
             blurAmount = frame.blurAmount
             zoom = frame.zoom
             vignetteEnabled = frame.vignetteEnabled
-            usePostProcess = frame.usePostProcess
+            mode = frame.mode
 
             sceneFbo = fbo
             this.blurFbo = this@WorldRenderer.blurFbo
@@ -202,6 +231,7 @@ class WorldRenderer(
         components.forEach { it.dispose() }
         components.clear()
 
+        cellGeometry.dispose()
         if (::mesh.isInitialized) mesh.dispose()
 
         if (::fbo.isInitialized) fbo.dispose()

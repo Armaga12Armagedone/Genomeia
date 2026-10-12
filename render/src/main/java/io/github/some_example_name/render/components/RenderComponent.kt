@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.Mesh
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.glutils.FrameBuffer
 import com.badlogic.gdx.math.Matrix4
+import io.github.some_example_name.render.RenderMode
 import java.nio.ByteBuffer
 
 /**
@@ -17,10 +18,11 @@ class RenderContext {
     // Camera/projection
     lateinit var cameraProjection: Matrix4
 
-    // Particle data
-    var particleData: ByteBuffer? = null
+    /**
+     * Клеток в кадре. Сами данные уже лежат в инстансном VBO у [CellGeometry]: их заливает
+     * WorldRenderer один раз за кадр, до всех проходов.
+     */
     var numInstances: Int = 0
-    var isNewFrame: Boolean = false
 
     // Pheromone data
     var pheromoneData: ByteBuffer? = null
@@ -37,7 +39,10 @@ class RenderContext {
     var blurAmount: Float = 0f
     var zoom: Float = 1f
     var vignetteEnabled: Float = 0f
-    var usePostProcess: Boolean = true
+    var mode: RenderMode = RenderMode.REALISTIC
+
+    /** Короткая запись для проходов постпроцесса: все они рисуют только в этом случае. */
+    val usePostProcess: Boolean get() = mode.usesPostProcess
 
     // Texture passing between components
     var currentTexture: Texture? = null

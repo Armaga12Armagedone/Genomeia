@@ -17,6 +17,7 @@ import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector3
 import io.github.some_example_name.render.RenderFrame
+import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.WorldRenderer
 import io.github.some_example_name.render.debug.RenderSceneDump
 import io.github.some_example_name.render.pack.CellInstanceBuffer
@@ -43,10 +44,25 @@ import java.io.File
  *   gradlew :render:renderLab -Dgenomeia.scene=scene-dumps/scene-1712345678.scene
  *       откроет конкретный снимок
  *
+ *   -Dgenomeia.synthetic=layers|body|dense   какую синтетику рисовать без дампа
+ *   -Dgenomeia.mode=realistic|debug|nostalgic   режим рендера на старте
+ *   -Dgenomeia.zoom=0.01                       зум камеры вместо того, что в сцене
+ *   -Dgenomeia.cameraX=0 -Dgenomeia.cameraY=0  центр камеры, тоже вместо сценового
+ *
+ * ЗАМЕР ПРОИЗВОДИТЕЛЬНОСТИ
+ * ------------------------
+ *   gradlew :render:renderLab -Dgenomeia.synthetic=dense -Dgenomeia.bench=20
+ *       прогонит все режимы по очереди, каждый кадр рендерит сцену 20 раз подряд, напечатает
+ *       время GPU на один прогон и выйдет. -Dgenomeia.benchOut=путь.txt — то же в файл.
+ *   Клавиша T — тот же замер вживую для текущего режима, цифры в подсказке.
+ *   Подробнее о том, что и как меряется, — в LabBenchmark.
+ *
  * УПРАВЛЕНИЕ
  * ----------
  *   R           перечитать шейдеры с диска
- *   P           постпроцесс вкл/выкл
+ *   M           режим: реалистичный → отладка → ностальгический
+ *   N           следующая синтетическая сцена (если открыта не из дампа)
+ *   T           замер вкл/выкл: рендер N раз за кадр, время в подсказке
  *   V           виньетка вкл/выкл
  *   B           размытие: имитация рывка камеры
  *   колесо      зум
@@ -66,6 +82,20 @@ private const val SCENE_PROPERTY = "genomeia.scene"
 private const val SCREENSHOT_PROPERTY = "genomeia.screenshot"
 private const val SCREENSHOT_FRAME_PROPERTY = "genomeia.screenshotFrame"
 private const val DEFAULT_SCREENSHOT_FRAME = 60
+private const val MODE_PROPERTY = "genomeia.mode"
+private const val SYNTHETIC_PROPERTY = "genomeia.synthetic"
+private const val BENCH_PROPERTY = "genomeia.bench"
+private const val BENCH_OUT_PROPERTY = "genomeia.benchOut"
+private const val ZOOM_PROPERTY = "genomeia.zoom"
+private const val CAMERA_X_PROPERTY = "genomeia.cameraX"
+private const val CAMERA_Y_PROPERTY = "genomeia.cameraY"
+
+/** Повторов рендера за кадр при замере по клавише T. */
+private const val DEFAULT_BENCH_REPEATS = 20
+
+/** Автозамер: кадров на прогрев (шейдеры, кэши драйвера) и на сами замеры — на режим. */
+private const val BENCH_WARMUP_FRAMES = 30
+private const val BENCH_SAMPLE_FRAMES = 120
 
 /** Размер окна, когда рисуем синтетику и подстраиваться не подо что. */
 private const val FALLBACK_WIDTH = 1280
@@ -118,7 +148,10 @@ fun main(args: Array<String>) {
         )
         // Тот же профиль, что у игры (см. Lwjgl3Launcher): набор возможностей GLES 3.0,
         // без SSBO. Без него Gdx.gl30 равен null, и ParticleRenderer молча ничего не рисует.
-        setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 3, 0)
+        //
+        // Версия контекста — 3.3, как у игры, а не 3.0: LWJGL берёт glVertexAttribDivisor
+        // из GL33, и в контексте 3.0 инстансинг ParticleRenderer ронял JVM прямо в create().
+        setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 3, 3)
         useVsync(true)
     }
 
@@ -182,7 +215,11 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
     private lateinit var cells: java.nio.ByteBuffer
     private lateinit var pheromones: java.nio.ByteBuffer
 
-    private var usePostProcess = true
+    /** Синтетика, если открыта не из дампа; у неё своя камера. */
+    private var synthetic: SyntheticScene.Scene? = null
+    private var syntheticKind = SyntheticScene.Kind.LAYERS
+
+    private var mode = RenderMode.REALISTIC
     private var vignette = 1f
     private var blur = 0f
     private var showHud = true
@@ -192,21 +229,37 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
     private var screenshotTaken = false
     private var screenshotPending = false
 
+    private lateinit var benchmark: LabBenchmark
+    /** Замер по клавише T: рендер N раз за кадр, скользящая медиана в подсказке. */
+    private var liveBench = false
+    private val liveWindow = LabBenchmark.Window(BENCH_SAMPLE_FRAMES)
+    /** Автозамер всех режимов по -Dgenomeia.bench; null — не запрошен. */
+    private var autoBench: AutoBench? = null
+
     override fun create() {
         texturePaths = scene?.texturePaths?.takeIf { it.isNotEmpty() } ?: discoverTextures()
-
-        val synthetic = if (scene == null) SyntheticScene.build(texturePaths.size) else null
-        cells = scene?.cells ?: synthetic!!.cells
-        pheromones = scene?.pheromones ?: synthetic!!.pheromones
-
-        usePostProcess = scene?.usePostProcess ?: true
-        vignette = scene?.vignetteEnabled ?: 1f
-        blur = scene?.blurAmount ?: 0f
 
         camera = OrthographicCamera().apply {
             setToOrtho(false, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat())
         }
-        resetCamera()
+
+        if (scene != null) {
+            cells = scene.cells
+            pheromones = scene.pheromones
+            resetCamera()
+        } else {
+            syntheticKind = System.getProperty(SYNTHETIC_PROPERTY)
+                ?.let { name -> SyntheticScene.Kind.entries.firstOrNull { it.name.equals(name, true) } }
+                ?: SyntheticScene.Kind.LAYERS
+            loadSynthetic(syntheticKind)
+        }
+
+        mode = System.getProperty(MODE_PROPERTY)
+            ?.let { name -> RenderMode.entries.firstOrNull { it.name.equals(name, true) } }
+            ?: scene?.mode
+            ?: RenderMode.REALISTIC
+        vignette = scene?.vignetteEnabled ?: 1f
+        blur = scene?.blurAmount ?: 0f
 
         worldRenderer = WorldRenderer(texturePaths)
 
@@ -214,16 +267,44 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
         font = BitmapFont()
         hudMatrix = Matrix4()
 
+        val autoRepeats = System.getProperty(BENCH_PROPERTY)?.toIntOrNull()
+        benchmark = LabBenchmark(autoRepeats ?: DEFAULT_BENCH_REPEATS)
+        if (autoRepeats != null) {
+            // Vsync на замер не влияет (время берётся с GPU), но без него автозамер
+            // проходит в разы быстрее.
+            Gdx.graphics.setVSync(false)
+            autoBench = AutoBench(RenderMode.entries.toList())
+            mode = RenderMode.entries.first()
+        }
+
         Gdx.input.inputProcessor = LabInput()
+    }
+
+    /**
+     * Синтетика заданного вида. Пересобирается целиком: у каждой сцены своя камера, и
+     * она же — «исходный кадр» для клавиши F.
+     */
+    private fun loadSynthetic(kind: SyntheticScene.Kind) {
+        // Слой для не-клеток — not_cell.png, как в игре; у стенда порядок слоёв свой.
+        val nonCellLayer = texturePaths.indexOfFirst { it.endsWith("not_cell.png") }
+            .takeIf { it >= 0 } ?: (texturePaths.size - 1)
+        val built = SyntheticScene.build(kind, texturePaths.size, nonCellLayer)
+        synthetic = built
+        cells = built.cells
+        pheromones = built.pheromones
+        resetCamera()
     }
 
     private fun resetCamera() {
         camera.position.set(
-            scene?.cameraX ?: SyntheticScene.CENTER_X,
-            scene?.cameraY ?: SyntheticScene.CENTER_Y,
+            System.getProperty(CAMERA_X_PROPERTY)?.toFloatOrNull()
+                ?: scene?.cameraX ?: synthetic?.centerX ?: 0f,
+            System.getProperty(CAMERA_Y_PROPERTY)?.toFloatOrNull()
+                ?: scene?.cameraY ?: synthetic?.centerY ?: 0f,
             0f
         )
-        camera.zoom = scene?.zoom ?: SyntheticScene.ZOOM
+        camera.zoom = System.getProperty(ZOOM_PROPERTY)?.toFloatOrNull()
+            ?: scene?.zoom ?: synthetic?.zoom ?: 1f
         camera.update()
     }
 
@@ -293,10 +374,13 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
     }
 
     override fun render() {
-        if (usePostProcess) {
-            Gdx.gl.glClearColor(0f, 0f, 0f, 1f)
-        } else {
+        autoBench?.let { mode = it.mode }
+
+        // Как в SimulationScreen: под отладкой бежевый фон, в остальных режимах — чёрный.
+        if (mode == RenderMode.DEBUG) {
             Gdx.gl.glClearColor(0.7f, 0.678f, 0.599f, 1f)
+        } else {
+            Gdx.gl.glClearColor(0f, 0f, 0f, 1f)
         }
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
@@ -310,9 +394,21 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
             blurAmount = blur
             zoom = camera.zoom
             vignetteEnabled = vignette
-            usePostProcess = this@RenderLab.usePostProcess
+            mode = this@RenderLab.mode
         }
-        worldRenderer.render(frame)
+
+        if (liveBench || autoBench != null) {
+            val sample = benchmark.measure { repeat ->
+                // Клетки заливаем только в первом прогоне: в игре заливка одна на кадр, и
+                // N заливок подряд мерили бы шину, а не шейдеры.
+                frame.uploadCells = repeat == 0
+                worldRenderer.render(frame)
+            }
+            liveWindow.add(sample)
+            autoBench?.record(sample)
+        } else {
+            worldRenderer.render(frame)
+        }
 
         if (blur > 0f) blur -= 0.09f
 
@@ -392,7 +488,7 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
         )
         batch.begin()
 
-        val source = if (scene == null) "синтетика" else "дамп"
+        val source = if (scene == null) "синтетика ${syntheticKind.name.lowercase()}" else "дамп"
         val instances = cells.remaining() / CellInstanceBuffer.STRUCT_SIZE
         val pheromoneCount = pheromones.remaining() / PheromoneInstanceBuffer.STRUCT_SIZE
 
@@ -403,9 +499,14 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
                 appendLine("клеток $instances   феромонов $pheromoneCount   слоёв ${texturePaths.size}")
                 appendLine("zoom ${"%.4f".format(camera.zoom)}   " +
                     "камера ${"%.1f".format(camera.position.x)}, ${"%.1f".format(camera.position.y)}")
-                appendLine("постпроцесс ${onOff(usePostProcess)}   виньетка ${onOff(vignette > 0f)}   перезагрузок $reloadCount")
+                appendLine("режим ${mode.name.lowercase()}   виньетка ${onOff(vignette > 0f)}   перезагрузок $reloadCount")
+                if (liveBench || autoBench != null) {
+                    appendLine("замер ×${benchmark.repeats}: GPU ${"%.3f".format(liveWindow.gpuMedian)} мс " +
+                        "(мин ${"%.3f".format(liveWindow.gpuMin)}), CPU ${"%.3f".format(liveWindow.cpuMedian)} мс " +
+                        "на прогон, кадров ${liveWindow.size}")
+                }
                 appendLine()
-                appendLine("R перечитать шейдеры   P постпроцесс   V виньетка   B размытие")
+                appendLine("R перечитать шейдеры   M режим   N сцена   T замер   V виньетка   B размытие")
                 appendLine("колесо зум   ЛКМ панорама   F исходный кадр   TAB скрыть   ESC выход")
                 lastReloadError?.let {
                     appendLine()
@@ -431,8 +532,62 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
 
     override fun dispose() {
         worldRenderer.dispose()
+        benchmark.dispose()
         batch.dispose()
         font.dispose()
+    }
+
+    /**
+     * Автозамер: режимы по очереди, на каждый — прогрев и серия кадров, потом отчёт и выход.
+     *
+     * По кадрам, а не одним циклом внутри render(): окно должно продолжать обрабатывать
+     * события, иначе через несколько секунд Windows объявит его зависшим.
+     */
+    private inner class AutoBench(private val modes: List<RenderMode>) {
+        private var index = 0
+        private var frames = 0
+        private val window = LabBenchmark.Window(BENCH_SAMPLE_FRAMES)
+        private val report = StringBuilder()
+
+        val mode: RenderMode get() = modes[index]
+
+        init {
+            val instances = cells.remaining() / CellInstanceBuffer.STRUCT_SIZE
+            report.appendLine("замер рендера: ${Gdx.graphics.width}×${Gdx.graphics.height}, " +
+                "частиц $instances, зум ${camera.zoom}, повторов за кадр ${benchmark.repeats}, " +
+                "прогрев $BENCH_WARMUP_FRAMES + замер $BENCH_SAMPLE_FRAMES кадров на режим")
+            report.appendLine("GPU: ${Gdx.gl.glGetString(GL20.GL_RENDERER)}")
+            report.appendLine("режим        GPU медиана  GPU мин   CPU медиана  (мс на один прогон)")
+        }
+
+        fun record(sample: LabBenchmark.Sample) {
+            frames++
+            if (frames <= BENCH_WARMUP_FRAMES) return
+            window.add(sample)
+            if (frames < BENCH_WARMUP_FRAMES + BENCH_SAMPLE_FRAMES) return
+
+            report.appendLine(
+                "%-12s %8.3f    %8.3f   %8.3f".format(
+                    mode.name.lowercase(), window.gpuMedian, window.gpuMin, window.cpuMedian
+                )
+            )
+            window.clear()
+            liveWindow.clear()
+            frames = 0
+            index++
+            if (index == modes.size) finish()
+        }
+
+        private fun finish() {
+            val text = report.toString()
+            println(text)
+            System.getProperty(BENCH_OUT_PROPERTY)?.let { path ->
+                File(path).writeText(text, Charsets.UTF_8)
+                println("✅ отчёт замера: $path")
+            }
+            autoBench = null
+            Gdx.app.exit()
+        }
     }
 
     private inner class LabInput : InputAdapter() {
@@ -444,7 +599,20 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
         override fun keyDown(keycode: Int): Boolean {
             when (keycode) {
                 Input.Keys.R -> reloadShaders()
-                Input.Keys.P -> usePostProcess = !usePostProcess
+                Input.Keys.M -> {
+                    mode = RenderMode.entries[(mode.ordinal + 1) % RenderMode.entries.size]
+                    liveWindow.clear()
+                }
+                Input.Keys.N -> if (scene == null) {
+                    val kinds = SyntheticScene.Kind.entries
+                    syntheticKind = kinds[(syntheticKind.ordinal + 1) % kinds.size]
+                    loadSynthetic(syntheticKind)
+                    liveWindow.clear()
+                }
+                Input.Keys.T -> {
+                    liveBench = !liveBench
+                    liveWindow.clear()
+                }
                 Input.Keys.V -> vignette = if (vignette > 0f) 0f else 1f
                 Input.Keys.B -> blur = 4f
                 Input.Keys.F -> resetCamera()

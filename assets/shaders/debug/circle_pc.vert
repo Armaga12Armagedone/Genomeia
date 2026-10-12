@@ -45,7 +45,7 @@ layout(location = 0) in vec3 a_corner;
 layout(location = 1) in vec2 a_center;
 layout(location = 2) in vec4 a_color;   // r, g, b, a
 layout(location = 3) in vec4 a_shape;   // cos, sin, радиус, энергия
-layout(location = 4) in vec4 a_type;    // тип клетки, ключ шума (младший байт), ключ (старший), —
+layout(location = 4) in vec4 a_type;    // тип клетки, ключ шума (младший байт), ключ (старший), флаги
 
 uniform mat4 u_projTrans;
 

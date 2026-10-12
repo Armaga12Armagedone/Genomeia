@@ -29,6 +29,7 @@ import io.github.some_example_name.old.features.editor.dialog.SymmetryDialog
 import io.github.some_example_name.old.core.ui.FlowAlignment
 import io.github.some_example_name.old.core.ui.STYLE_BLACK
 import io.github.some_example_name.old.core.ui.dp
+import io.github.some_example_name.old.core.ui.renderModeSelectBox
 import io.github.some_example_name.old.core.ui.globalVisTable
 import io.github.some_example_name.old.core.ui.visFlowRow
 import io.github.some_example_name.old.core.ui.visLabel
@@ -53,7 +54,8 @@ class ComposeGenomeEditor {
     fun composeGenomeEditor(
         stage: Stage,
         editorSimulationSystem: EditorSimulationSystem,
-        editorLogicSystem: EditorLogicSystem
+        editorLogicSystem: EditorLogicSystem,
+        editorRenderSystem: EditorRenderSystem
     ) {
         val rootTable = globalVisTable {
             setFillParent(true)
@@ -92,6 +94,14 @@ class ComposeGenomeEditor {
                 visTextButton("Symmetry", onClick = {
                     SymmetryDialog(symmetryManager).show(stage)
                 })
+
+                // Режим — свой у редактора, с режимом симуляции не связан.
+                add(
+                    renderModeSelectBox(
+                        selected = editorRenderSystem.mode,
+                        onSelect = { editorRenderSystem.mode = it }
+                    )
+                )
 
                 if (Gdx.app.type == Application.ApplicationType.Android) {
                     visToggleButton(

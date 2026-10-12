@@ -11,7 +11,7 @@ import com.badlogic.gdx.math.Matrix4
 import io.github.some_example_name.old.core.utils.drawTriangleMiddle
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.render.RenderFrame
-import io.github.some_example_name.render.RenderSettings
+import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.WorldRenderer
 import io.github.some_example_name.render.debug.RenderSceneDump
 import io.github.some_example_name.render.pack.CellInstanceBuffer
@@ -33,6 +33,13 @@ class RenderSystem(
 ) {
 
     var isRenderUi = true
+
+    /** Режим рендера этого мира; хранится у [renderBufferManager], см. пояснение там. */
+    var mode: RenderMode
+        get() = renderBufferManager.mode
+        set(value) {
+            renderBufferManager.mode = value
+        }
 
     private lateinit var fontMatrix: Matrix4
     private lateinit var spriteBatch: SpriteBatch
@@ -89,7 +96,8 @@ class RenderSystem(
         val pheromoneBuf = renderBufferManager.getCurrentPheromoneBuffer()
         val spec = renderBufferManager.getCurrentSpecificBufferData()
 
-        val usePostProcess = RenderSettings.usePostProcess
+        // Один раз на кадр: упаковка, рендер и отладка должны работать в одном режиме.
+        val mode = this.mode
 
         if (zoom != camera.zoom || cameraX != camera.position.x || cameraY != camera.position.y) {
             if (!spec.isCellSelected) {
@@ -101,7 +109,7 @@ class RenderSystem(
         }
 
         packCells(cellBuf)
-        packPheromones(pheromoneBuf, usePostProcess)
+        packPheromones(pheromoneBuf, mode.usesPostProcess)
 
         frame.apply {
             cameraProjection = camera.combined
@@ -113,11 +121,11 @@ class RenderSystem(
             blurAmount = blurLevel
             zoom = camera.zoom
             vignetteEnabled = 1f
-            this.usePostProcess = usePostProcess
+            this.mode = mode
         }
         worldRenderer.render(frame)
 
-        if (!usePostProcess) {
+        if (mode.drawsDebugOverlay) {
             drawDebug(cellBuf, linkBuf, pheromoneBuf)
         }
 

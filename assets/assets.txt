@@ -35,6 +35,12 @@ shaders/blur/ca_distort.frag
 shaders/blur/gaussian_blur.frag
 shaders/debug/circle.frag
 shaders/debug/circle_pc.vert
+shaders/nostalgic/count.frag
+shaders/nostalgic/nostalgic.frag
+shaders/nostalgic/nostalgic.vert
+shaders/nostalgic/plane.frag
+shaders/nostalgic/plane.vert
+shaders/nostalgic/present.frag
 shaders/pheromone/pheromone.frag
 shaders/pheromone/pheromone_pc.vert
 shaders/post_process/post_process.frag

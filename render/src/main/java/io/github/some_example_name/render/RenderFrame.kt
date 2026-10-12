@@ -58,9 +58,10 @@ class RenderFrame {
     var vignetteEnabled: Float = 0f
 
     /**
-     * Гонять ли кадр через постпроцесс (собель, аберрация, блюр, виньетка).
+     * Как рисовать кадр — см. [RenderMode].
      *
-     * Значение по умолчанию берётся из [RenderSettings], но кадр может его переопределить.
+     * Режим приходит с кадром, а не из глобальной настройки: он у каждого экрана свой (у
+     * симуляции, у редактора, у меню), а WorldRenderer один на всю игру.
      */
-    var usePostProcess: Boolean = true
+    var mode: RenderMode = RenderMode.REALISTIC
 }

@@ -246,11 +246,16 @@ class StyledSelectBox<T> : VisSelectBox<T>(makeCleanSelectBoxStyle()) {
     }
 }
 
-fun <T> VisTable.visSelectBox(
+/**
+ * [StyledSelectBox] с пунктами и обработчиком — без привязки к таблице.
+ *
+ * Для мест, где раскладка собирается руками, а не DSL: например, верхняя панель экрана
+ * симуляции переносит свои кнопки по строкам сама. Внутри DSL — [visSelectBox].
+ */
+fun <T> styledSelectBox(
     items: Array<T>,
     selectedIndex: Int = 0,
-    onChange: ((T, Int) -> Unit)? = null,
-    cellInit: (Cell<StyledSelectBox<T>>.() -> Unit) = {}
+    onChange: ((T, Int) -> Unit)? = null
 ): StyledSelectBox<T> {
     val selectBox = StyledSelectBox<T>()
 
@@ -268,7 +273,16 @@ fun <T> VisTable.visSelectBox(
             }
         })
     }
+    return selectBox
+}
 
+fun <T> VisTable.visSelectBox(
+    items: Array<T>,
+    selectedIndex: Int = 0,
+    onChange: ((T, Int) -> Unit)? = null,
+    cellInit: (Cell<StyledSelectBox<T>>.() -> Unit) = {}
+): StyledSelectBox<T> {
+    val selectBox = styledSelectBox(items, selectedIndex, onChange)
     val cell = this.add(selectBox) as Cell<StyledSelectBox<T>>
     cellInit(cell)
     return selectBox

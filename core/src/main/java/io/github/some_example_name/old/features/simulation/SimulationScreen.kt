@@ -12,10 +12,12 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
+import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
+import com.badlogic.gdx.scenes.scene2d.utils.Layout
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import io.github.some_example_name.old.commands.GoGenomeEditor
 import io.github.some_example_name.old.commands.GoMenu
@@ -27,11 +29,12 @@ import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.ui.CameraControl
 import io.github.some_example_name.old.core.ui.h
 import io.github.some_example_name.old.core.ui.makeStyledButton
+import io.github.some_example_name.old.core.ui.renderModeSelectBox
 import io.github.some_example_name.old.core.ui.w
 import io.github.some_example_name.old.features.editor.GenomeEditorScreen
 import io.github.some_example_name.old.features.menu.MenuScreen
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
-import io.github.some_example_name.render.RenderSettings
+import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.debug.RenderSceneDump
 import java.io.File
 
@@ -202,10 +205,12 @@ class SimulationScreen(
                 Gdx.input.isKeyPressed(Input.Keys.D)
         }
 
-        if (RenderSettings.usePostProcess) {
-            Gdx.gl.glClearColor(0.0f, 0.0f, 0.0f, 1f)
-        } else {
+        // Бежевый фон — только под отладкой. Реалистичный режим закрывает экран
+        // постпроцессом, а у ностальгического чёрный фон — часть рисунка.
+        if (renderSystem.mode == RenderMode.DEBUG) {
             Gdx.gl.glClearColor(1.0f * 0.7f, 0.969f * 0.7f, 0.855f * 0.7f, 1.0f)
+        } else {
+            Gdx.gl.glClearColor(0.0f, 0.0f, 0.0f, 1f)
         }
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
@@ -385,14 +390,11 @@ class SimulationScreen(
                 DIGameGlobalContainer.game,
                 extraTextures
             )
-        val drawRaysToggle =
-            makeStyledButton(
-                DIGameGlobalContainer.bundle.get("button.drawRays"),
-                DIGameGlobalContainer.game,
-                extraTextures,
-                toggle = true
-            )
-        drawRaysToggle.isChecked = RenderSettings.usePostProcess
+        // Режим — свой у симуляции: ни меню, ни редактор генома его не видят.
+        val renderModeSelect = renderModeSelectBox(
+            selected = renderSystem.mode,
+            onSelect = { renderSystem.mode = it }
+        )
 
         val controllerKeysToggle =
             makeStyledButton(
@@ -403,15 +405,15 @@ class SimulationScreen(
             )
         controllerKeysToggle.isChecked = simulationSystem.simulationData.showControllerKeys
 
-        val buttons = if (genomeName == null) {
+        val buttons: List<Actor> = if (genomeName == null) {
             listOf(
                 menuButton, putOrganismToggle, selectGenomeButton, speedUpSimToggle,
-                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle
+                pauseSimToggle, restartSimulationButton, renderModeSelect, controllerKeysToggle
             )
         } else {
             listOf(
                 menuButton, putOrganismToggle, speedUpSimToggle, pauseSimToggle,
-                restartSimulationButton, drawRaysToggle, controllerKeysToggle
+                restartSimulationButton, renderModeSelect, controllerKeysToggle
             )
         }
 
@@ -423,7 +425,8 @@ class SimulationScreen(
         rowTable.defaults().pad(8f * Gdx.graphics.density).left()
 
         for (button in buttons) {
-            val prefWidth = button.prefWidth + 16f * Gdx.graphics.density
+            // Кнопки и список режима — разные виджеты, общее у них только Layout.
+            val prefWidth = (button as Layout).prefWidth + 16f * Gdx.graphics.density
             if (currentWidth + prefWidth > Gdx.graphics.width && currentWidth > 0f) {
                 controls.add(rowTable).growX().row()
                 rowTable = Table()
@@ -705,13 +708,6 @@ class SimulationScreen(
                 SpeedUpDialog(DIGameGlobalContainer.game, DIGameGlobalContainer.bundle).show(stage)
             }
         })
-
-        drawRaysToggle.addListener(object : ClickListener() {
-            override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                RenderSettings.usePostProcess = drawRaysToggle.isChecked
-            }
-        })
-
 
         pauseSimToggle.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {

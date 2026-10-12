@@ -9,8 +9,9 @@ import java.nio.ByteOrder
  *
  * ЗАЧЕМ ОТДЕЛЬНЫЙ КЛАСС
  * ---------------------
- * Раскладка этих 20 байт должна совпадать с тем, как ParticleRenderer объявляет
- * инстансные атрибуты, и с тем, что ждёт вершинный шейдер (shaders/debug/circle_pc.vert).
+ * Раскладка этих 20 байт должна совпадать с тем, как CellGeometry объявляет инстансные
+ * атрибуты, и с тем, что ждут вершинные шейдеры клеток (shaders/debug/circle_pc.vert,
+ * shaders/nostalgic/nostalgic.vert).
  * Раньше знание о ней жило в трёх местах сразу: побитовые формулы — в
  * RenderBufferManager.writeCell и в EditorRenderSystem.putBuffer, порядок полей — в
  * RenderSystem и снова в putBuffer, а обратные формулы — в самом шейдере. Три копии одних
@@ -26,7 +27,9 @@ import java.nio.ByteOrder
  *   [16..19] int   type            → a_type    (4 × GL_UNSIGNED_BYTE, normalized)
  *
  *   shape = cosByte | sinByte<<8 | radiusByte<<16 | energyByte<<24
- *   type  = cellType | seedLo<<8  | seedHi<<16    | 0<<24
+ *   type  = cellType | seedLo<<8  | seedHi<<16    | flags<<24
+ *
+ *   flags — битовые признаки частицы, см. [FLAG_NOT_CELL].
  *
  * ПОЧЕМУ НОРМАЛИЗОВАННЫЕ БАЙТЫ, А НЕ РАСПАКОВКА В ШЕЙДЕРЕ
  * -------------------------------------------------------
@@ -121,7 +124,8 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
         radius: Float,
         energy: Float,
         cellType: Int,
-        noiseSeed: Int
+        noiseSeed: Int,
+        isCell: Boolean = true
     ) {
         put(
             x = x,
@@ -133,7 +137,7 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
                 radiusByte = radiusByte(radius),
                 energyByte = energyByte(energy)
             ),
-            type = type(cellType = cellType, noiseSeed = noiseSeed)
+            type = type(cellType = cellType, noiseSeed = noiseSeed, isCell = isCell)
         )
     }
 
@@ -186,11 +190,12 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
     companion object {
         /**
          * 20 байт на инстанс: 2 float + 3 упакованных четвёрки байт.
-         * Менять только вместе с раскладкой атрибутов в ParticleRenderer и с circle_pc.vert.
+         * Менять только вместе с раскладкой атрибутов в CellGeometry и с шейдерами клеток
+         * (circle_pc.vert, nostalgic.vert).
          */
         const val STRUCT_SIZE = 20
 
-        /** Смещения полей внутри инстанса — их же объявляет ParticleRenderer. */
+        /** Смещения полей внутри инстанса — их же объявляет CellGeometry. */
         const val OFFSET_CENTER = 0
         const val OFFSET_COLOR = 8
         const val OFFSET_SHAPE = 12
@@ -208,10 +213,12 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
         const val RADIUS_SPAN = 0.7f
 
         /**
-         * Делитель энергии. В шейдере распакованный байт идёт как `a_shape.w * 0.5`,
-         * а потом возводится в квадрат — это радиус чёрной точки внутри клетки, а не
-         * физическая энергия. Число 10 здесь просто задаёт, при какой энергии точка
-         * достигает максимума.
+         * Делитель энергии: при ней байт насыщается, и чёрная точка внутри клетки
+         * достигает максимума. Это не физическая энергия, а только её показ.
+         *
+         * Читают её два шейдера, и по-разному. Отладка (circle.frag): `a_shape.w * 0.5`
+         * в квадрате — радиус точки в единицах мира. Ностальгический (nostalgic.vert):
+         * линейно, в долях радиуса клетки — см. NostalgicRenderer.NUCLEUS_AT_FULL_ENERGY.
          */
         const val ENERGY_SPAN = 10f
 
@@ -233,17 +240,33 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
                 ((energyByte and 0xFF) shl 24)
 
         /**
-         * Тип клетки (индекс слоя в TextureArray) и 16-битный ключ шума двумя байтами.
+         * Частица не клетка (субстанция и прочее): у неё нет ядра.
+         *
+         * Отдельным битом, а не по номеру типа. Номер «не клетки» задаёт :core (последний
+         * слой TextureArray, и тот достаётся через зажим индекса слоя), и сравнивать с ним
+         * в шейдере значило бы протащить в рендер чужую договорённость о порядке слоёв.
+         *
+         * Бит именно «не клетка», а не «клетка»: тогда ноль, который лежит в этом байте у
+         * всех, кто про флаги не знает (редактор генома, старые дампы), означает обычную
+         * клетку, а поменять пришлось ровно одно место — запись не-клеток в :core.
+         */
+        const val FLAG_NOT_CELL = 1
+
+        /**
+         * Тип клетки (индекс слоя в TextureArray), 16-битный ключ шума двумя байтами и
+         * байт флагов.
          *
          * Ключ раскладывается на два байта, потому что нормализованный атрибут отдаёт в
          * шейдер четыре независимых компоненты, а не одно число. Собирается обратно как
          * `lo + hi*256` с округлением — точно, без потери бита.
          */
-        fun type(cellType: Int, noiseSeed: Int): Int {
+        fun type(cellType: Int, noiseSeed: Int, isCell: Boolean = true): Int {
             val seed = noiseSeed and 0xFFFF
+            val flags = if (isCell) 0 else FLAG_NOT_CELL
             return cellType.coerceIn(0, 255) or
                 ((seed and 0xFF) shl 8) or
-                (((seed ushr 8) and 0xFF) shl 16)
+                (((seed ushr 8) and 0xFF) shl 16) or
+                (flags shl 24)
         }
     }
 }
