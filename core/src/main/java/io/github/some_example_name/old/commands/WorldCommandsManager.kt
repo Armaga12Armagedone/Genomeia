@@ -334,6 +334,11 @@ class WorldCommandsManager(
                         cellEntity.deleteNeural(cellIndex = ints[0], neuralGeneration = ints[1])
                     }
                     WorldCommandType.ADD_NEURAL -> {
+                        // Мутация ставит команду в параллельной фазе, а клетку к этому
+                        // моменту мог убить DELETE_CELL, применённый раньше в этом же
+                        // проходе. Нейро-слот мёртвой клетки уже никто не освободит —
+                        // он утёк бы навсегда.
+                        if (!cellEntity.isAlive[ints[0]]) return@consumeInOrder
                         cellEntity.addNeural(
                             index = ints[0],
                             cellType = ints[1],
@@ -409,6 +414,9 @@ class WorldCommandsManager(
                         val index = ints[0]
                         val threadId = ints[1]
                         val genomeIndex = ints[2]
+                        // Клетку могли убить раньше в этом же проходе, как в ADD_NEURAL:
+                        // onStart мёртвой клетки работал бы с уже освобождёнными слотами.
+                        if (!cellEntity.isAlive[index]) return@consumeInOrder
                         val newCell = cellList[cellEntity.cellType[index].toInt()]
                         newCell.onStart(index, threadId, genomeIndex)
                     }

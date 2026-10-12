@@ -4,7 +4,9 @@ import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.cells.Eye
 import io.github.some_example_name.old.cells.PheromoneEmitter
 import io.github.some_example_name.old.cells.PheromoneSensor
+import io.github.some_example_name.old.cells.Synapse
 import io.github.some_example_name.old.cells.base.formulaType
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellList
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellsTypeNames
 import io.github.some_example_name.old.editor.entities.EditorCell
@@ -63,6 +65,8 @@ class ActionDialogSystem(
             }
         }
 
+        // У синапса в a, b, c лежат параметры обучения, а не коэффициенты формулы, поэтому
+        // при переходе между синапсом и обычным нейроном они тоже сбрасываются.
         when {
             fromCellType.isNeural() && !isNeural() -> {
                 action = action.copy(
@@ -73,7 +77,16 @@ class ActionDialogSystem(
                     isSum = null
                 )
             }
-            !fromCellType.isNeural() && isNeural() -> {
+            isSynapse() && !fromCellType.isSynapse() -> {
+                action = action.copy(
+                    funActivation = 0,
+                    a = Synapse.DEFAULT_DECAY_RATE,
+                    b = Synapse.DEFAULT_LEARNING_RATE,
+                    c = Synapse.DEFAULT_DEPRESSION,
+                    isSum = true
+                )
+            }
+            isNeural() && (!fromCellType.isNeural() || fromCellType.isSynapse()) -> {
                 action = action.copy(
                     funActivation = 0,
                     a = 1f,
@@ -116,6 +129,7 @@ class ActionDialogSystem(
     fun isEye() = cellList[cellType] is Eye
     fun isDirected() = cellList[cellType].isDirected
     fun isNeural() = cellList[cellType].isNeural
+    fun isSynapse() = cellList[cellType] is Synapse
     fun isPheromone() = cellList[cellType] is PheromoneEmitter || cellList[cellType] is PheromoneSensor
     fun getCellColor(): Color = cellList[cellType].defaultColor.cpy()
 
@@ -124,23 +138,29 @@ class ActionDialogSystem(
     fun makeMutateList(): String {
         val text = StringBuilder()
         val actual = clickedCell.actual ?: return ""
-        val cellType = action.cellType ?: 0
         clickedCell.mutate?.apply {
 
+            // Мутация без смены типа хранит cellType = null — тип остаётся текущим.
             val actualCellType = actual.cellType
-            if (cellType != actualCellType && actualCellType != null) {
-                text.append("Cell type: ${cellsTypeNames[actualCellType]} -> ${cellsTypeNames[cellType]}\n")
+            val resultCellType = cellType ?: actualCellType
+            if (resultCellType != null && actualCellType != null && resultCellType != actualCellType) {
+                text.append("Cell type: ${cellsTypeNames[actualCellType]} -> ${cellsTypeNames[resultCellType]}\n")
             }
+            val toSynapse = resultCellType?.isSynapse() == true
 
-            if (funActivation != null && funActivation != actual.funActivation) {
+            // Синапс не вызывает функцию активации и не складывает входы — эти строки ему ни к чему.
+            if (!toSynapse && funActivation != null && funActivation != actual.funActivation) {
                 val formula = if (actual.funActivation != null) formulaType[actual.funActivation] else null
                 text.append("Activation formula: $formula -> ${formulaType[funActivation]}\n")
             }
 
-            if (a != null && a != actual.a) text.append("a: ${actual.a} -> $a\n")
-            if (b != null && b != actual.b) text.append("b: ${actual.b} -> $b\n")
-            if (c != null && c != actual.c) text.append("c: ${actual.c} -> $c\n")
-            if (isSum != null && isSum != actual.isSum) {
+            val aName = if (toSynapse) bundle.get("synapse.decayRate") else "a"
+            val bName = if (toSynapse) bundle.get("synapse.learningRate") else "b"
+            val cName = if (toSynapse) bundle.get("synapse.depression") else "c"
+            if (a != null && a != actual.a) text.append("$aName: ${actual.a} -> $a\n")
+            if (b != null && b != actual.b) text.append("$bName: ${actual.b} -> $b\n")
+            if (c != null && c != actual.c) text.append("$cName: ${actual.c} -> $c\n")
+            if (!toSynapse && isSum != null && isSum != actual.isSum) {
                 val fromText = when (actual.isSum) {
                     true -> "Addition"
                     false -> "Multiplication"
@@ -175,5 +195,6 @@ class ActionDialogSystem(
 fun Int.isEye() = cellList[this] is Eye
 fun Int.isDirected() = cellList[this].isDirected
 fun Int.isNeural() = cellList[this].isNeural
+fun Int.isSynapse() = cellList[this] is Synapse
 fun Int.isPheromone() = cellList[this] is PheromoneEmitter || cellList[this] is PheromoneSensor
 fun getCellColor(cellType: Int) = cellList[cellType].defaultColor.cpy()
