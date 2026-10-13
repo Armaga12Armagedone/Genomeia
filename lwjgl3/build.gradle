@@ -355,6 +355,21 @@ tasks.register('bugReplayCheck', JavaExec) {
   if (project.hasProperty('stressTicks')) systemProperty 'bugReplayCheck.stressTicks', project.property('stressTicks')
 }
 
+// Снимки отладочного режима на настоящих организмах: gradlew :lwjgl3:debugViewShot
+// По организму каждого запечённого генома, рост, PNG и дамп сцены на каждый (для renderLab).
+//   -PshotTicks=600 -PshotZoom=0.012 -PshotDir=lwjgl3/build/debugViewShot
+tasks.register('debugViewShot', JavaExec) {
+  group = 'verification'
+  description = 'Снимки отладочного режима: организмы из папки genomes, PNG и дамп сцены'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.some_example_name.lwjgl3.demo.DebugViewShotKt'
+  workingDir = rootProject.projectDir
+  jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+  if (project.hasProperty('shotTicks')) systemProperty 'debugViewShot.ticks', project.property('shotTicks')
+  if (project.hasProperty('shotZoom')) systemProperty 'debugViewShot.zoom', project.property('shotZoom')
+  if (project.hasProperty('shotDir')) systemProperty 'debugViewShot.dir', project.property('shotDir')
+}
+
 // Воспроизведение записанных мышиных действий: gradlew :lwjgl3:dragReplay -Plog=drag-log.txt
 // Лог пишется в самом демо по клавише L (запись начинается со сброса тела).
 tasks.register('dragReplay', JavaExec) {

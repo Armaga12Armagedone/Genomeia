@@ -57,8 +57,6 @@ out float ex_R_norm;
 
 out vec2 ex_UV;
 flat out vec3 ex_Color;
-flat out float ex_R;
-flat out float ex_Energy;
 flat out float ex_AngleCos;
 flat out float ex_AngleSin;
 flat out int ex_cellType;
@@ -79,14 +77,12 @@ void main() {
     float cosA = a_shape.x * 2.0 - 1.0;
     float sinA = a_shape.y * 2.0 - 1.0;
 
-    ex_R = 0.05 + a_shape.z * 0.7;
-    float energy = a_shape.w * 0.5;
+    float radius = 0.05 + a_shape.z * 0.7;
 
-    vec2 worldPos = a_corner.xy * ex_R + a_center;
+    vec2 worldPos = a_corner.xy * radius + a_center;
 
     ex_R_norm = a_corner.z;
     ex_Color = a_color.rgb;
-    ex_Energy = energy * energy;
     ex_UV = a_corner.xy * 0.5 + 0.5;
     ex_cellType = int(byteValue(a_type.x));
 

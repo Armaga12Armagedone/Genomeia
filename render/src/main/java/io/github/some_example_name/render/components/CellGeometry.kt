@@ -17,7 +17,7 @@ import kotlin.math.sin
  *
  * ЗАЧЕМ ОТДЕЛЬНО ОТ ПРОХОДОВ
  * --------------------------
- * Клетки рисует не один проход: ParticleRenderer (реалистичный и отладочный режимы) и
+ * Клетки рисует не один проход: ParticleRenderer (реалистичный режим), DebugRenderer и
  * NostalgicRenderer. Пока VAO и VBO жили внутри ParticleRenderer, второму проходу
  * пришлось бы либо заводить свою копию и заливать те же байты на GPU второй раз, либо
  * лезть в чужие поля. Здесь геометрия одна, ею владеет WorldRenderer, и он же заливает
@@ -291,9 +291,9 @@ class CellGeometry {
         private const val FAN_VERTEX_FLOATS = 3
 
         /**
-         * Номера атрибутов. Дублируются в шейдерах клеток (circle_pc.vert, nostalgic.vert)
-         * через layout(location = ...), поэтому имена атрибутов в шейдере роли не играют и
-         * glGetAttribLocation не нужен.
+         * Номера атрибутов. Дублируются в шейдерах клеток (circle_pc.vert, debug_view/cell.vert,
+         * nostalgic.vert) через layout(location = ...), поэтому имена атрибутов в шейдере
+         * роли не играют и glGetAttribLocation не нужен.
          */
         private const val A_CORNER = 0
         private const val A_CENTER = 1

@@ -51,6 +51,22 @@ class RenderFrame {
     var pheromoneK: Float = 0f
     var pheromoneP: Float = 0f
 
+    // ==================== Оверлей отладки ====================
+
+    /**
+     * Фигуры поверх клеток в отладочном режиме — упакованный буфер из
+     * OverlayInstanceBuffer.end(): нейросвязи, стрелки направлений, лучи глаз, кольца
+     * феромонов. Читается только в [RenderMode.DEBUG]; null — рисовать нечего.
+     */
+    var overlay: ByteBuffer? = null
+
+    /**
+     * Секунды для анимации оверлея (бегущие по нейросвязям импульсы). По кругу с периодом
+     * [TIME_WRAP]: float с ростом теряет дробную часть, и через несколько часов игры
+     * импульсы задёргались бы. Шаг на обороте незаметен — см. TIME_WRAP.
+     */
+    var time: Float = 0f
+
     // ==================== Постпроцесс ====================
 
     var blurAmount: Float = 0f
@@ -64,4 +80,16 @@ class RenderFrame {
      * симуляции, у редактора, у меню), а WorldRenderer один на всю игру.
      */
     var mode: RenderMode = RenderMode.REALISTIC
+
+    companion object {
+        /**
+         * Период [time], секунды. Импульсы делают PULSE_HZ = 2 шага в секунду
+         * (shaders/debug_view/overlay_common.glsl), поэтому за период — ровно целое число
+         * шагов, и на обороте картинка не прыгает. Менять только вместе с PULSE_HZ.
+         */
+        const val TIME_WRAP = 1000f
+
+        /** Время [time] через [delta] секунд, по кругу. */
+        fun advanceTime(time: Float, delta: Float): Float = (time + delta) % TIME_WRAP
+    }
 }

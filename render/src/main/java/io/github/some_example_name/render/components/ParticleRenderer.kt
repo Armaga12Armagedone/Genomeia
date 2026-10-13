@@ -9,8 +9,8 @@ import com.badlogic.gdx.utils.BufferUtils
 import io.github.some_example_name.render.RenderMode
 
 /**
- * Рисует клетки в реалистичном и отладочном режимах: текстура из массива слоёв, тонированная
- * под цвет клетки.
+ * Рисует клетки реалистичного режима: текстура из массива слоёв, тонированная под цвет
+ * клетки. Отладочный режим рисует DebugRenderer, ностальгический — NostalgicRenderer.
  *
  * Геометрию (веер, инстансный VBO, VAO) держит [CellGeometry] — она общая с
  * NostalgicRenderer, а заливает её WorldRenderer один раз за кадр. Здесь только шейдер,
@@ -103,15 +103,16 @@ class ParticleRenderer(
     }
 
     override fun render(context: RenderContext) {
-        // Ностальгический режим рисует клетки своим проходом — см. NostalgicRenderer.
-        if (context.mode == RenderMode.NOSTALGIC) return
+        // Остальные режимы рисуют клетки своими проходами — DebugRenderer и NostalgicRenderer.
+        if (context.mode != RenderMode.REALISTIC) return
 
         val gl = Gdx.gl
         val gl30 = Gdx.gl30 ?: return
+        val sceneFbo = context.sceneFbo ?: return
 
-        if (context.usePostProcess) {
-            context.sceneFbo?.begin()
-        }
+        // Только в scene FBO: дальше кадр идёт через постпроцесс. Раньше здесь была и
+        // ветка прямо в экран — ею рисовалась отладка, теперь у неё свой DebugRenderer.
+        sceneFbo.begin()
 
         gl.glDisable(GL20.GL_BLEND)
         gl.glEnable(GL20.GL_DEPTH_TEST)
@@ -121,7 +122,6 @@ class ParticleRenderer(
 
         shader.bind()
         shader.setUniformMatrix("u_projTrans", context.cameraProjection)
-        shader.setUniformf("u_colorScale", if (context.usePostProcess) 0.0f else 1.0f)
         shader.setUniformi("u_textureArray", 0)
 
         gl.glActiveTexture(GL20.GL_TEXTURE0)
@@ -131,10 +131,8 @@ class ParticleRenderer(
 
         gl30.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, 0)
 
-        if (context.usePostProcess) {
-            context.sceneFbo?.end()
-            context.currentTexture = context.sceneFbo?.colorBufferTexture
-        }
+        sceneFbo.end()
+        context.currentTexture = sceneFbo.colorBufferTexture
     }
 
     override fun dispose() {

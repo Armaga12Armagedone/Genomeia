@@ -35,6 +35,19 @@ class RenderContext {
     var pheromoneK: Float = 0f
     var pheromoneP: Float = 0f
 
+    /** Фигуры оверлея отладочного режима, см. RenderFrame.overlay. */
+    var overlayData: ByteBuffer? = null
+    var numOverlayInstances: Int = 0
+
+    /** Секунды для анимации, см. RenderFrame.time. */
+    var time: Float = 0f
+
+    /**
+     * Сколько единиц мира приходится на пиксель экранного буфера. По ней проходы, которые
+     * сглаживают сами (DebugRenderer), переводят расстояния в пиксели.
+     */
+    var pixelWorld: Float = 1f
+
     // Render parameters
     var blurAmount: Float = 0f
     var zoom: Float = 1f

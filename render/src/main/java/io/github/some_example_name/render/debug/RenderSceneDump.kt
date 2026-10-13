@@ -4,6 +4,7 @@ import com.badlogic.gdx.files.FileHandle
 import io.github.some_example_name.render.RenderFrame
 import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.pack.CellInstanceBuffer
+import io.github.some_example_name.render.pack.OverlayInstanceBuffer
 import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -42,9 +43,11 @@ import java.nio.ByteOrder
  *   mode             byte    RenderMode.dumpCode: 0 отладка, 1 реалистичный, 2 ностальгический
  *   pheromoneK       float
  *   pheromoneP       float
+ *   time             float   с версии 3: часы анимации оверлея (RenderFrame.time)
  *   texturePaths     int count, далее для каждого: int длина + UTF-8 байты
- *   cellCount        int, далее cellCount * 32 байта
+ *   cellCount        int, далее cellCount * 20 байт (в версии 1 — по 32)
  *   pheromoneCount   int, далее pheromoneCount * 16 байт
+ *   overlayCount     int, далее overlayCount * 24 байта — с версии 3, оверлей отладки
  *
  * Пути к текстурам лежат в файле намеренно: тип клетки — это индекс слоя в TextureArray,
  * поэтому без исходного ПОРЯДКА путей дамп рисовался бы чужими текстурами. Собрать тот же
@@ -55,8 +58,11 @@ object RenderSceneDump {
 
     private const val MAGIC = "GENOMSCN"
 
-    /** Версия 2: инстанс клетки ужался с 32 байт до 20, см. CellInstanceBuffer. */
-    const val VERSION = 2
+    /**
+     * Версия 2: инстанс клетки ужался с 32 байт до 20, см. CellInstanceBuffer.
+     * Версия 3: оверлей отладочного режима и время его анимации.
+     */
+    const val VERSION = 3
 
     /** Раскладка версии 1: x, y, color, packed1, packed2 + 12 байт добивки. */
     private const val V1_CELL_STRUCT_SIZE = 32
@@ -86,7 +92,12 @@ object RenderSceneDump {
         val cellCount: Int,
         val cells: ByteBuffer,
         val pheromoneCount: Int,
-        val pheromones: ByteBuffer
+        val pheromones: ByteBuffer,
+        /** Часы анимации оверлея; в дампах до версии 3 — ноль. */
+        val time: Float = 0f,
+        /** Фигуры оверлея; в дампах до версии 3 их нет — пустой буфер. */
+        val overlayCount: Int = 0,
+        val overlay: ByteBuffer = emptyDirect()
     )
 
     /**
@@ -108,15 +119,17 @@ object RenderSceneDump {
     ) {
         val cells = frame.cells
         val pheromones = frame.pheromones
+        val overlay = frame.overlay
 
         val cellBytes = cells?.remaining() ?: 0
         val pheromoneBytes = pheromones?.remaining() ?: 0
+        val overlayBytes = overlay?.remaining() ?: 0
 
         val pathBytes = texturePaths.map { it.toByteArray(Charsets.UTF_8) }
         val pathsSize = 4 + pathBytes.sumOf { 4 + it.size }
 
-        val total = MAGIC.length + 4 + 4 + 4 + (3 * 4) + (2 * 4) + 1 + (2 * 4) +
-            pathsSize + 4 + cellBytes + 4 + pheromoneBytes
+        val total = MAGIC.length + 4 + 4 + 4 + (3 * 4) + (2 * 4) + 1 + (2 * 4) + 4 +
+            pathsSize + 4 + cellBytes + 4 + pheromoneBytes + 4 + overlayBytes
 
         val out = ByteBuffer.allocate(total).order(ByteOrder.BIG_ENDIAN)
 
@@ -132,6 +145,7 @@ object RenderSceneDump {
         out.put(frame.mode.dumpCode.toByte())
         out.putFloat(frame.pheromoneK)
         out.putFloat(frame.pheromoneP)
+        out.putFloat(frame.time)
 
         out.putInt(pathBytes.size)
         pathBytes.forEach {
@@ -144,6 +158,9 @@ object RenderSceneDump {
 
         out.putInt(pheromoneBytes / PheromoneInstanceBuffer.STRUCT_SIZE)
         if (pheromones != null) copyAbsolute(pheromones, out)
+
+        out.putInt(overlayBytes / OverlayInstanceBuffer.STRUCT_SIZE)
+        if (overlay != null) copyAbsolute(overlay, out)
 
         file.writeBytes(out.array(), false)
     }
@@ -159,8 +176,8 @@ object RenderSceneDump {
         }
 
         val version = input.int
-        require(version == VERSION || version == 1) {
-            "дамп версии $version, а читать умеем 1 и $VERSION — перезапишите файл"
+        require(version in 1..VERSION) {
+            "дамп версии $version, а читать умеем с 1 по $VERSION — перезапишите файл"
         }
 
         val viewportWidth = input.int
@@ -175,6 +192,7 @@ object RenderSceneDump {
         val mode = RenderMode.fromDumpCode(input.get().toInt())
         val pheromoneK = input.float
         val pheromoneP = input.float
+        val time = if (version >= 3) input.float else 0f
 
         val pathCount = input.int
         val texturePaths = ArrayList<String>(pathCount)
@@ -195,6 +213,9 @@ object RenderSceneDump {
         val pheromoneCount = input.int
         val pheromones = readDirect(input, pheromoneCount * PheromoneInstanceBuffer.STRUCT_SIZE)
 
+        val overlayCount = if (version >= 3) input.int else 0
+        val overlay = readDirect(input, overlayCount * OverlayInstanceBuffer.STRUCT_SIZE)
+
         return Scene(
             viewportWidth = viewportWidth,
             viewportHeight = viewportHeight,
@@ -210,7 +231,10 @@ object RenderSceneDump {
             cellCount = cellCount,
             cells = cells,
             pheromoneCount = pheromoneCount,
-            pheromones = pheromones
+            pheromones = pheromones,
+            time = time,
+            overlayCount = overlayCount,
+            overlay = overlay
         )
     }
 
@@ -281,6 +305,8 @@ object RenderSceneDump {
      * с одной машины читался на другой. Полезная нагрузка инстансов — непрозрачные байты,
      * их мы не интерпретируем, а переносим один в один.
      */
+    private fun emptyDirect(): ByteBuffer = readDirect(ByteBuffer.allocate(0), 0)
+
     private fun readDirect(source: ByteBuffer, byteCount: Int): ByteBuffer {
         val target = ByteBuffer.allocateDirect(byteCount.coerceAtLeast(1))
             .order(ByteOrder.nativeOrder())

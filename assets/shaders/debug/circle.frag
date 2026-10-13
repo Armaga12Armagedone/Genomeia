@@ -13,8 +13,6 @@ in float ex_R_norm;
 
 in vec2 ex_UV;
 flat in vec3 ex_Color;
-flat in float ex_R;
-flat in float ex_Energy;
 flat in float ex_AngleCos;
 flat in float ex_AngleSin;
 flat in int ex_cellType;
@@ -23,7 +21,6 @@ flat in vec2 ex_Refract;   // ← случайный вектор рефракц
 out vec4 fragColor;
 
 uniform sampler2DArray u_textureArray;
-uniform float u_colorScale;
 
 vec3 rgb2hsv(vec3 c) {
     vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -68,22 +65,8 @@ void main() {
     texHSV.x = targetHSV.x;
     vec3 tinted = hsv2rgb(texHSV);
 
-    vec3 finalColor = tinted;
-
-    // === ЧЕРНЫЙ КРУЖОЧЕК ===
-    float dist = ex_R_norm * ex_R;   // было length(diff)
-
-    float edgeWidth = ex_R * 0.018;
-    float energyRadius = max(ex_Energy, 0.0);
-
-    float energyMask = 1.0 - smoothstep(energyRadius, energyRadius + edgeWidth, dist);
-
-    // Полностью убираем даже точку при ex_Energy = 0
-    energyMask *= step(0.0001, ex_Energy);
-
-    float blackStrength = energyMask * u_colorScale;
-
-    finalColor = mix(finalColor, vec3(0.0), blackStrength);
-
-    fragColor = vec4(finalColor, 1.0);
+    // Чёрной точки энергии здесь больше нет: её рисовала только старая отладка (в
+    // реалистичном режиме u_colorScale был нулём). Энергию теперь показывает ядро в
+    // отладочном и ностальгическом режимах.
+    fragColor = vec4(tinted, 1.0);
 }

@@ -11,7 +11,7 @@ import java.nio.ByteOrder
  * ---------------------
  * Раскладка этих 20 байт должна совпадать с тем, как CellGeometry объявляет инстансные
  * атрибуты, и с тем, что ждут вершинные шейдеры клеток (shaders/debug/circle_pc.vert,
- * shaders/nostalgic/nostalgic.vert).
+ * shaders/debug_view/cell.vert, shaders/nostalgic/nostalgic.vert).
  * Раньше знание о ней жило в трёх местах сразу: побитовые формулы — в
  * RenderBufferManager.writeCell и в EditorRenderSystem.putBuffer, порядок полей — в
  * RenderSystem и снова в putBuffer, а обратные формулы — в самом шейдере. Три копии одних
@@ -29,7 +29,7 @@ import java.nio.ByteOrder
  *   shape = cosByte | sinByte<<8 | radiusByte<<16 | energyByte<<24
  *   type  = cellType | seedLo<<8  | seedHi<<16    | flags<<24
  *
- *   flags — битовые признаки частицы, см. [FLAG_NOT_CELL].
+ *   flags — битовые признаки частицы, см. [FLAG_NOT_CELL] и [FLAG_SPIRAL].
  *
  * ПОЧЕМУ НОРМАЛИЗОВАННЫЕ БАЙТЫ, А НЕ РАСПАКОВКА В ШЕЙДЕРЕ
  * -------------------------------------------------------
@@ -125,7 +125,8 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
         energy: Float,
         cellType: Int,
         noiseSeed: Int,
-        isCell: Boolean = true
+        isCell: Boolean = true,
+        spiral: Boolean = false
     ) {
         put(
             x = x,
@@ -137,7 +138,7 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
                 radiusByte = radiusByte(radius),
                 energyByte = energyByte(energy)
             ),
-            type = type(cellType = cellType, noiseSeed = noiseSeed, isCell = isCell)
+            type = type(cellType = cellType, noiseSeed = noiseSeed, isCell = isCell, spiral = spiral)
         )
     }
 
@@ -191,7 +192,7 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
         /**
          * 20 байт на инстанс: 2 float + 3 упакованных четвёрки байт.
          * Менять только вместе с раскладкой атрибутов в CellGeometry и с шейдерами клеток
-         * (circle_pc.vert, nostalgic.vert).
+         * (circle_pc.vert, debug_view/cell.vert, nostalgic.vert).
          */
         const val STRUCT_SIZE = 20
 
@@ -207,18 +208,18 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
 
         /**
          * Диапазон радиуса, который влезает в один байт.
-         * Обратное преобразование в шейдере: `ex_R = 0.05 + a_shape.z * 0.7`.
+         * Обратное преобразование в шейдерах клеток: `radius = 0.05 + a_shape.z * 0.7`.
          */
         const val RADIUS_MIN = 0.05f
         const val RADIUS_SPAN = 0.7f
 
         /**
-         * Делитель энергии: при ней байт насыщается, и чёрная точка внутри клетки
-         * достигает максимума. Это не физическая энергия, а только её показ.
+         * Делитель энергии: при ней байт насыщается, и ядро клетки достигает максимума.
+         * Это не физическая энергия, а только её показ.
          *
-         * Читают её два шейдера, и по-разному. Отладка (circle.frag): `a_shape.w * 0.5`
-         * в квадрате — радиус точки в единицах мира. Ностальгический (nostalgic.vert):
-         * линейно, в долях радиуса клетки — см. NostalgicRenderer.NUCLEUS_AT_FULL_ENERGY.
+         * Читают её отладочный (debug_view/cell.vert) и ностальгический (nostalgic.vert)
+         * шейдеры, одинаково: линейно, в долях радиуса клетки — см.
+         * NostalgicRenderer.NUCLEUS_AT_FULL_ENERGY. Реалистичный энергию не показывает.
          */
         const val ENERGY_SPAN = 10f
 
@@ -253,6 +254,15 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
         const val FLAG_NOT_CELL = 1
 
         /**
+         * Нарисовать на клетке спираль — в отладочном режиме (shaders/debug_view).
+         *
+         * Опознавательный знак для клетки, которую по цвету не узнать: :core ставит его
+         * хамелеону, чей цвет меняет сигнал. Здесь — только «узор», без знания о типах:
+         * какой клетке он нужен, решает тот, кто знает про клетки.
+         */
+        const val FLAG_SPIRAL = 2
+
+        /**
          * Тип клетки (индекс слоя в TextureArray), 16-битный ключ шума двумя байтами и
          * байт флагов.
          *
@@ -260,9 +270,9 @@ class CellInstanceBuffer(initialCapacity: Int = INITIAL_CAPACITY) {
          * шейдер четыре независимых компоненты, а не одно число. Собирается обратно как
          * `lo + hi*256` с округлением — точно, без потери бита.
          */
-        fun type(cellType: Int, noiseSeed: Int, isCell: Boolean = true): Int {
+        fun type(cellType: Int, noiseSeed: Int, isCell: Boolean = true, spiral: Boolean = false): Int {
             val seed = noiseSeed and 0xFFFF
-            val flags = if (isCell) 0 else FLAG_NOT_CELL
+            val flags = (if (isCell) 0 else FLAG_NOT_CELL) or (if (spiral) FLAG_SPIRAL else 0)
             return cellType.coerceIn(0, 255) or
                 ((seed and 0xFF) shl 8) or
                 (((seed ushr 8) and 0xFF) shl 16) or

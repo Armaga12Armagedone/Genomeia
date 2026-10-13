@@ -5,14 +5,20 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
+import io.github.some_example_name.old.cells.Cell
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.entities.CellReplay
+import io.github.some_example_name.old.editor.entities.NeuralLinkReplay
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
+import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.ParticleEntity
+import io.github.some_example_name.old.systems.render.DebugCellPalette
 import io.github.some_example_name.render.RenderFrame
 import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.WorldRenderer
 import io.github.some_example_name.render.pack.CellInstanceBuffer
+import io.github.some_example_name.render.pack.OverlayInstanceBuffer
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -23,11 +29,18 @@ import kotlin.math.sin
  * запись роста организма по тикам (CellReplay). Дальше по конвейеру идут те же самые
  * упакованные байты в тот же самый [WorldRenderer] — ровно ради этого переиспользования
  * упаковка и вынесена в CellInstanceBuffer.
+ *
+ * В отладочном режиме клетки красятся и подписываются по тем же правилам, что в
+ * симуляции (DebugCellPalette): цвет типа, спираль хамелеона, стрелки, лучи глаз и
+ * нейросвязи — шейдером, а не линиями ShapeRenderer.
  */
 class EditorRenderSystem(
     val worldRenderer: WorldRenderer,
     val cellReplay: CellReplay,
+    val neuralLinkReplay: NeuralLinkReplay,
     val particleEntity: ParticleEntity,
+    val cellEntity: CellEntity,
+    val cellList: List<Cell>,
     val editorSimulationSystem: EditorSimulationSystem,
     val drawingHelperElements: DrawingHelperElements
 ) {
@@ -36,7 +49,15 @@ class EditorRenderSystem(
 
     /** Переиспользуются между кадрами. */
     private val cellBuffer = CellInstanceBuffer()
+    private val overlayBuffer = OverlayInstanceBuffer()
     private val frame = RenderFrame()
+
+    private val palette = DebugCellPalette(cellList)
+
+    /** Оверлей пишется прямо в буфер инстансов: у редактора нет второго потока. */
+    private val overlaySink = DebugCellPalette.OverlaySink { x0, y0, x1, y1, color, params ->
+        overlayBuffer.put(x0, y0, x1, y1, color, params)
+    }
 
     var isUpdateBuffer = true
 
@@ -81,6 +102,11 @@ class EditorRenderSystem(
             uploadCells = true
             // Редактор феромоны не рисует: в записи роста их нет.
             pheromones = null
+            // Каждый кадр, а не только при isUpdateBuffer: связи и стрелки идут за живыми
+            // позициями частиц, как и линии DrawingHelperElements, которые они заменяют.
+            overlay = if (mode.drawsDebugOverlay) fillOverlay() else null
+            // Сигналов в записи роста нет — импульсам бежать нечем, часы не нужны.
+            time = 0f
             blurAmount = -0.04f
             zoom = camera.zoom
             vignetteEnabled = 0f
@@ -92,7 +118,11 @@ class EditorRenderSystem(
         Gdx.gl.glDepthMask(false)
         Gdx.gl.glEnable(GL20.GL_BLEND)
 
-        drawingHelperElements.render(touchedCellX, touchedCellY)
+        drawingHelperElements.render(
+            touchedCellX,
+            touchedCellY,
+            drawsLinksAndDirections = !mode.drawsDebugOverlay
+        )
     }
 
     private fun fillBuffer() {
@@ -103,20 +133,24 @@ class EditorRenderSystem(
         // чем клетка отличается от субстанции, поэтому там клетки получают энергию, которую
         // симуляция редактора и так держит у всех (EditorSimulationSystem: 5).
         val energy = if (mode == RenderMode.NOSTALGIC) NOSTALGIC_ENERGY else 0f
+        val debug = mode == RenderMode.DEBUG
 
         cellReplay.forEachInTick(currentTick) { cellType, index, _, angleCos, angleSin, color ->
+            val type = cellType.toInt()
             cellBuffer.putCell(
                 x = particleEntity.x[index],
                 y = particleEntity.y[index],
-                color = color,
+                // Сигналов в записи роста нет, поэтому и мышцы здесь не сжаты.
+                color = if (debug) palette.color(type, color, contraction = 0f) else color,
                 angleCos = angleCos,
                 angleSin = angleSin,
                 radius = particleEntity.radius[index],
                 energy = energy,
-                cellType = cellType.toInt(),
+                cellType = type,
                 // Ключ шума — индекс частицы, как и в живом мире: он закреплён за клеткой
                 // и не зависит от порядка сборки буфера.
-                noiseSeed = index
+                noiseSeed = index,
+                spiral = debug && palette.hasSpiral(type)
             )
         }
 
@@ -148,6 +182,51 @@ class EditorRenderSystem(
                 }
             }
         }
+    }
+
+    /**
+     * Оверлей отладочного режима: стрелки и лучи у клеток текущего тика, нейросвязи —
+     * следующего (как и у DrawingHelperElements: связи показывают, что получится после
+     * шага). У клетки, которую сейчас тащат, стрелки нет, а её связи пропадают, пока она
+     * далеко от соседа, — тоже как было.
+     */
+    private fun fillOverlay(): java.nio.ByteBuffer {
+        overlayBuffer.begin()
+        val grabbed = DIGenomeEditorContainer.grabbedCellIndex
+
+        cellReplay.forEachInTick(currentTick) { cellType, index, _, angleCos, angleSin, _ ->
+            if (index == grabbed) return@forEachInTick
+            val type = cellType.toInt()
+            val x = particleEntity.x[index]
+            val y = particleEntity.y[index]
+            val radius = particleEntity.radius[index]
+            if (palette.isEye(type)) {
+                palette.writeEyeRay(
+                    overlaySink, type, x, y, angleCos, angleSin, radius,
+                    range = cellEntity.specialEntity.getVisibilityRange(index),
+                    signal = 0f
+                )
+            } else if (palette.hasArrow(type)) {
+                palette.writeArrow(overlaySink, x, y, angleCos, angleSin, radius, signal = 0f)
+            }
+        }
+
+        neuralLinkReplay.forEachInTick(DIGenomeEditorContainer.nextStageTick) { isLink1NeuralDirected, color, cellA, cellB ->
+            if (!drawingHelperElements.isLinkVisible(cellA, cellB)) return@forEachInTick
+            // Сигнал идёт из второй клетки в первую при isLink1NeuralDirected — как в
+            // NeuralLinkManager и в шевроне DrawingHelperElements.
+            val from = if (isLink1NeuralDirected) cellB else cellA
+            val to = if (isLink1NeuralDirected) cellA else cellB
+            palette.writeNeuralLink(
+                overlaySink,
+                particleEntity.x[from], particleEntity.y[from],
+                particleEntity.x[to], particleEntity.y[to],
+                color,
+                signal = 0f,
+                seed = from
+            )
+        }
+        return overlayBuffer.end()
     }
 
     private companion object {

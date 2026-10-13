@@ -45,7 +45,11 @@ class DrawingHelperElements(
         this.camera = camera
     }
 
-    fun render(touchedCellX: Float, touchedCellY: Float) {
+    /**
+     * [drawsLinksAndDirections] = false — нейросвязи, стрелки и лучи уже нарисовал шейдер
+     * отладочного режима (EditorRenderSystem.fillOverlay), и второй раз линиями не нужно.
+     */
+    fun render(touchedCellX: Float, touchedCellY: Float, drawsLinksAndDirections: Boolean = true) {
         shapeRenderer.color = Color.WHITE
         shapeRenderer.projectionMatrix = camera.combined
 
@@ -78,8 +82,10 @@ class DrawingHelperElements(
             }
         }
 
-        neuralLinkReplay.forEachInTick(DIGenomeEditorContainer.nextStageTick) { isLink1NeuralDirected, color, links1, links2 ->
-            drawLinks(true, isLink1NeuralDirected, color, links1, links2)
+        if (drawsLinksAndDirections) {
+            neuralLinkReplay.forEachInTick(DIGenomeEditorContainer.nextStageTick) { isLink1NeuralDirected, color, links1, links2 ->
+                drawLinks(true, isLink1NeuralDirected, color, links1, links2)
+            }
         }
 
         cellReplay.forEachInTick(currentTick) { cellType, index, cellGenomeId, angleCos, angleSin, color ->
@@ -138,6 +144,8 @@ class DrawingHelperElements(
                 }
 
                 when {
+                    !drawsLinksAndDirections -> {}
+
                     cell is Eye -> {
                         shapeRenderer.color = Color.CYAN
                         shapeRenderer.drawArrowWithRotationAngle(
@@ -194,6 +202,20 @@ class DrawingHelperElements(
         shapeRenderer.end()
     }
 
+    /**
+     * Видна ли связь: у клетки, которую сейчас тащат, связи пропадают, пока она дальше
+     * касания от соседа. Общее с отладочным оверлеем редактора (EditorRenderSystem).
+     */
+    fun isLinkVisible(cellA: Int, cellB: Int): Boolean {
+        val grabbed = DIGenomeEditorContainer.grabbedCellIndex
+        if (grabbed == -1 || (grabbed != cellA && grabbed != cellB)) return true
+
+        val dx = particleEntity.x[cellB] - particleEntity.x[cellA]
+        val dy = particleEntity.y[cellB] - particleEntity.y[cellA]
+        val r = particleEntity.radius[cellA] + particleEntity.radius[cellB]
+        return dx * dx + dy * dy <= r * r
+    }
+
     fun drawLinks(
         isNeural: Boolean,
         isLink1NeuralDirected: Boolean,
@@ -201,25 +223,7 @@ class DrawingHelperElements(
         cellA: Int,
         cellB: Int
     ) {
-
-        var isDrawLinkByDistance = true
-        if (DIGenomeEditorContainer.grabbedCellIndex != -1) {
-            if (DIGenomeEditorContainer.grabbedCellIndex == cellA || DIGenomeEditorContainer.grabbedCellIndex == cellB) {
-                val dx = particleEntity.x[cellB] - particleEntity.x[cellA]
-                val dy = particleEntity.y[cellB] - particleEntity.y[cellA]
-
-                val radiusA = particleEntity.radius[cellA]
-                val radiusB = particleEntity.radius[cellB]
-
-                val r = radiusA + radiusB
-
-                if (dx * dx + dy * dy > r * r) {
-                    isDrawLinkByDistance = false
-                }
-            }
-        }
-
-        if (isDrawLinkByDistance) {
+        if (isLinkVisible(cellA, cellB)) {
             if (isNeural) {
                 val colorOfLink = Color().also {
                     val argb = color

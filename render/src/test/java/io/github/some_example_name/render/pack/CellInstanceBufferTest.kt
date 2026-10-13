@@ -18,9 +18,10 @@ import kotlin.test.assertTrue
  *
  *   GL_UNSIGNED_BYTE + normalized  →  float = байт / 255.0
  *   cosA  = a_shape.x * 2.0 - 1.0
- *   ex_R  = 0.05 + a_shape.z * 0.7
+ *   radius = 0.05 + a_shape.z * 0.7
  *   seed  = byteValue(a_type.y) + byteValue(a_type.z) * 256.0
- *   isCell = младший бит byteValue(a_type.w) равен нулю     (nostalgic.vert)
+ *   isCell = младший бит byteValue(a_type.w) равен нулю     (nostalgic.vert, debug_view/cell.vert)
+ *   spiral = второй бит byteValue(a_type.w)                  (debug_view/cell.vert)
  *
  * ВНИМАНИЕ: здесь намеренно ЛИТЕРАЛЫ, а не константы из CellInstanceBuffer. Тест сверяет
  * Kotlin с ШЕЙДЕРОМ, а шейдер про константы Kotlin ничего не знает — в нём голые числа.
@@ -42,11 +43,11 @@ class CellInstanceBufferTest {
     /** `cosA = a_shape.x * 2.0 - 1.0` */
     private fun shaderAngle(shape: Int, index: Int): Float = normalized(shape, index) * 2f - 1f
 
-    /** `ex_R = 0.05 + a_shape.z * 0.7` */
+    /** `radius = 0.05 + a_shape.z * 0.7` */
     private fun shaderRadius(shape: Int): Float = 0.05f + normalized(shape, 2) * 0.7f
 
-    /** `float energy = a_shape.w * 0.5` */
-    private fun shaderEnergy(shape: Int): Float = normalized(shape, 3) * 0.5f
+    /** Доля энергии: ядро = `a_shape.w * u_nucleusAtFullEnergy` (nostalgic.vert, debug_view/cell.vert). */
+    private fun shaderEnergyFraction(shape: Int): Float = normalized(shape, 3)
 
     /** `ex_cellType = int(byteValue(a_type.x))` */
     private fun shaderCellType(type: Int): Int = byteValue(type, 0)
@@ -56,6 +57,9 @@ class CellInstanceBufferTest {
 
     /** nostalgic.vert: `isCell = mod(floor(a_type.w * 255.0 + 0.5), 2.0) < 1.0` */
     private fun shaderIsCell(type: Int): Boolean = byteValue(type, 3) % 2 < 1
+
+    /** debug_view/cell.vert: `v_spiral = mod(floor(flags / 2.0), 2.0)` */
+    private fun shaderHasSpiral(type: Int): Boolean = (byteValue(type, 3) / 2) % 2 == 1
 
     private fun readInstance(data: ByteBuffer, index: Int): Instance {
         val base = index * CellInstanceBuffer.STRUCT_SIZE
@@ -98,10 +102,10 @@ class CellInstanceBufferTest {
 
     @Test
     fun `константы диапазонов совпадают с литералами в шейдере`() {
-        // Прямая сверка с `ex_R = 0.05 + a_shape.z * 0.7` из circle_pc.vert.
+        // Прямая сверка с `radius = 0.05 + a_shape.z * 0.7` из circle_pc.vert.
         // Падение этого теста означает: либо константу поменяли, не тронув шейдер,
         // либо шейдер поменяли, не тронув константу. Оба случая — молча битая картинка.
-        assertEquals(0.05f, CellInstanceBuffer.RADIUS_MIN, "circle_pc.vert: ex_R = 0.05 + ...")
+        assertEquals(0.05f, CellInstanceBuffer.RADIUS_MIN, "circle_pc.vert: radius = 0.05 + ...")
         assertEquals(0.7f, CellInstanceBuffer.RADIUS_SPAN, "circle_pc.vert: ... + a_shape.z * 0.7")
     }
 
@@ -138,8 +142,8 @@ class CellInstanceBufferTest {
         assertNear(-0.8f, shaderAngle(cell.shape, 1), 2 * quantum, "sin")
         assertNear(0.4f, shaderRadius(cell.shape), 2 * quantum * 0.7f, "radius")
 
-        // Энергия: байт = (e/10)*255, в шейдере обратно как a_shape.w * 0.5.
-        assertNear(5f / 10f * 0.5f, shaderEnergy(cell.shape), 2 * quantum, "energy")
+        // Энергия: байт = (e/10)*255, в шейдере обратно — доля a_shape.w.
+        assertNear(5f / 10f, shaderEnergyFraction(cell.shape), 2 * quantum, "energy")
 
         // Тип и ключ шума обязаны восстанавливаться ТОЧНО, без допуска.
         assertEquals(7, shaderCellType(cell.type))
@@ -210,6 +214,33 @@ class CellInstanceBufferTest {
         }.end()
         assertTrue(shaderIsCell(readInstance(data, 0).type))
         assertTrue(!shaderIsCell(readInstance(data, 1).type))
+    }
+
+    @Test
+    fun `спираль хамелеона едет своим битом и не трогает остальное`() {
+        // Бит узора стоит рядом с битом не-клетки в том же байте: перепутай их — и в
+        // отладке хамелеон потерял бы спираль, а в ностальгическом режиме — ядро.
+        val plain = CellInstanceBuffer.type(cellType = 13, noiseSeed = 0x1234)
+        val spiral = CellInstanceBuffer.type(cellType = 13, noiseSeed = 0x1234, spiral = true)
+        val both = CellInstanceBuffer.type(cellType = 13, noiseSeed = 0x1234, isCell = false, spiral = true)
+
+        assertTrue(!shaderHasSpiral(plain), "по умолчанию спирали нет")
+        assertTrue(shaderHasSpiral(spiral), "спираль не распозналась")
+        assertTrue(shaderHasSpiral(both), "спираль потерялась рядом с флагом не-клетки")
+
+        assertTrue(shaderIsCell(spiral), "спираль сделала клетку не-клеткой")
+        assertTrue(!shaderIsCell(both), "спираль затёрла флаг не-клетки")
+
+        for (packed in listOf(plain, spiral, both)) {
+            assertEquals(13, shaderCellType(packed), "флаг повредил тип")
+            assertEquals(0x1234, shaderSeed(packed), "флаг повредил ключ шума")
+        }
+
+        val data = CellInstanceBuffer(initialCapacity = 1).apply {
+            begin(1)
+            putCell(0f, 0f, 0, 1f, 0f, 0.3f, 0f, 13, 11, spiral = true)
+        }.end()
+        assertTrue(shaderHasSpiral(readInstance(data, 0).type), "putCell не довёз спираль")
     }
 
     @Test

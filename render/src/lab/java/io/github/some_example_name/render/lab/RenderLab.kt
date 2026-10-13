@@ -21,6 +21,7 @@ import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.WorldRenderer
 import io.github.some_example_name.render.debug.RenderSceneDump
 import io.github.some_example_name.render.pack.CellInstanceBuffer
+import io.github.some_example_name.render.pack.OverlayInstanceBuffer
 import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
 import java.io.File
 
@@ -44,10 +45,12 @@ import java.io.File
  *   gradlew :render:renderLab -Dgenomeia.scene=scene-dumps/scene-1712345678.scene
  *       откроет конкретный снимок
  *
- *   -Dgenomeia.synthetic=layers|body|dense   какую синтетику рисовать без дампа
+ *   -Dgenomeia.synthetic=layers|body|dense|organism   какую синтетику рисовать без дампа
  *   -Dgenomeia.mode=realistic|debug|nostalgic   режим рендера на старте
  *   -Dgenomeia.zoom=0.01                       зум камеры вместо того, что в сцене
  *   -Dgenomeia.cameraX=0 -Dgenomeia.cameraY=0  центр камеры, тоже вместо сценового
+ *   -Dgenomeia.time=1.25                       часы анимации оверлея вместо сценовых; со
+ *                                              снимком (-Dgenomeia.screenshot) они стоят
  *
  * ЗАМЕР ПРОИЗВОДИТЕЛЬНОСТИ
  * ------------------------
@@ -89,6 +92,7 @@ private const val BENCH_OUT_PROPERTY = "genomeia.benchOut"
 private const val ZOOM_PROPERTY = "genomeia.zoom"
 private const val CAMERA_X_PROPERTY = "genomeia.cameraX"
 private const val CAMERA_Y_PROPERTY = "genomeia.cameraY"
+private const val TIME_PROPERTY = "genomeia.time"
 
 /** Повторов рендера за кадр при замере по клавише T. */
 private const val DEFAULT_BENCH_REPEATS = 20
@@ -214,6 +218,10 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
     private lateinit var texturePaths: List<String>
     private lateinit var cells: java.nio.ByteBuffer
     private lateinit var pheromones: java.nio.ByteBuffer
+    private lateinit var overlay: java.nio.ByteBuffer
+
+    /** Часы анимации оверлея: идут сами, а на снимке стоят — иначе снимок не повторить. */
+    private var time = 0f
 
     /** Синтетика, если открыта не из дампа; у неё своя камера. */
     private var synthetic: SyntheticScene.Scene? = null
@@ -243,9 +251,12 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
             setToOrtho(false, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat())
         }
 
+        time = System.getProperty(TIME_PROPERTY)?.toFloatOrNull() ?: scene?.time ?: 0f
+
         if (scene != null) {
             cells = scene.cells
             pheromones = scene.pheromones
+            overlay = scene.overlay
             resetCamera()
         } else {
             syntheticKind = System.getProperty(SYNTHETIC_PROPERTY)
@@ -292,6 +303,7 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
         synthetic = built
         cells = built.cells
         pheromones = built.pheromones
+        overlay = built.overlay
         resetCamera()
     }
 
@@ -376,19 +388,21 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
     override fun render() {
         autoBench?.let { mode = it.mode }
 
-        // Как в SimulationScreen: под отладкой бежевый фон, в остальных режимах — чёрный.
-        if (mode == RenderMode.DEBUG) {
-            Gdx.gl.glClearColor(0.7f, 0.678f, 0.599f, 1f)
-        } else {
-            Gdx.gl.glClearColor(0f, 0f, 0f, 1f)
-        }
+        // Фон отладочного режима рисует сам DebugRenderer; остальным — чёрный, как в игре.
+        Gdx.gl.glClearColor(0f, 0f, 0f, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
+
+        if (System.getProperty(SCREENSHOT_PROPERTY) == null) {
+            time = RenderFrame.advanceTime(time, Gdx.graphics.deltaTime)
+        }
 
         frame.apply {
             cameraProjection = camera.combined
             cells = this@RenderLab.cells
             uploadCells = true
             pheromones = this@RenderLab.pheromones.takeIf { it.remaining() > 0 }
+            overlay = this@RenderLab.overlay.takeIf { it.remaining() > 0 }
+            time = this@RenderLab.time
             pheromoneK = scene?.pheromoneK ?: SyntheticScene.PHEROMONE_K
             pheromoneP = scene?.pheromoneP ?: SyntheticScene.PHEROMONE_P
             blurAmount = blur
@@ -491,12 +505,13 @@ class RenderLab(private val scene: RenderSceneDump.Scene?) : ApplicationAdapter(
         val source = if (scene == null) "синтетика ${syntheticKind.name.lowercase()}" else "дамп"
         val instances = cells.remaining() / CellInstanceBuffer.STRUCT_SIZE
         val pheromoneCount = pheromones.remaining() / PheromoneInstanceBuffer.STRUCT_SIZE
+        val overlayCount = overlay.remaining() / OverlayInstanceBuffer.STRUCT_SIZE
 
         font.draw(
             batch,
             buildString {
                 appendLine("FPS ${Gdx.graphics.framesPerSecond}   источник: $source")
-                appendLine("клеток $instances   феромонов $pheromoneCount   слоёв ${texturePaths.size}")
+                appendLine("клеток $instances   феромонов $pheromoneCount   фигур оверлея $overlayCount   слоёв ${texturePaths.size}")
                 appendLine("zoom ${"%.4f".format(camera.zoom)}   " +
                     "камера ${"%.1f".format(camera.position.x)}, ${"%.1f".format(camera.position.y)}")
                 appendLine("режим ${mode.name.lowercase()}   виньетка ${onOff(vignette > 0f)}   перезагрузок $reloadCount")
