@@ -55,8 +55,27 @@ object GameFiles {
         Gdx.files.absolute(root.absolutePath)
     }
 
-    /** Файлы геномов (*.genome). */
-    fun genomesDir(): FileHandle = (dataRoot ?: Gdx.files.local("")).child(GENOMES)
+    /**
+     * Файлы геномов (*.genome).
+     *
+     * Как и раньше — в Gdx.files.local, кроме одного случая: запуска из исходников через
+     * `gradlew :lwjgl3:run`, где рабочий каталог — assets/. Там в assets/genomes лежат
+     * встроенные геномы, а всё из assets/ уходит в сборку; геномы разработчика, сохранённые
+     * или импортированные при проверке, туда попадать не должны. Тогда — корень проекта,
+     * как у [gameDir]. У собранной игры рабочий каталог не assets/, и для неё ничего не
+     * меняется.
+     */
+    fun genomesDir(): FileHandle = (dataRoot ?: localDataRoot()).child(GENOMES)
+
+    private fun localDataRoot(): FileHandle {
+        if (Gdx.app.type == Application.ApplicationType.Desktop) {
+            val working = File("").absoluteFile
+            if (working.name.equals("assets", ignoreCase = true) && working.parentFile != null) {
+                return Gdx.files.absolute(working.parentFile.absolutePath)
+            }
+        }
+        return Gdx.files.local("")
+    }
 
     /**
      * Сохранённые миры. На десктопе — не в рабочей папке, а рядом с игрой (см. [gameDir]

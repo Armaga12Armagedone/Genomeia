@@ -1,5 +1,6 @@
 package io.github.some_example_name.lwjgl3
 
+import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.files.FileHandle
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.systems.simulation.SimulationSystem
@@ -24,8 +25,33 @@ class DesktopFileProvider : FileProvider {
 
     }
 
-    override fun importGenome(callback: (FileHandle?) -> Unit) {
+    /**
+     * Системное окно выбора, сразу несколько файлов: у игрока со старой версии их обычно
+     * пачка. Как и у [pickImage] — в своём потоке и не на macOS. Там остаётся перетаскивание
+     * файлов в окно игры (Lwjgl3Launcher).
+     */
+    override val canPickGenomeFiles: Boolean get() = !isMac
 
+    override fun pickGenomeFiles(callback: (List<FileHandle>) -> Unit) {
+        if (isMac) {
+            callback(emptyList())
+            return
+        }
+        Thread({
+            val files = try {
+                val dialog = FileDialog(null as Frame?, "Genomeia", FileDialog.LOAD)
+                dialog.isMultipleMode = true
+                // На Windows фильтр задаётся «именем файла», на остальных — FilenameFilter.
+                dialog.file = GENOME_EXTENSIONS.joinToString(";") { "*.$it" }
+                dialog.setFilenameFilter { _, name -> name.substringAfterLast('.').lowercase() in GENOME_EXTENSIONS }
+                dialog.isVisible = true
+                dialog.files.filter { it.isFile }
+            } catch (e: Exception) {
+                System.err.println("Не удалось открыть выбор файла: ${e.message}")
+                emptyList()
+            }
+            callback(files.map { Gdx.files.absolute(it.absolutePath) })
+        }, "Pick-Genomes").apply { isDaemon = true }.start()
     }
 
     override fun getExternalFilesDir(type: String?): File? {
@@ -138,5 +164,6 @@ class DesktopFileProvider : FileProvider {
 
     private companion object {
         val IMAGE_EXTENSIONS = listOf("png", "jpg", "jpeg", "webp", "bmp", "gif")
+        val GENOME_EXTENSIONS = listOf("genome", "json")
     }
 }

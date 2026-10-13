@@ -322,6 +322,19 @@ tasks.register('saveRoundTrip', JavaExec) {
   if (project.hasProperty('keep')) systemProperty 'keep', 'true'
 }
 
+// Перевод старых JSON-геномов в .genome с запеканием из редактора: gradlew :lwjgl3:genomeJsonCheck
+// Каждый файл переводится тем же путём, что импорт в игре, и сверяется с «открыть в редакторе и
+// сохранить» побайтно; ненулевой код — перевод не совпал. -Pfrom=каталог с JSON, -Pto=куда класть.
+tasks.register('genomeJsonCheck', JavaExec) {
+  group = 'verification'
+  description = 'Старые JSON-геномы переводятся в .genome так же, как их сохранил бы редактор'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.some_example_name.lwjgl3.demo.GenomeJsonCheckKt'
+  workingDir = rootProject.projectDir
+  jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+  args = [project.findProperty('from') ?: 'core/src/test/resources/legacy-genomes', project.findProperty('to') ?: 'lwjgl3/build/genomeJsonCheck']
+}
+
 // Запись и повтор бага целиком: gradlew :lwjgl3:bugReplayCheck
 // Первый запуск игры проходит сценарий через команды и собирает .bug, второй проигрывает его и
 // сверяет контрольные суммы журнала и хэши состояния мира; ненулевой код — повтор разошёлся.

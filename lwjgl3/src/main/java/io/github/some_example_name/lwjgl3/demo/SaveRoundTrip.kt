@@ -13,6 +13,7 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel
 import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.maps.encodeState
 import java.io.DataInputStream
@@ -155,10 +156,11 @@ private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by g
                 println("После загрузки: ${after.summary}")
                 before.compare(after)
 
-                val folderGenomes = DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder().size
+                // Свои из папки и встроенные: организмы любых из них обязаны найти свой геном.
+                val folderGenomes = GenomeCatalog.all().size
                 check(DISimulationContainer.genomeManager.genomes.size == folderGenomes) {
                     "геномы из папки не узнаны: в списке ${DISimulationContainer.genomeManager.genomes.size}, " +
-                        "в папке $folderGenomes — организмы получили дубликаты"
+                        "в папке и встроенных $folderGenomes — организмы получили дубликаты"
                 }
                 println("Состояние совпало побайтно, геномы сопоставлены с папкой")
 

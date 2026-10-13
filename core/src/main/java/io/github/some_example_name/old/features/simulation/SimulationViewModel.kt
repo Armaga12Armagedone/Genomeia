@@ -3,7 +3,6 @@ package io.github.some_example_name.old.features.simulation
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.OrthographicCamera
 import io.github.some_example_name.old.commands.GameCommand
-import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.bug.BugReplay
 import io.github.some_example_name.old.journal.CommandSource
@@ -11,6 +10,7 @@ import io.github.some_example_name.old.journal.SessionAttachments
 import io.github.some_example_name.old.journal.SessionJournal
 import kotlinx.serialization.Serializable
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.render.RenderSystem
 import io.github.some_example_name.old.systems.simulation.SimulationData
@@ -179,14 +179,15 @@ class SimulationViewModel(
         private set
 
     /**
-     * Имена ФАЙЛОВ геномов, а не Genome.name.
+     * Имена геномов из GenomeCatalog — имена ФАЙЛОВ (у встроенных — с приставкой), а не
+     * Genome.name.
      *
      * Индекс в этом списке используется как индекс в genomeManager.genomes, а тот
-     * наполняется в loadGenomes ровно обходом getGenomeFileNamesFromFolder. Внутреннее
-     * имя генома с именем файла совпадать не обязано: файл может быть переименован,
-     * а при импорте на Android имя файла вообще приходило с префиксом (см.
-     * AndroidFileProvider.sanitizeGenomeFileName). Диалог выбора отдаёт обратно именно
-     * имя файла, поэтому и искать индекс надо в списке имён файлов.
+     * наполняется в loadGenomes ровно обходом GenomeCatalog.all(): сначала свои, потом
+     * встроенные. Внутреннее имя генома с именем файла совпадать не обязано: файл может
+     * быть переименован, а при импорте на Android имя файла вообще приходило с префиксом
+     * (см. GenomeImport.fileBaseName). Диалог выбора отдаёт обратно именно это имя, поэтому
+     * и искать индекс надо в этом списке.
      */
     var genomeNames: List<String> = emptyList()
         private set
@@ -280,7 +281,7 @@ class SimulationViewModel(
     fun loadGenomes() {
         DISimulationContainer.genomeManager.loadGenomes(genomeName)
         genomeNames = if (genomeName == null) {
-            DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder()
+            GenomeCatalog.all()
         } else {
             listOf(genomeName)
         }

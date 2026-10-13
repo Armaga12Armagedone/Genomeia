@@ -2,11 +2,13 @@ package io.github.some_example_name.lwjgl3;
 
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3WindowAdapter;
 
 import io.github.some_example_name.old.game.MyGame;
 
 import java.awt.Dimension;
 import java.awt.Toolkit;
+import java.util.Arrays;
 
 /**
  * Launches the desktop (LWJGL3) application.
@@ -25,7 +27,17 @@ public class Lwjgl3Launcher {
     }
 
     private static Lwjgl3Application createApplication() {
-        return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null), getDefaultConfiguration());
+        MyGame game = new MyGame(new DesktopFileProvider(), null);
+        Lwjgl3ApplicationConfiguration configuration = getDefaultConfiguration();
+        // Перетаскивание файлов в окно — импорт геномов (MyGame.filesDropped). На macOS это
+        // единственный способ: системное окно выбора там не открывается (DesktopFileProvider).
+        configuration.setWindowListener(new Lwjgl3WindowAdapter() {
+            @Override
+            public void filesDropped(String[] files) {
+                game.filesDropped(Arrays.asList(files));
+            }
+        });
+        return new Lwjgl3Application(game, configuration);
     }
 
     private static Lwjgl3ApplicationConfiguration getDefaultConfiguration() {
