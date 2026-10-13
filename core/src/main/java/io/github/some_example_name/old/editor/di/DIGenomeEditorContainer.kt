@@ -423,7 +423,10 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     val editorRenderSystem = EditorRenderSystem(
         worldRenderer = DIGameGlobalContainer.worldRenderer,
         cellReplay = cellReplay,
+        neuralLinkReplay = neuralLinkReplay,
         particleEntity = particleEntity,
+        cellEntity = cellEntity,
+        cellList = cellList,
         editorSimulationSystem = editorSimulationSystem,
         drawingHelperElements = drawingHelperElements
     )

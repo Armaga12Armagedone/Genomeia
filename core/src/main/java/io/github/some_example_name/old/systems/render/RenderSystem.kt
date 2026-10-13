@@ -9,15 +9,14 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
-import io.github.some_example_name.old.core.utils.drawTriangleMiddle
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.render.RenderFrame
 import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.WorldRenderer
 import io.github.some_example_name.render.debug.RenderSceneDump
 import io.github.some_example_name.render.pack.CellInstanceBuffer
+import io.github.some_example_name.render.pack.OverlayInstanceBuffer
 import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
-import kotlin.math.sqrt
 
 /**
  * Сторона симуляции в отрисовке кадра: взять снимок мира и перевести его на язык,
@@ -25,8 +24,9 @@ import kotlin.math.sqrt
  *
  * Границу проводит просто: всё, что знает про клетки, связи и UPS, живёт здесь; всё,
  * что говорит с GPU, живёт в :render. Поэтому здесь нет ни одного вызова Gdx.gl,
- * кроме переключения состояний вокруг отладочных фигур, а там — ни одного упоминания
- * клетки.
+ * кроме переключения состояний вокруг подсветки выбранной клетки, а там — ни одного
+ * упоминания клетки. Даже отладочные связи и стрелки уходят туда фигурами
+ * (OverlayInstanceBuffer), а не рисуются здесь.
  */
 class RenderSystem(
     val worldRenderer: WorldRenderer,
@@ -56,7 +56,14 @@ class RenderSystem(
     /** Всё переиспользуется между кадрами: аллокаций на кадр быть не должно. */
     private val cellBuffer = CellInstanceBuffer()
     private val pheromoneBuffer = PheromoneInstanceBuffer()
+    private val overlayBuffer = OverlayInstanceBuffer()
     private val frame = RenderFrame()
+
+    /**
+     * Часы анимации оверлея: по ним бегут импульсы нейросвязей. Идут, только пока идёт
+     * симуляция, — на паузе сигналы не передаются, и бегущие бусины врали бы.
+     */
+    private var animationTime = 0f
 
     /** Ждёт ближайшего кадра, см. [requestPreview]. */
     private var previewRequest: ((Pixmap) -> Unit)? = null
@@ -98,15 +105,12 @@ class RenderSystem(
     }
 
     fun render() {
-        // Индекс кадра читается ОДИН раз, и оба буфера берутся по нему.
-        //
-        // Буфер связей хранит позиции внутри буфера клеток, поэтому они обязаны быть из
-        // одной сборки. Два отдельных геттера этого не гарантировали: симуляция успевала
-        // переключить буферы между вызовами, и связи рисовались по позициям от другого
-        // кадра — на экране это линии между чужими организмами и уходящие в ноль.
+        // Индекс кадра читается ОДИН раз, и оба буфера берутся по нему: оверлей рисуется
+        // по координатам клеток, и клетки с оверлеем обязаны быть из одной сборки. Почему
+        // это важно — в RenderBufferManager.frameFrontIndex.
         val frameIndex = renderBufferManager.frontFrameIndex()
         val cellBuf = renderBufferManager.cellBuffer(frameIndex)
-        val linkBuf = renderBufferManager.linkBuffer(frameIndex)
+        val overlayBuf = renderBufferManager.overlayBuffer(frameIndex)
 
         val pheromoneBuf = renderBufferManager.getCurrentPheromoneBuffer()
         val spec = renderBufferManager.getCurrentSpecificBufferData()
@@ -125,6 +129,11 @@ class RenderSystem(
 
         packCells(cellBuf)
         packPheromones(pheromoneBuf, mode.usesPostProcess)
+        packOverlay(overlayBuf, mode.drawsDebugOverlay)
+
+        if (renderBufferManager.simulationData.isPlay) {
+            animationTime = RenderFrame.advanceTime(animationTime, Gdx.graphics.deltaTime)
+        }
 
         frame.apply {
             cameraProjection = camera.combined
@@ -133,6 +142,8 @@ class RenderSystem(
             pheromones = pheromoneBuffer.end()
             pheromoneK = PheromonesManager.K
             pheromoneP = PheromonesManager.P
+            overlay = if (mode.drawsDebugOverlay) overlayBuffer.end() else null
+            time = animationTime
             blurAmount = blurLevel
             zoom = camera.zoom
             vignetteEnabled = 1f
@@ -140,7 +151,7 @@ class RenderSystem(
         }
         worldRenderer.render(frame)
 
-        // Сразу после конвейера: в кадре пока только мир, без отладочных линий и текста.
+        // Сразу после конвейера: в кадре пока только мир, без подсветки и текста.
         previewRequest?.let { onReady ->
             previewRequest = null
             val preview = worldRenderer.capturePreview(previewSize)
@@ -149,10 +160,6 @@ class RenderSystem(
             } finally {
                 preview.dispose()
             }
-        }
-
-        if (mode.drawsDebugOverlay) {
-            drawDebug(cellBuf, linkBuf, pheromoneBuf)
         }
 
         moveCameraAndDrawSelected(spec)
@@ -210,71 +217,25 @@ class RenderSystem(
         }
     }
 
-    fun drawDebug(cellBuf: RenderCellBufferData, linkBuf: RenderLinkBufferData, pheromoneBuffer: PheromoneBufferData) {
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
-        Gdx.gl.glLineWidth(2f)
-        with(cellBuf) {
-            shapeRenderer.color = Color.WHITE
-            for (i in 0..<renderCellBufferSize) {
-                if (directedAngleCos[i] != 0f || directedAngleSin[i] != 0f) {
-                    shapeRenderer.line(
-                        x[i],
-                        y[i],
-                        x[i] + directedAngleCos[i],
-                        y[i] + directedAngleSin[i]
-                    )
-                }
-            }
-        }
-
-        shapeRenderer.color = Color.GREEN
-
-        with(linkBuf) {
-            for (linkId in 0..<renderLinkAmount) {
-
-                val cellAIndex = cellA[linkId]
-                val cellBIndex = cellB[linkId]
-                shapeRenderer.color = when (isNeuralDirected[linkId].toInt()) {
-                    0, 1 -> Color.CYAN
-                    -1 -> Color.GREEN
-                    3 -> Color.PURPLE
-                    else -> Color.RED
-                }
-
-                if ((isNeuralDirected[linkId].toInt() == 0)) {
-                    shapeRenderer.drawTriangleMiddle(
-                        cellBuf.x[cellAIndex],
-                        cellBuf.y[cellAIndex],
-                        cellBuf.x[cellBIndex],
-                        cellBuf.y[cellBIndex],
-                        arrowSize = 0.1f
-                    )
-                } else if ((isNeuralDirected[linkId].toInt() == 1)) {
-                    shapeRenderer.drawTriangleMiddle(
-                        cellBuf.x[cellBIndex],
-                        cellBuf.y[cellBIndex],
-                        cellBuf.x[cellAIndex],
-                        cellBuf.y[cellAIndex],
-                        arrowSize = 0.1f
-                    )
-                }
-
-                shapeRenderer.line(
-                    cellBuf.x[cellAIndex],
-                    cellBuf.y[cellAIndex],
-                    cellBuf.x[cellBIndex],
-                    cellBuf.y[cellBIndex],
+    /**
+     * Фигуры оверлея уже упакованы потоком симуляции (RenderBufferManager): здесь только
+     * перекладывание, как и в [packCells]. Кадр без отладки оверлей не получает вовсе.
+     */
+    private fun packOverlay(overlayBuf: RenderOverlayBufferData, drawsOverlay: Boolean) {
+        overlayBuffer.begin(overlayBuf.size)
+        if (!drawsOverlay) return
+        with(overlayBuf) {
+            for (i in 0..<size) {
+                overlayBuffer.put(
+                    x0 = x0[i],
+                    y0 = y0[i],
+                    x1 = x1[i],
+                    y1 = y1[i],
+                    color = color[i],
+                    params = params[i]
                 )
             }
         }
-
-//      Дебаг отрисовка феромона
-        with(pheromoneBuffer) {
-            for (i in 0..<pheromoneBufferSize) {
-                shapeRenderer.circle(x[i], y[i], sqrt(radiusSquared[i]), 64)
-            }
-        }
-        shapeRenderer.end()
     }
 
     private fun moveCameraAndDrawSelected(spec: RenderSpecificBufferData) {

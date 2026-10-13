@@ -8,8 +8,10 @@ import com.badlogic.gdx.graphics.VertexAttribute
 import com.badlogic.gdx.graphics.VertexAttributes
 import com.badlogic.gdx.graphics.glutils.FrameBuffer
 import com.badlogic.gdx.graphics.glutils.ShaderProgram
+import com.badlogic.gdx.math.Matrix4
 import io.github.some_example_name.render.components.BlurPostProcessRenderer
 import io.github.some_example_name.render.components.CellGeometry
+import io.github.some_example_name.render.components.DebugRenderer
 import io.github.some_example_name.render.components.DistortRenderer
 import io.github.some_example_name.render.components.NostalgicRenderer
 import io.github.some_example_name.render.components.ParticleRenderer
@@ -19,29 +21,31 @@ import io.github.some_example_name.render.components.RenderComponent
 import io.github.some_example_name.render.components.RenderContext
 import io.github.some_example_name.render.components.VignetteRenderer
 import io.github.some_example_name.render.pack.CellInstanceBuffer
+import io.github.some_example_name.render.pack.OverlayInstanceBuffer
 import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
 
 /**
  * Единственная точка входа модуля рендера: отдаёшь [RenderFrame] — получаешь картинку.
  *
  * Конвейер выполняется по порядку:
- *  1. ParticleRenderer      — клетки инстансингом в scene FBO (в отладке — прямо в экран)
- *  2. NostalgicRenderer     — клетки ностальгического режима, сам выводит кадр на экран
- *  3. PostProcessRenderer   — собель и пастельная стилизация
- *  4. DistortRenderer       — хроматическая аберрация
- *  5. BlurPostProcessRenderer — гауссов блюр
- *  6. PheromoneRenderer     — феромоны поверх
- *  7. VignetteRenderer      — виньетка, единственный проход прямо в экран
+ *  1. ParticleRenderer      — клетки реалистичного режима инстансингом в scene FBO
+ *  2. DebugRenderer         — отладочный режим целиком: клетки, связи, стрелки, лучи
+ *  3. NostalgicRenderer     — клетки ностальгического режима, сам выводит кадр на экран
+ *  4. PostProcessRenderer   — собель и пастельная стилизация
+ *  5. DistortRenderer       — хроматическая аберрация
+ *  6. BlurPostProcessRenderer — гауссов блюр
+ *  7. PheromoneRenderer     — феромоны поверх
+ *  8. VignetteRenderer      — виньетка, единственный проход прямо в экран
  *
  * Какие из них работают, решает [RenderFrame.mode]: проход, которому в этом режиме делать
- * нечего, сразу возвращается. В реалистичном режиме идут все, кроме второго; в отладочном
- * — только первый; в ностальгическом — только второй.
+ * нечего, сразу возвращается. В реалистичном режиме идут все, кроме второго и третьего;
+ * в отладочном — только второй; в ностальгическом — только третий.
  *
  * Порядок задаётся списком [components] — чтобы вставить свой проход, достаточно
  * добавить [RenderComponent] в нужную позицию.
  *
  * Клетки заливаются на GPU один раз за кадр, до всех проходов, в общую [CellGeometry] —
- * её рисуют и ParticleRenderer, и NostalgicRenderer.
+ * её рисуют ParticleRenderer, DebugRenderer и NostalgicRenderer.
  *
  * ПРО ВЛАДЕНИЕ И ЖИЗНЕННЫЙ ЦИКЛ
  * -----------------------------
@@ -111,6 +115,7 @@ class WorldRenderer(
 
         // Порядок в списке = порядок проходов.
         components.add(ParticleRenderer(texturePaths, cellGeometry))
+        components.add(DebugRenderer(cellGeometry))
         components.add(NostalgicRenderer(cellGeometry))
         components.add(PostProcessRenderer())
         components.add(DistortRenderer())
@@ -209,6 +214,12 @@ class WorldRenderer(
             pheromoneK = frame.pheromoneK
             pheromoneP = frame.pheromoneP
 
+            overlayData = frame.overlay
+            numOverlayInstances =
+                frame.overlay?.let { it.remaining() / OverlayInstanceBuffer.STRUCT_SIZE } ?: 0
+            time = frame.time
+            pixelWorld = pixelWorld(frame.cameraProjection)
+
             blurAmount = frame.blurAmount
             zoom = frame.zoom
             vignetteEnabled = frame.vignetteEnabled
@@ -225,6 +236,20 @@ class WorldRenderer(
         }
 
         Gdx.gl.glUseProgram(0)
+    }
+
+    /**
+     * Единиц мира на пиксель экранного буфера.
+     *
+     * Камера ортографическая: M00 = 2 / ширина_видимого_мира, а экран — backBufferWidth
+     * пикселей. Буфер берётся экранный, а не логический размер окна: на экране с
+     * масштабом (HiDPI) они различаются, а растеризуются фигуры именно в пикселях буфера.
+     */
+    private fun pixelWorld(projection: Matrix4): Float {
+        val scaleX = projection.`val`[Matrix4.M00]
+        val width = Gdx.graphics.backBufferWidth.coerceAtLeast(1)
+        if (scaleX == 0f) return 1f
+        return kotlin.math.abs(2f / (scaleX * width))
     }
 
     /**

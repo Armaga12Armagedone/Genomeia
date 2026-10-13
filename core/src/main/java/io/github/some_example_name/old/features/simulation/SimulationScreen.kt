@@ -43,7 +43,6 @@ import io.github.some_example_name.old.features.menu.MenuScreen
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
 import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
-import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.debug.RenderSceneDump
 import java.io.File
 
@@ -225,13 +224,11 @@ class SimulationScreen(
         // Отладочный стресс-тест (A убивает клетки, D разгоняет их) берёт клавиши из снимка
         // контроллера в потоке симуляции — см. SimulationSystem.latchControllerKeys.
 
-        // Бежевый фон — только под отладкой. Реалистичный режим закрывает экран
-        // постпроцессом, а у ностальгического чёрный фон — часть рисунка.
-        if (renderSystem.mode == RenderMode.DEBUG) {
-            Gdx.gl.glClearColor(1.0f * 0.7f, 0.969f * 0.7f, 0.855f * 0.7f, 1.0f)
-        } else {
-            Gdx.gl.glClearColor(0.0f, 0.0f, 0.0f, 1f)
-        }
+        // Фон здесь не важен ни в одном режиме: реалистичный закрывает экран постпроцессом,
+        // а отладочный и ностальгический рисуют свой фон сами — он часть их рисунка.
+        // Раньше под отладкой здесь заливался бежевый: тогда отладка рисовала клетки прямо
+        // поверх очищенного экрана.
+        Gdx.gl.glClearColor(0.0f, 0.0f, 0.0f, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
         shapeRenderer.projectionMatrix = camera.combined

@@ -5,6 +5,7 @@ import com.badlogic.gdx.math.Matrix4
 import io.github.some_example_name.render.RenderFrame
 import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.pack.CellInstanceBuffer
+import io.github.some_example_name.render.pack.OverlayInstanceBuffer
 import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
 import org.junit.Rule
 import org.junit.Test
@@ -54,10 +55,18 @@ class RenderSceneDumpTest {
             pheromones.put(x = i.toFloat(), y = i * 2f, a = 0.1f * i, color = 0x00FF00FF.toInt())
         }
 
+        val overlay = OverlayInstanceBuffer(initialCapacity = 1)
+        overlay.begin()
+        overlay.putRing(1f, 2f, 3f, 0x7F00FF00)
+        overlay.putArrow(0f, 0f, 1f, 1f, -1, signal = 0.5f)
+        overlay.putNeuralLink(-1f, -2f, 4f, 5f, 0x01020304, signal = -0.75f, seed = 9)
+
         val frame = RenderFrame().apply {
             cameraProjection = Matrix4()
             this.cells = cells.end()
             this.pheromones = pheromones.end()
+            this.overlay = overlay.end()
+            time = 123.25f
             pheromoneK = 0.4f
             pheromoneP = 0.01f
             blurAmount = 2.5f
@@ -114,6 +123,36 @@ class RenderSceneDumpTest {
 
         assertBuffersEqual(frame.cells!!, scene.cells, "буфер клеток")
         assertBuffersEqual(frame.pheromones!!, scene.pheromones, "буфер феромонов")
+
+        assertEquals(3, scene.overlayCount)
+        assertEquals(123.25f, scene.time)
+        assertBuffersEqual(frame.overlay!!, scene.overlay, "буфер оверлея")
+        assertTrue(scene.overlay.isDirect, "оверлей тоже едет на GPU как есть")
+    }
+
+    @Test
+    fun `дамп версии 2 читается без оверлея и времени`() {
+        // Версия 3 добавила два поля: время после pheromoneP и оверлей в самом конце.
+        // Старые снимки — материал для сравнения «до и после», терять их нельзя.
+        val (frame, _, _) = sampleFrame(cellCount = 4, pheromoneCount = 2)
+        frame.overlay = null
+        val file = FileHandle(folder.newFile("v2.scene"))
+        RenderSceneDump.write(file, frame, 800, 600, 1f, 2f, 0.5f, listOf("a.png"))
+
+        // Из записи версии 3 делаем версию 2: номер, без времени и без счётчика оверлея.
+        val v3 = file.readBytes()
+        val timeOffset = 8 + 4 + 4 + 4 + 3 * 4 + 2 * 4 + 1 + 2 * 4
+        val v2 = v3.copyOfRange(0, timeOffset) + v3.copyOfRange(timeOffset + 4, v3.size - 4)
+        v2[8] = 0; v2[9] = 0; v2[10] = 0; v2[11] = 2
+        file.writeBytes(v2, false)
+
+        val scene = RenderSceneDump.read(file)
+        assertEquals(4, scene.cellCount)
+        assertEquals(2, scene.pheromoneCount)
+        assertEquals(0f, scene.time)
+        assertEquals(0, scene.overlayCount)
+        assertEquals(0, scene.overlay.remaining())
+        assertBuffersEqual(frame.cells!!, scene.cells, "буфер клеток")
     }
 
     @Test
