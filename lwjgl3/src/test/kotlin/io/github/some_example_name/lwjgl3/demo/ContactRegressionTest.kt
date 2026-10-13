@@ -39,6 +39,24 @@ class ContactRegressionTest {
         assertEquals(0.0, px[0] + px[1], 1e-14)
     }
 
+    @Test fun ccdWorkArraysResetAfterPassesWithoutCrossings() {
+        val ct = pair()
+        val y = DoubleArray(2); val v = DoubleArray(2); val mass = doubleArrayOf(1.0, 1.0)
+        fun crossing(): DoubleArray {
+            val x = doubleArrayOf(0.2, -0.2)
+            ct.prepare(x, y, doubleArrayOf(-0.25, 0.25), y, v, v, mass)
+            assertTrue(x[0] < x[1])
+            return x
+        }
+        val first = crossing()
+        repeat(3) {
+            val x = doubleArrayOf(-0.5, 0.5)
+            ct.prepare(x, y, x.copyOf(), y, v, v, mass)
+            assertArrayEquals(doubleArrayOf(-0.5, 0.5), x, 0.0)
+        }
+        assertArrayEquals(first, crossing(), 0.0)
+    }
+
     @Test fun refreshFindsNewContactAndPreservesExistingMultiplier() {
         val ct = pair()
         val px = doubleArrayOf(-0.6, 0.6); val py = DoubleArray(2)
@@ -53,6 +71,37 @@ class ContactRegressionTest {
         assertTrue(lambda > 0)
         ct.prepare(px, py, px.copyOf(), py.copyOf(), vx, vy, mass, continuing = true)
         assertEquals(lambda, ct.lambdaOf(0, 1), 0.0)
+    }
+
+    @Test fun restPairCacheFollowsReconfigurationAndLegacyMode() {
+        val empty = IntArray(0)
+        val restX = floatArrayOf(-0.4f, 0.4f, 2f); val restY = FloatArray(3)
+        val isolated = BooleanArray(3) { true }
+        val ever = BoundaryContacts.linkedPairs(intArrayOf(0, 0), intArrayOf(1, 2), 2)
+        val ct = BoundaryContacts.build(3, empty, empty, 0, empty, empty, 0, empty,
+            DoubleArray(3) { 0.5 }, 1.0, 0.4, 0.1, 0.0,
+            restX, restY, 1.0, 0.2, isolated, ever)
+        fun prepare(): Int {
+            val x = doubleArrayOf(-0.45, 0.45, 3.0); val y = DoubleArray(3)
+            ct.prepare(x, y, x.copyOf(), y, DoubleArray(3), DoubleArray(3), DoubleArray(3) { 1.0 })
+            return ct.contactCount
+        }
+        // Бывшие соседи 0–1 упираются на 0.8, хотя сумма радиусов равна 1.
+        assertEquals(0, prepare())
+        val legacy = BoundaryContacts.abLegacy
+        try {
+            BoundaryContacts.abLegacy = true
+            assertEquals(1, prepare())
+        } finally { BoundaryContacts.abLegacy = legacy }
+        assertEquals(0, prepare())
+        // Тот же слот покоя теперь принадлежит паре 0–2. Кэш кандидата 0–1
+        // обязан сброситься, иначе он ошибочно возьмёт чужое расстояние 0.8.
+        ct.reconfigure(empty, empty, 0, empty, empty, 0, empty,
+            floatArrayOf(-0.4f, 2f, 0.4f), restY, isolated, null, null, ever)
+        assertEquals(1, prepare())
+        ct.reconfigure(empty, empty, 0, empty, empty, 0, empty,
+            restX, restY, isolated, null, null, ever)
+        assertEquals(0, prepare())
     }
 
     @Test fun rigidContactBatchPreservesShapeAndLinearImpulse() {

@@ -72,7 +72,7 @@ internal class InternalMomentum(val n: Int) {
         System.arraycopy(px, 0, snapX, 0, n)
         System.arraycopy(py, 0, snapY, 0, n)
         System.arraycopy(organismOf, 0, startOrg, 0, n)
-        if (startFirst.size < organismCount) startFirst = IntArray(organismCount)
+        if (startFirst.size < organismCount) startFirst = IntArray(maxOf(organismCount, startFirst.size * 2, 16))
         java.util.Arrays.fill(startFirst, 0, organismCount, -1)
         for (i in 0 until n) { val o = organismOf[i]; if (o in 0 until organismCount && startFirst[o] < 0) startFirst[o] = i }
         pairN = 0
@@ -108,10 +108,14 @@ internal class InternalMomentum(val n: Int) {
         val c = organismCount
         if (c <= 0) return
         if (parent.size < c) {
-            parent = IntArray(c)
-            gM = DoubleArray(c); gCx = DoubleArray(c); gCy = DoubleArray(c)
-            gDx = DoubleArray(c); gDy = DoubleArray(c)
-            gL = DoubleArray(c); gI = DoubleArray(c); gPinned = BooleanArray(c)
+            // Разрушение добавляет компоненты по одной: точный размер выделял заново
+            // все девять массивов. Ёмкость растёт вдвое, живой диапазон по-прежнему c.
+            // 61 байт на слот: 256 слотов ~15 КБ (L1), 2048 ~122 КБ (L2).
+            val capacity = maxOf(c, parent.size * 2, 16)
+            parent = IntArray(capacity)
+            gM = DoubleArray(capacity); gCx = DoubleArray(capacity); gCy = DoubleArray(capacity)
+            gDx = DoubleArray(capacity); gDy = DoubleArray(capacity)
+            gL = DoubleArray(capacity); gI = DoubleArray(capacity); gPinned = BooleanArray(capacity)
         }
         for (o in 0 until c) parent[o] = o
         // Разорванное ПОСРЕДИ подшага — всё ещё одна группа: до разрыва связь законно
@@ -132,6 +136,10 @@ internal class InternalMomentum(val n: Int) {
             val ra = find(a); val rb = find(b)
             if (ra != rb) parent[ra] = rb
         }
+        // После объединений корни больше не меняются. Три прохода по клеткам
+        // читают готовый номер группы; повторять find для каждой клетки незачем.
+        // Новых массивов нет: parent уже занимает 4 байта на организм.
+        for (o in 0 until c) parent[o] = find(o)
         java.util.Arrays.fill(gM, 0, c, 0.0)
         java.util.Arrays.fill(gCx, 0, c, 0.0); java.util.Arrays.fill(gCy, 0, c, 0.0)
         java.util.Arrays.fill(gDx, 0, c, 0.0); java.util.Arrays.fill(gDy, 0, c, 0.0)
@@ -140,7 +148,7 @@ internal class InternalMomentum(val n: Int) {
         for (i in 0 until n) {
             val o = organismOf[i]
             if (o !in 0 until c) continue
-            val g = find(o)
+            val g = parent[o]
             if (invMass[i] <= 0.0) { gPinned[g] = true; continue }
             val m = 1.0 / invMass[i]
             gM[g] += m; gCx[g] += m * prevX[i]; gCy[g] += m * prevY[i]
@@ -149,7 +157,7 @@ internal class InternalMomentum(val n: Int) {
         for (i in 0 until n) {
             val o = organismOf[i]
             if (o !in 0 until c || invMass[i] <= 0.0) continue
-            val g = find(o)
+            val g = parent[o]
             if (gPinned[g]) continue
             val m = 1.0 / invMass[i]
             val dx = px[i] - snapX[i]; val dy = py[i] - snapY[i]
@@ -159,13 +167,21 @@ internal class InternalMomentum(val n: Int) {
             gI[g] += m * (rx * rx + ry * ry)
         }
         if (dbgCell in 0 until n && organismOf[dbgCell] in 0 until c) dbgLint += gL[find(organismOf[dbgCell])]
+        // Одни и те же три деления раньше выполнялись на КАЖДУЮ клетку группы.
+        // Суммы уже собраны, поэтому вычисляем перенос и поворот один раз на группу.
+        // Порядок накопления сумм и сами операции деления остаются прежними.
+        for (g in 0 until c) {
+            if (gPinned[g] || gM[g] <= 0.0) continue
+            gDx[g] /= gM[g]; gDy[g] /= gM[g]
+            gL[g] = if (gI[g] > 1e-18) gL[g] / gI[g] else 0.0
+        }
         for (i in 0 until n) {
             val o = organismOf[i]
             if (o !in 0 until c || invMass[i] <= 0.0) continue
-            val g = find(o)
+            val g = parent[o]
             if (gPinned[g] || gM[g] <= 0.0) continue
-            val tx = gDx[g] / gM[g]; val ty = gDy[g] / gM[g]
-            val w = if (gI[g] > 1e-18) gL[g] / gI[g] else 0.0
+            val tx = gDx[g]; val ty = gDy[g]
+            val w = gL[g]
             val rx = prevX[i] - gCx[g]; val ry = prevY[i] - gCy[g]
             px[i] -= tx - w * ry
             py[i] -= ty + w * rx

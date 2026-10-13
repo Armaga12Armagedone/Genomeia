@@ -1000,7 +1000,7 @@ fun main(args: Array<String>) {
             println("--- широкая фаза: перестроек %d на %d вызовов (%.2f на подшаг), пропущено пар %d ---"
                 .format(ct.bpBuilds, ct.bpCalls, if (ct.bpCalls == 0L) 0.0 else ct.bpBuilds.toDouble() / ct.bpCalls, ct.bpMissed))
         }
-        println("--- стадии за всю сессию, доля ---")
+        println("--- стадии за всю сессию, доля учтённого времени (не всего тика) ---")
         for (k in ns.indices.sortedByDescending { ns[it] }) {
             if (ns[k] == 0L) continue
             println("    %-22s %5.1f%%  (%.0f мс)".format(demo.dbgTimeNames[k], ns[k] / tot * 100, ns[k] / 1e6))

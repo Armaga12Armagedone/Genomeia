@@ -411,6 +411,29 @@ tasks.register('perfBench', JavaExec) {
   jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
 }
 
+// Один связный организм до 102400 клеток и мир из копий; два повтора с хэшами.
+tasks.register('scaleBench', JavaExec) {
+  group = 'verification'
+  description = 'Масштаб реального решателя, память и локальность без окна'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.some_example_name.lwjgl3.demo.ScaleBenchKt'
+  workingDir = rootProject.projectDir
+  args = [project.findProperty('body') ?: 'body-export.txt',
+          project.findProperty('scaleTicks') ?: '48', project.findProperty('scaleWarm') ?: '32',
+          project.findProperty('scaleScene') ?: 'all']
+  jvmArgs '-Xmx3g', '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+}
+
+tasks.register('layoutBench', JavaExec) {
+  group = 'verification'
+  description = 'Локальность настоящих проходов связей и площадей, побитовая сверка'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.some_example_name.lwjgl3.demo.LayoutBenchKt'
+  workingDir = rootProject.projectDir
+  args = [project.findProperty('body') ?: 'body-export.txt', project.findProperty('copies') ?: '108']
+  jvmArgs '-Xmx3g', '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+}
+
 tasks.register('softGridBench', JavaExec) {
   group = 'verification'
   description = 'Безоконный замер мягкой решётки: тяга из ничего'

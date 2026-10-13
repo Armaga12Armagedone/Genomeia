@@ -104,6 +104,11 @@ class BoundaryContacts(
     // --- пары-кандидаты ---
     private var pairA = IntArray(4096)
     private var pairB = IntArray(4096)
+    // Номер записи покоя стабилен между перестройками широкой фазы. JFR 13.10:
+    // повторный поиск по строке rest занимал 5.4% CPU на записи из 5620 тиков.
+    // Добавлено 4 байта на кандидата: 4096 пар = 16 КБ (часть L1), 100k пар = 0.4 МБ (часть L2).
+    // Массив читается потоком вместе с pairA/B, без новой хеш-таблицы и обхода клеток.
+    private var pairRestSlot = IntArray(4096)
     private var pairN = 0
 
     /**
@@ -513,27 +518,8 @@ class BoundaryContacts(
     private val radiusMinimum = ContactRadiusMinimum(n)
     internal val minContactRadius: Double get() = radiusMinimum.value
 
-    /**
-     * ВРЕМЕННЫЕ УЧАСТНИКИ КОНТАКТА: внутренние клетки, рядом с которыми найден чужой.
-     *
-     * ЗАЧЕМ. Контактный радиус назначается ТОЛЬКО из граничных рёбер, поэтому у
-     * внутренней клетки он строго ноль и для столкновений её не существует. Из этого
-     * следуют сразу две беды, обе видны в журналах игрока: ткань продавливается сквозь
-     * стенку бассейна СВОИМИ ВНУТРЕННИМИ клетками (в разборе клетка прошла, имея r=0.00
-     * при ближайшей чужой в 0.159 связи), а чужой обломок, попавший внутрь тела,
-     * не встречает там НИЧЕГО и остаётся навсегда.
-     *
-     * ПОЧЕМУ НЕ ДАТЬ РАДИУС ВСЕМ ВНУТРЕННИМ. Это убило бы всё: вторые соседи по решётке
-     * стоят на 1.0 связи при радиусах 0.5, то есть перекрывались бы В ПОЗЕ ПОКОЯ, и тело
-     * раздувало бы изнутри. Плюс цена: участников стало бы не четыреста, а две тысячи.
-     *
-     * ПОЭТОМУ ТОЛЬКО ТАМ, ГДЕ УЖЕ НАЙДЕН ЧУЖОЙ, и только ПРОТИВ ЧУЖИХ: пара двух клеток
-     * ОДНОГО тела с участием временного участника не берётся вовсе (см. broadphase).
-     * Тогда внутри ткани ничего не меняется, а нарушителя встречает ОБЫЧНЫЙ контакт — со
-     * всеми уже построенными потолками, сохранением импульса, маршрутизацией кости и
-     * переносом множителя. Ни новой стадии, ни новых правил, ни новых сил.
-     */
-
+    // Контакты получают только граница и свободные клетки. После разрыва новая
+    // поверхность включается через updateSurface до следующего прохода решателя.
 
     /** Расстояние упора каждого контакта этого подшага. */
     private var cRR = DoubleArray(4096)
@@ -555,6 +541,22 @@ class BoundaryContacts(
             return if (d < rr) d else rr
         }
         return rr
+    }
+
+    private fun pairContactDistance(p: Int, rr: Double): Double {
+        if (!CONTACT_REST_SPACING || abLegacy || restSpacingN == 0) return rr
+        var s = pairRestSlot[p]
+        if (s == -2) {
+            s = -1
+            val i = pairA[p]; val j = pairB[p]; val rp = rest
+            for (k in rp.start[i] until rp.start[i + 1]) {
+                if (rp.other[k] == j) { s = k; break }
+            }
+            pairRestSlot[p] = s
+        }
+        if (s < 0 || restState[s].toInt() != REST_SPACING) return rr
+        val d = rest.dist[s]
+        return if (d < rr) d else rr
     }
 
     // --- жёсткие кластеры: масса, центр, момент инерции на подшаг ---
@@ -1087,6 +1089,7 @@ class BoundaryContacts(
         if (pairN >= pairA.size) {
             pairA = pairA.copyOf(pairA.size * 2)
             pairB = pairB.copyOf(pairB.size * 2)
+            pairRestSlot = pairRestSlot.copyOf(pairA.size)
         }
         pairA[pairN] = i; pairB[pairN] = j; pairN++
     }
@@ -1117,7 +1120,7 @@ class BoundaryContacts(
 
     private fun broadphase(px: DoubleArray, py: DoubleArray, qx: DoubleArray, qy: DoubleArray) {
         grid.begin(vertCount)
-        if (sweepStart.size != vertCount + 1) sweepStart = IntArray(vertCount + 1)
+        if (sweepStart.size < vertCount + 1) sweepStart = IntArray(maxOf(vertCount + 1, sweepStart.size * 2))
         if (sweepX.size < vertCount * 2) { sweepX = IntArray(vertCount * 2); sweepY = IntArray(vertCount * 2) }
         var sn = 0
         for (a in 0 until vertCount) {
@@ -1157,6 +1160,9 @@ class BoundaryContacts(
             }
         }
         sortPairs()
+        // Ищем только для реально сблизившихся пар. Предварительный поиск для
+        // всех кандидатов тратил больше, чем экономил, на короткой записи с ударами.
+        java.util.Arrays.fill(pairRestSlot, 0, pairN, -2)
     }
 
     /**
@@ -1213,7 +1219,6 @@ class BoundaryContacts(
                          invMass: DoubleArray) {
         lastToiClamps = 0
         if (pairN == 0) return
-        for (vi in 0 until vertCount) { val v = verts[vi]; toi[v] = 1.0; ccdParent[v] = v }
         var hit = false
         for (p in 0 until pairN) {
             val a = pairA[p]; val j = pairB[p]
@@ -1228,6 +1233,10 @@ class BoundaryContacts(
             val move2 = dvx * dvx + dvy * dvy
             val gate = CCD_GATE * (contactRadius[a] + contactRadius[j])
             if (move2 <= gate * gate) {
+                // Дальняя пара: (rc + |dv|)^2 <= 2*(rc^2 + |dv|^2).
+                // Берём более свободную верхнюю оценку с запасом от округления;
+                // если она уже не достигает пары, прежний sqrt тоже отверг бы её.
+                if (d0x * d0x + d0y * d0y > 4.0 * (rc * rc + move2)) continue
                 val reach = rc + sqrt(move2)
                 if (d0x * d0x + d0y * d0y >= reach * reach) continue
             }
@@ -1247,7 +1256,12 @@ class BoundaryContacts(
             if (disc < 0) continue
             val t = (-bb - sqrt(disc)) / (2.0 * aa)
             if (t < 0 || t >= 1) continue
-            hit = true
+            if (!hit) {
+                // До первого пересечения рабочие массивы никому не нужны.
+                // В покое пропускаем записи по всей границе на каждом проходе CCD.
+                for (vi in 0 until vertCount) { val v = verts[vi]; toi[v] = 1.0; ccdParent[v] = v }
+                hit = true
+            }
             if (t < toi[a]) toi[a] = t
             if (t < toi[j]) toi[j] = t
             val ra = ccdFind(a); val rj = ccdFind(j)
@@ -1301,7 +1315,7 @@ class BoundaryContacts(
             val d2 = dx * dx + dy * dy
             val rr0 = contactRadius[i] + contactRadius[j]
             if (d2 >= rr0 * rr0) continue
-            val rr = contactDistance(i, j)
+            val rr = pairContactDistance(p, rr0)
             if (d2 >= rr * rr) continue
             val d = sqrt(d2)
             val nx: Double; val ny: Double

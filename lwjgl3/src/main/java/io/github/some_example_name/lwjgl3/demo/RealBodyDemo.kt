@@ -15,6 +15,7 @@ import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.ScreenUtils
 import com.badlogic.gdx.utils.viewport.FitViewport
 import io.github.some_example_name.lwjgl3.StartupHelper
+import io.github.some_example_name.old.core.DEBUG_CHECKS
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -44,7 +45,11 @@ import kotlin.math.sqrt
  *      integrate            позиции += v * h, гравитация, пол
  *      solveConstraints     расстояния
  *      solveAreas           знаковая площадь
- *      projectBone          ПОСЛЕДНЯЯ из позиционных: всё после неё нарушит жёсткость
+ *      projectBone          общая жёсткая поза кости
+ *      solveLinkMaxLength   предел длины и немедленный разрыв
+ *      prepare/solveContacts контакты всей кости и мягких клеток на каждой итерации
+ *      cancelInternalSpin   снять момент внутренних ограничений
+ *      prepare/solveContacts закрыть движение после последнего предела и снятия момента
  *      updateVelocities     v = (x - prevX) / h
  *      applyDragVelocity    тяга мыши — СКОРОСТЬЮ, после позиционных (в движке не нужна)
  *      applyViscosity       \
@@ -52,9 +57,9 @@ import kotlin.math.sqrt
  *      applyRestitution      |
  *      applyMediumDrag      /
  *
- * Почему проекция кости последняя: она ставит вершины на жёсткую цель ровно, и любая
- * позиционная поправка после неё эту жёсткость ломает буквально. Поэтому и пол
- * обрабатывается в integrate, а не после решателя.
+ * Контакты после projectBone двигают и поворачивают всю кость через RigidContactBatch.
+ * Поправка отдельной костной клетки здесь нарушила бы жёсткость; поэтому маршрутизация
+ * к общему кластеру обязательна, включая CCD и завершающий проход контактов.
  *
  * Почему диссипация после восстановления скоростей: до него скоростей ещё нет,
  * updateVelocities перезапишет их из позиций и затрёт любую правку.
@@ -1087,17 +1092,6 @@ class RealBodyDemo(private val bodyPath: String,
          * Журналы с таранами: лопнуло 1 / 16 / 2 / 8, стенд без изменений.
          */
         private const val TRAP_KILL_FOLDS = true
-
-        /**
-         * ЧЕРЕЗ СТОЛЬКО ТИКОВ ПЛЕНА КЛЕТКА ВОЗВРАЩАЕТСЯ НАРУЖУ. Ноль — выключено.
-         *
-         * Не сразу, потому что перекрытие на ударе — нормальная работа мягкого контакта:
-         * из 171 найденного перекрытия 82 решатель разгребает сам за несколько тиков, и
-         * возвращать их значило бы воевать со своим же решателем. См. ejectTrapped.
-         */
-
-
-
 
         /**
          * МЕМБРАНА ХРУПЧЕ ТКАНИ: связь на контуре рвётся, когда недобор сверх предела длины
@@ -3092,10 +3086,15 @@ class RealBodyDemo(private val bodyPath: String,
     private val surfaceOne = IntArray(1)
 
     private fun refreshSurface() {
+        // Отдельный таймер: обновление вызывается и внутри других измеряемых стадий.
+        val surfaceT0 = if (DEBUG_CHECKS && dbgTimeOn) System.nanoTime() else 0L
         while (componentTearCursor < tearQueueN) localComponents.split(tearQueue[componentTearCursor++])
         organismCount = localComponents.count
         val count = baked.dirtyCount
-        if (count == 0) return
+        if (count == 0) {
+            if (DEBUG_CHECKS && dbgTimeOn) dbgTimeNs[12] += System.nanoTime() - surfaceT0
+            return
+        }
         val changed = baked.dirtyVertices
         for (k in 0 until count) {
             val v = changed[k]
@@ -3112,6 +3111,7 @@ class RealBodyDemo(private val bodyPath: String,
         contacts?.updateSurface(localSurface, changed, count)
         dbgSealMinR = contacts?.minContactRadius ?: 0.0
         baked.clearDirty()
+        if (DEBUG_CHECKS && dbgTimeOn) dbgTimeNs[12] += System.nanoTime() - surfaceT0
     }
 
     private fun syncBoundaryArrays() {
@@ -3321,21 +3321,6 @@ class RealBodyDemo(private val bodyPath: String,
     }
 
     /**
-     * Изгиб границы: обычное ограничение расстояния между соседями через одну.
-     * Стоит ПОСЛЕ площадей и перед проекцией кости, вместе с остальными позиционными.
-     * См. BEND_LEVELS — по умолчанию стадия выключена и выходит на первой же строке.
-     */
-    /**
-     * ПРЕДЕЛ ДЛИНЫ СВЯЗИ. Жёстко, без податливости — см. LINK_MAX_LENGTH.
-     *
-     * Односторонний: сжатию не мешает вовсе, срабатывает только на растяжении сверх
-     * суммы радиусов. Стоит СРАЗУ ПОСЛЕ solveConstraints, чтобы мягкая пружина не могла
-     * оставить связь растянутой до конца подшага.
-     *
-     * В движке ровно это условие — сигнал к разрыву связи. Здесь рвать нечем, поэтому
-     * связь просто бесконечно крепкая.
-     */
-    /**
      * ПЛАСТИЧЕСКОЕ ТЕЧЕНИЕ ТКАНИ. Зовётся РАЗ В ТИК, см. PLASTIC_RATE.
      *
      * Деформация сверх предела текучести медленно переезжает в длину покоя, то есть
@@ -3418,19 +3403,18 @@ class RealBodyDemo(private val bodyPath: String,
 
     private fun solveLinkMaxLength() {
         if (tearingOn) SealStats.tearingOnTicks++ else SealStats.tearingOffTicks++
-        // Всё в локальные: стадия идёт 80 раз за тик по пяти тысячам связей.
+        // Всё в локальные: при MAXLEN_EARLY стадия идёт 144 раза за тик.
         val px = px; val py = py; val invMass = invMass
         val conA = conA; val conB = conB; val conRest = conRest; val conMuscle = conMuscle
         val conDead = conDead; val ms = muscleScaleOf
-        val meanLink = body.meanLinkLength
         for (c in 0 until conCount) {
             if (conDead[c]) continue
             val i = conA[c]; val j = conB[c]
             val wi = invMass[i]; val wj = invMass[j]
             val w = wi + wj
             if (w == 0.0) continue
-            var dx = px[i] - px[j]
-            var dy = py[i] - py[j]
+            val dx = px[i] - px[j]
+            val dy = py[i] - py[j]
             // КОРЕНЬ БЕРЁТСЯ ТОЛЬКО КОГДА НУЖЕН.
             //
             // Стадия идёт 144 раза за тик по пяти тысячам связей, и у подавляющего
@@ -3451,63 +3435,76 @@ class RealBodyDemo(private val bodyPath: String,
             // значений корень всё равно придётся взять, но это единицы связей за тик.
             // Запас до порогов копится В КВАДРАТАХ, корень берётся один раз при чтении:
             // сравнение «ближе ли этот запас прежнего» от возведения в квадрат не меняется.
-            val cr2 = len2 / (restScale * restScale)
-            if (cr2 < dbgWorstCrush2) dbgWorstCrush2 = cr2
-            val st2 = len2 / (rest * rest)
-            if (st2 > dbgWorstStretch2) dbgWorstStretch2 = st2
+            if (DEBUG_CHECKS && dbgLinkExtremaOn) {
+                val cr2 = len2 / (restScale * restScale)
+                if (cr2 < dbgWorstCrush2) dbgWorstCrush2 = cr2
+                val st2 = len2 / (rest * rest)
+                if (st2 > dbgWorstStretch2) dbgWorstStretch2 = st2
+            }
             if (!crushed && !over) continue
-            val len = sqrt(len2)
-            // РАЗДАВЛЕННАЯ СВЯЗЬ РВЁТСЯ ТАК ЖЕ, КАК ПЕРЕРАСТЯНУТАЯ. См. LINK_CRUSH_RATIO.
-            if (crushed) {
-                linkTorn[c] = true; conDead[c] = true; tearsPending = true; killEdgeNow(conEdge[c])
-                crushedCell[i] = true; crushedCell[j] = true
-                dbgTornCrush++; if (mus >= 0) dbgTornCrushMuscle++
-                dbgTear(c, i, j, "сжатие", len / (conRest[c] * scale))
-                continue
-            }
-            if (dbgSealOn && conBoundary[c]) dbgSeal(c, i, j, len)
-            @Suppress("UNUSED_EXPRESSION")
-            // ЩЕЛЬ СТАЛА ПРОХОДИМОЙ — РВЁМ. Проверка идёт ДО выхода по пределу длины:
-            // щель открывается раньше, чем связь дотягивается до своего потолка.
-            // См. membranePassTear.
-            if (tearingOn && membranePassTear && conBoundary[c] &&
-                len > (contacts?.contactRadiusOf(i) ?: 0.0) +
-                    (contacts?.contactRadiusOf(j) ?: 0.0) + 2.0 * dbgSealMinR) {
-                linkTorn[c] = true; conDead[c] = true; tearsPending = true; killEdgeNow(conEdge[c])
-                membranePassCount++; SealStats.torn++
-                dbgTear(c, i, j, "щель", len / conRest[c])
-                continue
-            }
-            if (len < 1e-12) continue
-            val overStrain = (len - max) / conRest[c]
-            if (overStrain > dbgMaxOverStrain) dbgMaxOverStrain = overStrain
-            // Пик недобора за всё время: сколько связь хотела сверх предела.
-            val tear = if (conTendon[c]) linkTearStrain * tendonTear else linkTearStrain
-            if (len - max > tear * conRest[c]) {
-                linkTorn[c] = true
-                if (tearingOn) { conDead[c] = true; tearsPending = true; killEdgeNow(conEdge[c]) }
-                dbgTornPull++; if (mus >= 0) dbgTornPullMuscle++
-                dbgTear(c, i, j, "растяжение", len / conRest[c])
-            }
-            // МЕМБРАНА ХРУПЧЕ ТКАНИ. См. MEMBRANE_TEAR_STRAIN.
-            if (tearingOn && membraneTearStrain >= 0.0 && conBoundary[c] && !conDead[c] &&
-                len - max > membraneTearStrain * conRest[c]) {
-                linkTorn[c] = true; conDead[c] = true; tearsPending = true; killEdgeNow(conEdge[c])
-                membraneTearCount++
-            }
-            dx /= len; dy /= len
-            // Тот же потолок поправки за подшаг, что и у контакта, и по той же
-            // причине: стадия ЖЁСТКАЯ, перерастяжение она снимает целиком за один
-            // подшаг, а updateVelocities делит поправку на крошечное h. При загибе
-            // связи растягиваются сильно, и отсюда шёл остаток выброса скорости.
-            // Делится по паре в тех же долях, поэтому импульс пары сохраняется.
-            var dL = -(len - max) / w
-            val capL = LINK_MAX_STEP * meanLink / w
-            if (dL < -capL) dL = -capL
-            px[i] += dx * dL * wi; py[i] += dy * dL * wi
-            px[j] -= dx * dL * wj; py[j] -= dy * dL * wj
-            linkCapHits++
+            solveLinkLimitViolation(c, len2, crushed, scale)
         }
+    }
+
+    /** Редкие разрывы отдельно от цикла: меньше байткода и живых локальных в обычном проходе. */
+    private fun solveLinkLimitViolation(c: Int, len2: Double, crushed: Boolean, scale: Double) {
+        val i = conA[c]; val j = conB[c]
+        val wi = invMass[i]; val wj = invMass[j]; val w = wi + wj
+        var dx = px[i] - px[j]; var dy = py[i] - py[j]
+        val mus = conMuscle[c]
+        val max = LINK_MAX_STRETCH * conRest[c]
+        val meanLink = body.meanLinkLength
+        val len = sqrt(len2)
+        // РАЗДАВЛЕННАЯ СВЯЗЬ РВЁТСЯ ТАК ЖЕ, КАК ПЕРЕРАСТЯНУТАЯ. См. LINK_CRUSH_RATIO.
+        if (crushed) {
+            linkTorn[c] = true; conDead[c] = true; tearsPending = true; killEdgeNow(conEdge[c])
+            crushedCell[i] = true; crushedCell[j] = true
+            dbgTornCrush++; if (mus >= 0) dbgTornCrushMuscle++
+            dbgTear(c, i, j, "сжатие", len / (conRest[c] * scale))
+            return
+        }
+        if (dbgSealOn && conBoundary[c]) dbgSeal(c, i, j, len)
+        @Suppress("UNUSED_EXPRESSION")
+        // ЩЕЛЬ СТАЛА ПРОХОДИМОЙ — РВЁМ. Проверка идёт ДО выхода по пределу длины:
+        // щель открывается раньше, чем связь дотягивается до своего потолка.
+        // См. membranePassTear.
+        if (tearingOn && membranePassTear && conBoundary[c] &&
+            len > (contacts?.contactRadiusOf(i) ?: 0.0) +
+                (contacts?.contactRadiusOf(j) ?: 0.0) + 2.0 * dbgSealMinR) {
+            linkTorn[c] = true; conDead[c] = true; tearsPending = true; killEdgeNow(conEdge[c])
+            membranePassCount++; SealStats.torn++
+            dbgTear(c, i, j, "щель", len / conRest[c])
+            return
+        }
+        if (len < 1e-12) return
+        val overStrain = (len - max) / conRest[c]
+        if (overStrain > dbgMaxOverStrain) dbgMaxOverStrain = overStrain
+        // Пик недобора за всё время: сколько связь хотела сверх предела.
+        val tear = if (conTendon[c]) linkTearStrain * tendonTear else linkTearStrain
+        if (len - max > tear * conRest[c]) {
+            linkTorn[c] = true
+            if (tearingOn) { conDead[c] = true; tearsPending = true; killEdgeNow(conEdge[c]) }
+            dbgTornPull++; if (mus >= 0) dbgTornPullMuscle++
+            dbgTear(c, i, j, "растяжение", len / conRest[c])
+        }
+        // МЕМБРАНА ХРУПЧЕ ТКАНИ. См. MEMBRANE_TEAR_STRAIN.
+        if (tearingOn && membraneTearStrain >= 0.0 && conBoundary[c] && !conDead[c] &&
+            len - max > membraneTearStrain * conRest[c]) {
+            linkTorn[c] = true; conDead[c] = true; tearsPending = true; killEdgeNow(conEdge[c])
+            membraneTearCount++
+        }
+        dx /= len; dy /= len
+        // Тот же потолок поправки за подшаг, что и у контакта, и по той же
+        // причине: стадия ЖЁСТКАЯ, перерастяжение она снимает целиком за один
+        // подшаг, а updateVelocities делит поправку на крошечное h. При загибе
+        // связи растягиваются сильно, и отсюда шёл остаток выброса скорости.
+        // Делится по паре в тех же долях, поэтому импульс пары сохраняется.
+        var dL = -(len - max) / w
+        val capL = LINK_MAX_STEP * meanLink / w
+        if (dL < -capL) dL = -capL
+        px[i] += dx * dL * wi; py[i] += dy * dL * wi
+        px[j] -= dx * dL * wj; py[j] -= dy * dL * wj
+        linkCapHits++
     }
 
     /**
@@ -3574,7 +3571,10 @@ class RealBodyDemo(private val bodyPath: String,
         log.append(10.toChar())
     }
 
-    /** Разбор: самая смятая и самая растянутая связь за прогон, в долях длины покоя. */
+    /** Только PERF_GAIT читает эти экстремумы; обычному тику два деления на связь не нужны. */
+    internal var dbgLinkExtremaOn = false
+
+    /** Разбор при dbgLinkExtremaOn: самая смятая и растянутая связь за прогон, в долях покоя. */
     private var dbgWorstCrush2 = 1.0
     internal val dbgWorstCrush: Double get() = sqrt(dbgWorstCrush2)
     private var dbgWorstStretch2 = 1.0
@@ -4373,15 +4373,21 @@ class RealBodyDemo(private val bodyPath: String,
      * движение», этот — «кто съел время». Имена стадий в dbgTimeNames.
      */
     internal var dbgTimeOn = false
-    internal val dbgTimeNs = LongArray(12)
+    internal val dbgTimeNs = LongArray(14)
     internal val dbgTimeNames = arrayOf(
         "связи", "лоскуты", "предел длины", "площади", "изгиб", "кость",
         "подготовка контактов", "решатель контактов", "снятие момента",
-        "скорости и среда", "ловушка", "пересборка")
+        "скорости и среда", "ловушка", "пересборка", "локальная поверхность", "контактные кости")
     private var dbgTimeT0 = 0L
+    private var dbgTimeSurface0 = 0L
 
-    private fun tick0() { if (dbgTimeOn) dbgTimeT0 = System.nanoTime() }
-    private fun tick1(k: Int) { if (dbgTimeOn) dbgTimeNs[k] += System.nanoTime() - dbgTimeT0 }
+    private fun tick0() { if (DEBUG_CHECKS && dbgTimeOn) {
+        dbgTimeSurface0 = dbgTimeNs[12]
+        dbgTimeT0 = System.nanoTime()
+    } }
+    private fun tick1(k: Int) { if (DEBUG_CHECKS && dbgTimeOn) {
+        dbgTimeNs[k] += System.nanoTime() - dbgTimeT0 - (dbgTimeNs[12] - dbgTimeSurface0)
+    } }
 
     /**
      * КАКАЯ СТАДИЯ ДВИГАЕТ КЛЕТКУ. Знак среды RB_WATCH=номер клетки.
@@ -4950,11 +4956,8 @@ class RealBodyDemo(private val bodyPath: String,
                 if (sweepFlip == 2) sweepBackwards = !sweepBackwards
                 tick0(); dbgMark(); solveConstraints(h); dbgMeasure(0, h); tick1(0)
                 tick0(); dbgMark(); solveFlaps(h); dbgMeasure(9, h); tick1(1)
-                // ПЕРВЫЙ ЗАХОД ПРЕДЕЛА ДЛИНЫ МОЖНО ПРОПУСТИТЬ. Связи только что решены
-                // стадией связей, то есть стоят на своей длине покоя, и предел тут почти
-                // всегда ничего не делает — он нужен ПОСЛЕ стадий, которые связи
-                // растягивают: площадей, изгиба, проекции кости, контакта. Разрывы ловятся
-                // вторым заходом, который идёт каждый проход. См. MAXLEN_EARLY.
+                // Ранний предел оставляем: его пропуск уже проверяли, покоящееся тело
+                // начинало ползти. Это другой момент решателя, чем предел после площадей.
                 if (MAXLEN_EARLY) { tick0(); dbgMark(); solveLinkMaxLength(); dbgMeasure(4, h); tick1(2); refreshSurface() }
                 // ОПЫТ: выключить стадию площадей знаком среды RB_AREAS=0. Нужен проверке
                 // гипотезы игрока — не она ли проталкивает клетки сквозь чужую ткань в
@@ -4965,8 +4968,8 @@ class RealBodyDemo(private val bodyPath: String,
                 if (bonesRigid) for (b in rigidBones.indices) projectBone(b)
                 dbgMeasure(3, h); tick1(5)
                 tick0(); dbgMark(); solveLinkMaxLength(); dbgMeasure(4, h); tick1(2)
-                // ПЕРЕСБОРКИ ЗДЕСЬ БОЛЬШЕ НЕТ: ребро гаснет сразу (killEdgeNow), а
-                // структура перестраивается один раз в конце тика. См. tearQueue.
+                // Производная поверхность обновляется сразу и локально. В конце тика
+                // остаётся только упаковка рабочих списков; см. tearQueue.
                 refreshSurface()
                 val ci = contacts
                 if (ci != null && contactsOn) {
@@ -4977,8 +4980,10 @@ class RealBodyDemo(private val bodyPath: String,
                     dbgMeasure(6, h); tick1(6)
                     if (cancelSpinOn) internalMom?.noteContacts(ci)
                     contactsStale = false
+                    tick0()
                     ci.updateBones(px, py, invMass,
                         if (bonesRigid) boneOf else null, rigidBones)
+                    tick1(13)
                     tick0(); dbgMark(); ci.solveContacts(px, py, vx, vy, invMass, h); dbgMeasure(5, h); tick1(7)
                     if (ci.killN > 0) { applyKills(ci); contactsStale = true }
                     // ПРОВЕРЯТЬ ПРОБОЙ ПОСЛЕ КАЖДОЙ ИТЕРАЦИИ — ПРОВЕРЕНО И ОТВЕРГНУТО.
@@ -5012,7 +5017,7 @@ class RealBodyDemo(private val bodyPath: String,
             // только пока расстояние между ними не больше суммы радиусов. Растянутая
             // костью связь оставляет в мембране щель, и сквозь неё можно воткнуть
             // чужое тело — что и наблюдалось при резком рывке за кость.
-            dbgMark(); solveLinkMaxLength(); dbgMeasure(4, h)
+            tick0(); dbgMark(); solveLinkMaxLength(); dbgMeasure(4, h); tick1(2)
 
             // Снять импульс и момент, внесённые ВНУТРЕННИМИ стадиями. Контакты стоят в том
             // же цикле, но их смещения копятся отдельно и не снимаются: контакт внешний
@@ -5026,9 +5031,13 @@ class RealBodyDemo(private val bodyPath: String,
             refreshSurface()
             val finalContacts = contacts
             if (finalContacts != null && contactsOn) {
+                tick0()
                 finalContacts.prepare(px, py, prevX, prevY, vx, vy, invMass, continuing = true)
+                tick1(6); tick0()
                 finalContacts.updateBones(px, py, invMass, if (bonesRigid) boneOf else null, rigidBones)
+                tick1(13); tick0()
                 finalContacts.solveContacts(px, py, vx, vy, invMass, h)
+                tick1(7)
                 contactsStale = false
                 if (finalContacts.killN > 0) { applyKills(finalContacts); contactsStale = true }
                 if (finalContacts.pierceN > 0) applyPierce(finalContacts)
@@ -5340,7 +5349,7 @@ class RealBodyDemo(private val bodyPath: String,
             }
             ticks[i]++
             // В ЧЬЁМ ТЕЛЕ СИДИТ — нужно возврату: контур берётся того организма, внутри
-            // которого клетка оказалась, а не ближайшего вообще. См. ejectTrapped.
+            // которого клетка оказалась, а не ближайшего вообще.
             if (trapOrg.size == n) trapOrg[i] = org[ta[foreign]]
             dbgTrapNow++
             if (boneOf[i] >= 0) dbgTrapBone++
@@ -5350,121 +5359,9 @@ class RealBodyDemo(private val bodyPath: String,
         dbgTrapNs += System.nanoTime() - t0
     }
 
-    /**
-     * ВОЗВРАТ ЗАСТРЯВШЕЙ КЛЕТКИ НАРУЖУ — вторая половина непроницаемости контура.
-     *
-     * ЗАЧЕМ ОНА НУЖНА ОТДЕЛЬНО ОТ ПРОФИЛАКТИКИ. Клетка внутри чужого тела не имеет НИ
-     * ОДНОГО контакта: контактный радиус назначается только из граничных рёбер, у
-     * внутренних клеток он строго ноль. Значит выталкивать её нечем, и само это никогда
-     * не исправится — замер показал, что клетка остаётся внутри все 60 тиков наблюдения.
-     * Позиционный решатель с конечным числом итераций когда-нибудь да пропустит, поэтому
-     * одной профилактики для гарантии не хватает.
-     *
-     * ПОЧЕМУ НЕ УБИВАТЬ. Так было раньше (TRAP_KILL_TICKS) и это был костыль: прорыв
-     * случился, его замяли, а игрок видел, как у него пропадают клетки. Возврат к
-     * ближайшему ребру — не затычка, а прямое решение того самого ограничения, которое
-     * нарушено.
-     *
-     * ПОЧЕМУ ПО СТОЙКОСТИ, А НЕ СРАЗУ. Перекрытие на ударе — нормальная работа мягкого
-     * контакта, и из 171 найденного перекрытия 82 решатель разгребает сам за несколько
-     * тиков. Возвращать их значило бы воевать со своим же решателем. Поэтому возврат
-     * ждёт TRAP_EJECT_TICKS тиков подряд: за это время транзит кончается сам, а
-     * настоящий плен — нет.
-     *
-     * НАПРАВЛЕНИЕ. К ближайшему ребру контура ТОГО тела, внутри которого клетка сидит
-     * (trapOrg), по внешней нормали этого ребра (boundOpp). Здесь «ближайшее ребро»
-     * уместно, в отличие от профилактики: клетка давно не движется относительно ткани,
-     * и кратчайший выход — он и есть выход. Поправка идёт долями по обратной массе,
-     * поэтому импульс пары сохраняется, и ограничена тем же потолком за тик.
-     */
-
-    /**
-     * ВОЗВРАЩАЮТСЯ ТОЛЬКО ОБЛОМКИ: кусок должен быть во столько раз меньше тела, в
-     * котором застрял. Отношение, а не число клеток — иначе правило зависело бы от
-     * размера тела, а оно про соотношение масс.
-     *
-     * ЗАЧЕМ ОГРАНИЧЕНИЕ. Возврат ВСЕХ ломал таран двух тел: на ударе внутри друг друга
-     * оказываются десятки клеток ПОЛНОРАЗМЕРНЫХ тел, и выталкивание каждой к своему
-     * ближайшему ребру работает насосом — ближайшие рёбра у них с разных сторон. Замер:
-     * 123 связи за встречное тело при пределе 1.0.
-     *
-     * А вот про обломок двух мнений быть не может: собственной ткани, которая держала
-     * бы его, у него нет, контактов внутри тела нет вовсе, и САМО это не исправится
-     * никогда. В журнале игрока застрявшие куски были размером 1, 1, 14 и 19 клеток
-     * при теле 947 — то есть именно обломки.
-     */
-
-    /** Ниже этой глубины до контура обломок не возвращается. См. ejectTrapped. */
-
-    /** Сколько обломков возвращать за тик. Ноль — все. См. planEjection. */
-
-    /**
-     * ШАГ ВОЗВРАТА ЗА ОДИН ЗАХОД, в долях средней связи.
-     *
-     * Маленький намеренно: невязка пересчитывается каждый заход, и стоит клетке выйти —
-     * приращение само обращается в ноль. Один большой прыжок за тик, который стоял в
-     * первой попытке, давал дрожь.
-     *
-     * ЗАХОД ОДИН НА ПОДШАГ, А НЕ НА КАЖДУЮ ИТЕРАЦИЮ. На всех четырёх итерациях поправка
-     * воюет со связями и площадями хозяина заново, и дребезг от этого вырос везде:
-     * лобовой 82к → 95к, вскользь 65к → 129к, куча плотнее 8к → 120к. Один заход на
-     * подшаг оставляет трём остальным итерациям возможность свести невязку всех прочих
-     * ограничений без помех.
-     */
-
-    /** 1 — выдавливать обломок, 2 — рвать мембрану в месте плена. См. planEjection. */
-
-    /**
-     * НЕ РВАТЬ СВЯЗЬ, ПОКА КЛЕТКА ВНУТРИ ЧУЖОЙ ТКАНИ ИЛИ В СКЛАДКЕ.
-     *
-     * Главный случай игрока устроен так: клетку вдавливает в ткань, связи рвутся, и на
-     * пересборке она становится отдельным организмом УЖЕ ВНУТРИ — разрыв и ЕСТЬ то, что
-     * создаёт нарушителя. Вытолкнуть его потом нельзя тихо: четыре размещения возврата
-     * измерены, все поднимают выброс и дребезг (см. applyEjection). Запрет на разрыв в
-     * этом состоянии убирает причину, и добавить шума ему нечем — он не прикладывает
-     * никаких поправок, а только НЕ разрывает.
-     *
-     * ОПРОВЕРГНУТО ЗАМЕРОМ, ПО УМОЛЧАНИЮ ВЫКЛЮЧЕНО. Запрет действительно тихий — дребезг
-     * остался базовым (бассейн 15951 ровно как база, куча в теле 64.2к против 63.8к), и
-     * это подтверждает, что шум давали именно поправки, а не сам отлов. Но ткань, которой
-     * не дают порваться, ПРОДАВЛИВАЮТ: проверка «тела не проходят друг сквозь друга на
-     * таране» дала 15.4 связи за встречное тело при пределе 1.0, а кость помялась на 0.225
-     * при пределе 0.15. В журнале игрока вторая метка при этом оказалась внутри ткани на
-     * 1.82 связи, то есть стало хуже, а число пленников на стенде не изменилось (86 из
-     * 1980 против 89 базовых).
-     *
-     * ВЫВОД, КОТОРЫЙ СТОИТ ЗАПОМНИТЬ: РАЗРЫВ НЕСУЩИЙ. Он и есть то, чем ткань отвечает на
-     * удар вместо того, чтобы быть пройденной насквозь. Запрещать его нельзя даже на один
-     * тик и даже локально.
-     */
-
-    /** Давать коллизию внутренней ткани там, где найден чужой. См. markExtraContacts. */
-
-    /** Сколько разрывов удержано запретом. Замер, а не догадка. */
-
-
-    /**
-     * ВОЗВРАТ ОБЛОМКА НАРУЖУ — ограничение, а не толчок. Зовётся В ПОДШАГЕ, перед
-     * проекцией кости.
-     *
-     * ПОЧЕМУ ИМЕННО ЗДЕСЬ. После этой стадии идёт projectBone, и он возвращает жёсткому
-     * кластеру форму — значит кость помяться не может по построению, а не по аккуратности.
-     * Дальше идёт предел длины, который подчистит растянутые поправкой связи, и контакты,
-     * у которых остаётся последнее слово. И главное: поправка попадает в позиционное
-     * решение подшага, а не кладётся в позиции после updateVelocities, где она целиком
-     * уходила в скорость делением на крошечный h.
-     *
-     * ШАГ МАЛЕНЬКИЙ И ПОВТОРЯЕТСЯ. Невязка пересчитывается каждый заход, поэтому стоит
-     * клетке выйти — приращение само обращается в ноль. Один большой прыжок за тик
-     * заменён многими малыми: так ведут себя все прочие ограничения, и дребезга от этого
-     * не возникает.
-     *
-     * ИМПУЛЬС. Трёхтельное: обломок и два конца ребра, доли по обратной массе с весами
-     * (1-t) и t вдоль ребра. Сумма m*dp равна нулю точно.
-     */
-
-    /** Сколько обломков ждёт возврата в этот тик. Видно в HUD. */
-
+    // Возврат застрявших и запрет разрыва удалены: возврат повышал дребезг,
+    // а запрет разрыва давал пролёт 15.4 связи при пределе 1.0. Детали отвергнутых
+    // опытов сохранены в docs/physics/realbody-history-2026-10-13.md.
     private fun burstByPressure() {
         if (!tearingOn || contactPressure.size != n) return
         // Порванное в последнем проходе предела длины ещё не пересобрано, а признак

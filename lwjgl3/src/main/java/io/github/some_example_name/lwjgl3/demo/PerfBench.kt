@@ -543,6 +543,7 @@ fun main(args: Array<String>) {
     System.getenv("PERF_GAIT")?.toDoubleOrNull()?.let { secs ->
         P.resetState()
         P.setTearing(true)
+        P.demo.dbgLinkExtremaOn = true
         if (System.getenv("PERF_TEARS") != null) P.demo.dbgTearLog = StringBuilder()
         val frames = Math.round(secs / dt).toInt()
         val x0 = P.pX(); val y0 = P.pY()
@@ -640,7 +641,7 @@ fun main(args: Array<String>) {
         // Замер идёт по ВСЕМ прогонам, включая прогрев: доли важнее абсолютных чисел.
         val ns = P.demo.dbgTimeNs
         val total = ns.sum().toDouble()
-        println("  по стадиям, доля тика:")
+        println("  по стадиям, доля учтённого времени (не всего тика):")
         for (k in ns.indices.sortedByDescending { ns[it] }) {
             if (ns[k] == 0L) continue
             println("    %-22s %5.1f%%".format(P.demo.dbgTimeNames[k], ns[k] / total * 100))
