@@ -570,6 +570,9 @@ fun main(args: Array<String>) {
             bset.size, longest, nearest, nearest / longest))
     }
 
+    fun foreignTissue(): Int = foreignTissueCount(P.n, P.px, P.py, P.organismOf,
+        P.get("cellDead"), P.triA, P.triB, P.triC, P.triCount)
+
     println("--- рывок за кость в чужое тело")
 
     run {
@@ -595,6 +598,7 @@ fun main(args: Array<String>) {
             val hold = (0.5 / dt).toInt()
             P.resetCounters()
             var worstPen = 0.0
+            var worstInside = 0
             var worstMissed = 0
             for (fr in 1..hold) {
                 val u = fr.toDouble() / hold
@@ -602,29 +606,18 @@ fun main(args: Array<String>) {
                 P.frame(dt, sub, contract = false)
                 val pen = ct.maxPenetration(P.px, P.py)
                 if (pen > worstPen) worstPen = pen
+                worstInside = maxOf(worstInside, foreignTissue())
                 val miss = ct.missedOverlaps(P.px, P.py)
                 if (miss > worstMissed) worstMissed = miss
             }
             P.dragRelease()
             println(String.format(Locale.ROOT,
                 "       порвано связей на месте удара: %d из %d", P.tornCount(), topo.conCount))
-            // ГЛУБОКОЕ ПРОНИКНОВЕНИЕ ДОПУСТИМО ТОЛЬКО ТАМ, ГДЕ ТКАНЬ ПОРВАЛАСЬ.
-            //
-            // Тест ТАРАНИТ одним телом другое: кость тащат прямо в центр соседа и
-            // не отпускают. Требовать здесь непроницаемости бессмысленно — рука
-            // сильнее мембраны, и так и должно быть. В основной симуляции ответ на
-            // такой удар не «не пустить», а РАЗОРВАТЬ ткань, и отметки разрыва
-            // ровно в месте удара это подтверждают.
-            //
-            // Поэтому инвариант составной: либо мембрана удержала, либо она
-            // порвалась. Что недопустимо — пройти насквозь БЕЗ единого разрыва:
-            // это значило бы, что контур дырявый, а не перегруженный.
-            val tornAtImpact = P.tornCount()
-            check("тело в тело проходит только через разрыв",
-                "чужая граница пройдена, а ткань цела — контур дырявый") {
-                ok = worstPen < 0.5 || tornAtImpact > 0
-                detail = String.format(Locale.ROOT,
-                    "проникновение %.3f, порвано связей %d", worstPen, tornAtImpact)
+            // Разрыв где-то в теле не оправдывает вход в оставшийся ЖИВОЙ треугольник.
+            check("при рывке нет клеток внутри живой чужой ткани",
+                "центр клетки оказался внутри живого чужого треугольника") {
+                ok = worstInside == 0
+                detail = "клеток в живой ткани: $worstInside; перекрытие контактов: $worstPen"
             }
             // Порог не ноль, и вот почему. Ноль стоял, когда метрика ловила
             // НАСТОЯЩУЮ ошибку: список контактов строился до тяги и проекции кости,
@@ -1192,19 +1185,21 @@ fun main(args: Array<String>) {
     //     жёсткостью: если без неё проникновение исчезает, виновата проекция.
     println("--- повторный таран: роль жёсткости кости")
     run {
+        P.resetState()
+        val originalOrg = P.organismOf.copyOf()
         val order0 = (0 until P.organismCount).sortedByDescending { P.organismSize(it) }
         val ct0 = P.contactsObj()
         if (order0.size >= 2 && P.organismSize(order0[1]) >= 2 && ct0 != null) {
             val oa = order0[0]; val ob = order0[1]
             fun com2(o: Int): DoubleArray {
                 var x = 0.0; var y = 0.0; var c = 0
-                for (i in 0 until P.n) if (P.organismOf[i] == o) { x += P.px[i]; y += P.py[i]; c++ }
+                for (i in 0 until P.n) if (originalOrg[i] == o) { x += P.px[i]; y += P.py[i]; c++ }
                 return doubleArrayOf(x / c, y / c)
             }
             fun slamRound(rigid: Boolean, rounds: Int): DoubleArray {
                 P.setBonesRigid(rigid)
                 P.resetState(); P.resetCounters()
-                var worstPen = 0.0; var worstThrough = 0.0
+                var worstPen = 0.0; var worstThrough = 0.0; var worstInside = 0
                 // Ось удара берётся ОДИН РАЗ, до всех раундов. Пересчёт её каждый
                 // раунд делал число бессмысленным: после отскока тела меняются
                 // местами, ось разворачивается, и «прошло насквозь» показывало
@@ -1223,13 +1218,14 @@ fun main(args: Array<String>) {
                     // что делает клавиша O, и правка константы её не касается.
                     val speed = P.const("BULLET_SPEED_FRACTION") * P.const("MAX_SPEED_CELLS_PER_TICK") * topo.meanLinkLength / dt
                     for (i in 0 until P.n) {
-                        when (P.organismOf[i]) {
+                        when (originalOrg[i]) {
                             oa -> { P.vx[i] = dx * speed; P.vy[i] = dy * speed }
                             ob -> { P.vx[i] = -dx * speed; P.vy[i] = -dy * speed }
                         }
                     }
                     for (fr in 1..(2.0 / dt).toInt()) {
                         P.frame(dt, sub, contract = false)
+                        if (rigid) worstInside = maxOf(worstInside, foreignTissue())
                         val p = ct0.maxPenetration(P.px, P.py)
                         if (p > worstPen) worstPen = p
                         val na = com2(oa); val nb = com2(ob)
@@ -1239,9 +1235,13 @@ fun main(args: Array<String>) {
                     }
                 }
                 P.setBonesRigid(true)
-                return doubleArrayOf(worstPen, worstThrough)
+                return doubleArrayOf(worstPen, worstThrough, worstInside.toDouble())
             }
             val rigid = slamRound(true, 4)
+            check("повторные тараны не проходят сквозь живую ткань",
+                "после повторного удара клетка оказалась внутри живого чужого треугольника") {
+                expectAtMost(rigid[2].toInt(), 0)
+            }
             val soft = slamRound(false, 4)
             println(String.format(Locale.ROOT,
                 "       4 тарана подряд: кости ЖЁСТКИЕ проникновение %.3f, прошло насквозь %.2f связи",
@@ -1266,9 +1266,11 @@ fun main(args: Array<String>) {
             }
         } else {
             val oa = order[0]; val ob = order[1]
+            // При распаде ID компонент меняются. Для пролёта сравниваем исходные тела.
+            val originalOrg = P.organismOf.copyOf()
             fun com(o: Int): DoubleArray {
                 var x = 0.0; var y = 0.0; var c = 0
-                for (i in 0 until P.n) if (P.organismOf[i] == o) { x += P.px[i]; y += P.py[i]; c++ }
+                for (i in 0 until P.n) if (originalOrg[i] == o) { x += P.px[i]; y += P.py[i]; c++ }
                 return doubleArrayOf(x / c, y / c)
             }
             val ca = com(oa); val cb = com(ob)
@@ -1287,8 +1289,10 @@ fun main(args: Array<String>) {
             var worstOverlap = 0.0
             val ct = P.contactsObj()
             var worstPen = 0.0
+            var worstInside = 0
             for (fr in 1..(3.0 / dt).toInt()) {
                 P.frame(dt, sub, contract = false)
+                worstInside = maxOf(worstInside, foreignTissue())
                 val na = com(oa); val nb = com(ob)
                 // Проекция «насколько b оказался ПОЗАДИ a» вдоль оси удара.
                 val sep = (nb[0] - na[0]) * dx + (nb[1] - na[1]) * dy
@@ -1304,18 +1308,10 @@ fun main(args: Array<String>) {
                 "       таран на %.1f клеток/тик: проникновение %.3f, помечено %d, УБИТО связей %d из %d, потолок %d раз, пик %.1f",
                 speed * dt / topo.meanLinkLength, worstPen, P.tornCount(), killed, topo.conCount,
                 P.speedCapHits(), P.peakSpeedCellsPerTick()))
-            // ГЛАВНЫЙ ВОПРОС, ради которого разрыв и сделан: может ли тело войти в
-            // мягкую ткань, НЕ порвав её. Пока связи были вечными, ответ получить
-            // было нельзя — ткань обязана была выдержать что угодно.
-            //
-            // Инвариант: глубокое проникновение допустимо ТОЛЬКО там, где ткань
-            // порвалась. Проникновение без единого разрыва означает, что контур
-            // дырявый, а не перегруженный.
-            check("глубокое проникновение только через разрыв",
-                "тело вошло в мягкую ткань, не порвав её — контур дырявый") {
-                ok = worstPen < 0.5 || killed > 0
-                detail = String.format(Locale.ROOT,
-                    "проникновение %.3f, убито связей %d", worstPen, killed)
+            check("при таране нет клеток внутри живой чужой ткани",
+                "центр клетки оказался внутри живого чужого треугольника") {
+                ok = worstInside == 0
+                detail = "клеток в живой ткани: $worstInside; перекрытие контактов: $worstPen"
             }
             check("тела не проходят друг сквозь друга на таране",
                 "центры масс поменялись местами — тела пролетели насквозь") {

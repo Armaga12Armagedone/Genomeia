@@ -571,6 +571,9 @@ class SwimSolver(private val topo: Topology, var p: SwimParams) {
     private var gaitFrame = 0
 
     fun reset() {
+        topo.conRest.copyInto(conRest); topo.triRestArea2.copyInto(triRestArea2)
+        conHold.fill(0); triHold.fill(0)
+        for (c in conMaxLen.indices) conMaxLen[c] = p.linkMaxStretch * conRest[c]
         for (i in 0 until n) {
             px[i] = topo.restX[i].toDouble(); py[i] = topo.restY[i].toDouble()
             prevX[i] = px[i]; prevY[i] = py[i]
@@ -996,10 +999,8 @@ class SwimSolver(private val topo: Topology, var p: SwimParams) {
                 for (b in topo.rigidBones.indices) projectBone(b)
                 solveLinkMaxLength()
                 if (p.contactsOn) {
-                    if (iter == 0) {
-                        contacts.prepare(px, py, prevX, prevY, vx, vy, invMass)
-                        if (DemoConst.CANCEL_INTERNAL_SPIN) internalMom.noteContacts(contacts)
-                    }
+                    contacts.prepare(px, py, prevX, prevY, vx, vy, invMass, continuing = iter > 0)
+                    if (DemoConst.CANCEL_INTERNAL_SPIN) internalMom.noteContacts(contacts)
                     contacts.updateBones(px, py, invMass, topo.boneOf, topo.rigidBones)
                     contacts.solveContacts(px, py, vx, vy, invMass, h)
                 }
@@ -1009,6 +1010,11 @@ class SwimSolver(private val topo: Topology, var p: SwimParams) {
             solveLinkMaxLength()
             trackStress()
             if (DemoConst.CANCEL_INTERNAL_SPIN) cancelInternalSpin()
+            if (p.contactsOn) {
+                contacts.prepare(px, py, prevX, prevY, vx, vy, invMass, continuing = true)
+                contacts.updateBones(px, py, invMass, topo.boneOf, topo.rigidBones)
+                contacts.solveContacts(px, py, vx, vy, invMass, h)
+            }
             updateVelocities(h)
             // Отскок — зеркало демо, см. solveRestitution.
             if (p.contactsOn) contacts.solveRestitution(px, py, vx, vy, invMass)
@@ -1102,10 +1108,8 @@ class SwimSolver(private val topo: Topology, var p: SwimParams) {
                 for (b in topo.rigidBones.indices) projectBone(b)
                 solveLinkMaxLength()
                 if (p.contactsOn) {
-                    if (iter == 0) {
-                        contacts.prepare(px, py, prevX, prevY, vx, vy, invMass)
-                        if (DemoConst.CANCEL_INTERNAL_SPIN) internalMom.noteContacts(contacts)
-                    }
+                    contacts.prepare(px, py, prevX, prevY, vx, vy, invMass, continuing = iter > 0)
+                    if (DemoConst.CANCEL_INTERNAL_SPIN) internalMom.noteContacts(contacts)
                     contacts.updateBones(px, py, invMass, topo.boneOf, topo.rigidBones)
                     contacts.solveContacts(px, py, vx, vy, invMass, h)
                 }
@@ -1115,6 +1119,11 @@ class SwimSolver(private val topo: Topology, var p: SwimParams) {
             solveLinkMaxLength()
             trackStress()
             if (DemoConst.CANCEL_INTERNAL_SPIN) cancelInternalSpin()
+            if (p.contactsOn) {
+                contacts.prepare(px, py, prevX, prevY, vx, vy, invMass, continuing = true)
+                contacts.updateBones(px, py, invMass, topo.boneOf, topo.rigidBones)
+                contacts.solveContacts(px, py, vx, vy, invMass, h)
+            }
             updateVelocities(h)
             // Отскок — зеркало демо, см. solveRestitution.
             if (p.contactsOn) contacts.solveRestitution(px, py, vx, vy, invMass)

@@ -18,7 +18,7 @@ package io.github.some_example_name.lwjgl3.demo
  * Треугольник, у которого пара вершин не связана вовсе, по этому ребру не умирает никогда —
  * тоже как раньше.
  */
-internal class BakedTopology(body: BodyFile) {
+internal class BakedTopology(private val body: BodyFile) {
     /** Число рёбер — различных пар среди связей выгрузки. */
     val edgeCount: Int
     /** Ребро каждой связи выгрузки, по номеру в body.linkA / body.linkB. */
@@ -39,6 +39,42 @@ internal class BakedTopology(body: BodyFile) {
     val triAlive: BooleanArray
     /** Сколько живых треугольников опирается на ребро: 0 — голая связь, 1 — граница, 2 — внутри ткани. */
     val triUse: IntArray
+
+    val dirtyVertices = IntArray(body.count)
+    private val dirty = BooleanArray(body.count)
+    var dirtyCount = 0
+        private set
+    private val vertexTriangles: IntArray
+    private val vertexTriStart: IntArray
+    private val restAngles: DoubleArray
+
+    private fun touch(v: Int) {
+        if (dirty[v]) return
+        dirty[v] = true; dirtyVertices[dirtyCount++] = v
+    }
+
+    fun clearDirty() {
+        for (k in 0 until dirtyCount) dirty[dirtyVertices[k]] = false
+        dirtyCount = 0
+    }
+
+    fun surfaceAngle(v: Int): Double {
+        var angle = 0.0
+        for (s in vertexTriStart[v] until vertexTriStart[v + 1]) {
+            val corner = vertexTriangles[s]
+            if (triAlive[corner / 3]) angle += restAngles[corner]
+        }
+        return angle
+    }
+
+    fun opposite(e: Int): Int {
+        if (triUse[e] != 1) return -1
+        val t = liveTri(e)
+        if (t < 0) return -1
+        val u = edgeU(e); val v = edgeV(e)
+        val a = body.triA[t]; val b = body.triB[t]; val c = body.triC[t]
+        return if (a != u && a != v) a else if (b != u && b != v) b else c
+    }
 
     /**
      * СКОЛЬКО ЖИВЫХ РЁБЕР ОСТАЛОСЬ БЕЗ ЕДИНОГО ТРЕУГОЛЬНИКА.
@@ -98,6 +134,26 @@ internal class BakedTopology(body: BodyFile) {
             }
         }
 
+        vertexTriStart = IntArray(n + 1)
+        for (t in 0 until tc) {
+            vertexTriStart[body.triA[t] + 1]++
+            vertexTriStart[body.triB[t] + 1]++
+            vertexTriStart[body.triC[t] + 1]++
+        }
+        for (v in 0 until n) vertexTriStart[v + 1] += vertexTriStart[v]
+        vertexTriangles = IntArray(tc * 3)
+        restAngles = DoubleArray(tc * 3)
+        val fillTri = vertexTriStart.copyOf()
+        for (t in 0 until tc) {
+            val a = body.triA[t]; val b = body.triB[t]; val c = body.triC[t]
+            vertexTriangles[fillTri[a]++] = 3 * t
+            vertexTriangles[fillTri[b]++] = 3 * t + 1
+            vertexTriangles[fillTri[c]++] = 3 * t + 2
+            restAngles[3 * t] = angle(a, b, c)
+            restAngles[3 * t + 1] = angle(b, a, c)
+            restAngles[3 * t + 2] = angle(c, a, b)
+        }
+
         edgeDead = BooleanArray(m)
         triAlive = BooleanArray(tc) { true }
         triUse = useInit.copyOf()
@@ -106,6 +162,7 @@ internal class BakedTopology(body: BodyFile) {
 
     /** Топология снова целая. */
     fun restore() {
+        clearDirty()
         edgeDead.fill(false)
         triAlive.fill(true)
         useInit.copyInto(triUse)
@@ -119,14 +176,17 @@ internal class BakedTopology(body: BodyFile) {
      */
     fun kill(e: Int): Boolean {
         if (edgeDead[e]) return false
+        if (triUse[e] == 0) bareEdges--
         edgeDead[e] = true
+        touch(edgeU(e)); touch(edgeV(e))
         for (s in edgeTriStart[e] until edgeTriStart[e + 1]) {
             val t = edgeTris[s]
             if (!triAlive[t]) continue
             triAlive[t] = false
+            touch(body.triA[t]); touch(body.triB[t]); touch(body.triC[t])
             for (k in 0..2) {
                 val e2 = triEdge[3 * t + k]
-                if (e2 >= 0 && --triUse[e2] == 0) bareEdges++
+                if (e2 >= 0 && --triUse[e2] == 0 && !edgeDead[e2]) bareEdges++
             }
         }
         return true
@@ -156,6 +216,14 @@ internal class BakedTopology(body: BodyFile) {
     fun edgeOf(i: Int, j: Int): Int {
         for (s in vertStart[i] until vertStart[i + 1]) if (vertOther[s] == j) return vertEdge[s]
         return -1
+    }
+
+    private fun angle(v: Int, p: Int, q: Int): Double {
+        val ax = (body.x[p] - body.x[v]).toDouble(); val ay = (body.y[p] - body.y[v]).toDouble()
+        val bx = (body.x[q] - body.x[v]).toDouble(); val by = (body.y[q] - body.y[v]).toDouble()
+        val na = kotlin.math.sqrt(ax * ax + ay * ay); val nb = kotlin.math.sqrt(bx * bx + by * by)
+        if (na < 1e-12 || nb < 1e-12) return 0.0
+        return StrictMath.acos(((ax * bx + ay * by) / (na * nb)).coerceIn(-1.0, 1.0))
     }
 
     private companion object {

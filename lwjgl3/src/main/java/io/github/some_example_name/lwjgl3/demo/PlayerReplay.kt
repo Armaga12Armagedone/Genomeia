@@ -915,6 +915,7 @@ fun main(args: Array<String>) {
     // обошлись те же тики уже прогретому JIT. PR_TWICE=тик1,тик2,...
     System.getenv("PR_TWICE")?.let { spec ->
         val marks = spec.split(',').mapNotNull { it.trim().toIntOrNull() }.toSet()
+        val repeatHashes = LongArray((log.lines.maxOfOrNull { it.tick } ?: 0) + 1)
         for (pass in 1..2) {
             val d2 = RealBodyDemo(bodyPath,
                 copies = hdr["copies"]?.toInt() ?: 2,
@@ -926,12 +927,22 @@ fun main(args: Array<String>) {
             var worst = 0.0; var worstTick = -1
             val shown = StringBuilder()
             var sum = 0.0
+            var matched = 0; var firstMismatch = -1
             d2.replayRun(log.lines, onEvent = {}, onTick = {
+                val tick = d2.currentTick
+                val hash = d2.replayStateHash()
+                if (pass == 1) repeatHashes[tick] = hash
+                else if (repeatHashes[tick] == hash) matched++
+                else if (firstMismatch < 0) firstMismatch = tick
                 val ms = d2.dbgTickNs / 1e6
                 sum += ms
                 if (ms > worst) { worst = ms; worstTick = d2.currentTick }
                 if (d2.currentTick in marks) shown.append("  тик %d: %.1f мс".format(d2.currentTick, ms))
             })
+            if (pass == 2) {
+                check(firstMismatch < 0) { "повтор нового расчёта разошёлся на тике $firstMismatch" }
+                println("  контрольные суммы нового расчёта: все $matched сошлись между двумя прогонами")
+            }
             println("  проход %d: худший тик %d — %.1f мс, всего %.0f мс%s".format(pass, worstTick, worst, sum, shown))
         }
     }

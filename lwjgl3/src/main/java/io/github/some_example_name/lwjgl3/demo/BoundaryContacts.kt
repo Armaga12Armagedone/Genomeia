@@ -45,7 +45,7 @@ class BoundaryContacts(
     /** Индексы граничных клеток. Только они участвуют в контактах. */
     private var verts: IntArray,
     /** Смежность в формате CSR: adjStart[i]..adjStart[i+1] — соседи клетки i. */
-    private val adjStart: IntArray,
+    private var adjStart: IntArray,
     private var adj: IntArray,
     private val radius: DoubleArray,
     /** Сторона ячейки сетки. Должна быть не меньше наибольшего диаметра контакта. */
@@ -100,15 +100,7 @@ class BoundaryContacts(
     // подшагами не нужно вовсе. Клетки ячейки лежат односвязным списком в общих массивах,
     // и новая цепляется В ХВОСТ — порядок обхода ячейки прежний, а от него зависит порядок
     // пар и, через него, результат.
-    private var gKey = LongArray(0)
-    private var gStamp = IntArray(0)
-    private var gHead = IntArray(0)
-    private var gTail = IntArray(0)
-    private var gMask = 0
-    private var gStampNow = 0
-    private var gNext = IntArray(4096)
-    private var gId = IntArray(4096)
-    private var gN = 0
+    private val grid = SweptContactGrid()
     // --- пары-кандидаты ---
     private var pairA = IntArray(4096)
     private var pairB = IntArray(4096)
@@ -346,14 +338,14 @@ class BoundaryContacts(
     private fun pierceAround(qx: DoubleArray, qy: DoubleArray, px: DoubleArray, py: DoubleArray,
                              i: Int, j: Int, org: IntArray) {
         if (org[i] == org[j]) return
-        for (s2 in bndStart[j] until bndStart[j + 1]) {
+        for (s2 in bndStart[j] until bndEnd[j]) {
             val o = bndOther[s2]
             if (o != i && org[o] == org[j] && inward(qx, qy, px, py, i, j, o, bndOpp[s2])) {
                 pierce(j, o); if (i == pierceWatch) pwHits++
             }
             // Второй шаг: рёбра соседа по контуру.
             if (org[o] != org[j]) continue
-            for (s3 in bndStart[o] until bndStart[o + 1]) {
+            for (s3 in bndStart[o] until bndEnd[o]) {
                 val o2 = bndOther[s3]
                 if (o2 == i || o2 == j || org[o2] != org[o]) continue
                 if (inward(qx, qy, px, py, i, o, o2, bndOpp[s3])) {
@@ -421,8 +413,8 @@ class BoundaryContacts(
                 var full = 0; var fa = -1; var fb = -1
                 val iw = pierceWatch
                 for (a in 0 until n) {
-                    if (bndStart[a + 1] <= bndStart[a] || org[a] == org[iw]) continue
-                    for (s2 in bndStart[a] until bndStart[a + 1]) {
+                    if (bndEnd[a] <= bndStart[a] || org[a] == org[iw]) continue
+                    for (s2 in bndStart[a] until bndEnd[a]) {
                         val b = bndOther[s2]
                         if (a > b || a == iw || b == iw) continue
                         if (inward(qx, qy, px, py, iw, a, b, bndOpp[s2])) {
@@ -513,6 +505,13 @@ class BoundaryContacts(
     private var restSpacingN = 0
     /** Клетка в контактах на этой топологии. */
     private val onBound = BooleanArray(n)
+    private var vertCount = verts.size
+    private val vertSlot = IntArray(n) { -1 }
+    private var adjEnd = IntArray(n) { adjStart[it + 1] }
+    private var bndEnd = IntArray(n)
+    private var maxRadius = 0.0
+    private val radiusMinimum = ContactRadiusMinimum(n)
+    internal val minContactRadius: Double get() = radiusMinimum.value
 
     /**
      * ВРЕМЕННЫЕ УЧАСТНИКИ КОНТАКТА: внутренние клетки, рядом с которыми найден чужой.
@@ -608,9 +607,9 @@ class BoundaryContacts(
             inList.add(a * 1000003L + b)
         }
         var missed = 0
-        for (a in verts.indices) {
+        for (a in 0 until vertCount) {
             val i = verts[a]
-            for (b in a + 1 until verts.size) {
+            for (b in a + 1 until vertCount) {
                 val j = verts[b]
                 if (bonded(i, j)) continue
                 val dx = px[i] - px[j]; val dy = py[i] - py[j]
@@ -630,7 +629,7 @@ class BoundaryContacts(
      */
     /** Радиус контакта клетки — для отрисовки настоящей геометрии, а не рисовального радиуса. */
     /** Участвует ли клетка в контактах вообще: только для диагностики. */
-    fun inContactSet(i: Int): Boolean = verts.contains(i)
+    fun inContactSet(i: Int): Boolean = onBound[i]
 
     fun contactRadiusOf(i: Int): Double = contactRadius[i]
 
@@ -643,7 +642,7 @@ class BoundaryContacts(
      * конце тика (см. killEdgeNow). Смерть теперь работает так же: радиус обнуляется
      * здесь, список пар перестраивается следующим prepare, структура — в конце тика.
      */
-    fun dropFromContacts(i: Int) { contactRadius[i] = 0.0 }
+    fun dropFromContacts(i: Int) { contactRadius[i] = 0.0; radiusMinimum.update(i, 0.0) }
 
     /** Нынешняя мягкость контакта — для стендов. См. CONTACT_OMEGA_PAIR. */
     val omegaPair: Double get() = CONTACT_OMEGA_PAIR
@@ -711,14 +710,14 @@ class BoundaryContacts(
         rest = rp
         if (restState.size != rp.other.size) { restState = ByteArray(rp.other.size); restValid = false }
         var maxR = 0.0
-        for (v in verts) if (contactRadius[v] > maxR) maxR = contactRadius[v]
+        for (vi in 0 until vertCount) { val v = verts[vi]; if (contactRadius[v] > maxR) maxR = contactRadius[v] }
 
         // Список задетых клеток: у кого изменился радиус, признак контура или степень.
         var dirtyN = 0
         var tooMany = false
         if (restValid && sameRp) {
             for (i in 0 until n) {
-                val d = adjStart[i + 1] - adjStart[i]
+                val d = adjEnd[i] - adjStart[i]
                 if (contactRadius[i] == prevRadius[i] && onBound[i] == prevBound[i] && d == prevDeg[i]) continue
                 if (dirtyN == dirtyBuf.size) {
                     if (dirtyBuf.size >= n / 4) { tooMany = true; break }
@@ -745,11 +744,11 @@ class BoundaryContacts(
                 }
             }
         }
-        for (i in 0 until n) { prevRadius[i] = contactRadius[i]; prevBound[i] = onBound[i]; prevDeg[i] = adjStart[i + 1] - adjStart[i] }
+        for (i in 0 until n) { prevRadius[i] = contactRadius[i]; prevBound[i] = onBound[i]; prevDeg[i] = adjEnd[i] - adjStart[i] }
         restValid = true
         if (maxR <= 0.0) return
         val scan: IntArray = if (local) dirtyBuf else verts
-        val scanN = if (local) dirtyN else verts.size
+        val scanN = if (local) dirtyN else vertCount
         for (kk in 0 until scanN) {
             val i = scan[kk]
             if (!onBound[i]) continue
@@ -762,7 +761,7 @@ class BoundaryContacts(
                 val rr = contactRadius[i] + contactRadius[j]
                 if (rp.d2[s] >= rr * rr) continue
                 var linked = false
-                for (k in adjStart[i] until adjStart[i + 1]) if (adj[k] == j) { linked = true; break }
+                for (k in adjStart[i] until adjEnd[i]) if (adj[k] == j) { linked = true; break }
                 if (linked) continue
                 // ПАРА, КОТОРАЯ КОГДА-ЛИБО БЫЛА СВЯЗАНА, ОСВОБОЖДЕНИЯ НЕ ПОЛУЧАЕТ.
                 // Кандидаты считаются по ИСХОДНОЙ позе покоя, где связь ещё цела. После
@@ -803,6 +802,9 @@ class BoundaryContacts(
     ) {
         var tCfg = System.nanoTime()
         fun cfgLap(k: Int) { val now = System.nanoTime(); cfgNs[k] += now - tCfg; tCfg = now }
+        adjStart = IntArray(n + 1)
+        adjEnd = IntArray(n)
+        bndStart = IntArray(n + 1); bndEnd = IntArray(n)
         val deg = cfgDeg
         java.util.Arrays.fill(deg, 0)
         for (c in 0 until conCount) { deg[conA[c]]++; deg[conB[c]]++ }
@@ -814,6 +816,8 @@ class BoundaryContacts(
             adj[deg[conA[c]]++] = conB[c]
             adj[deg[conB[c]]++] = conA[c]
         }
+
+        for (i in 0 until n) adjEnd[i] = adjStart[i + 1]
 
         cfgLap(0)
         java.util.Arrays.fill(onBound, false)
@@ -830,8 +834,10 @@ class BoundaryContacts(
         if (dead != null) for (i in 0 until n) if (dead[i]) onBound[i] = false
         var nv = 0
         for (i in 0 until n) if (onBound[i]) nv++
-        if (verts.size != nv) verts = IntArray(nv)
-        run { var k = 0; for (i in 0 until n) if (onBound[i]) verts[k++] = i }
+        if (verts.size < n) verts = IntArray(n)
+        vertCount = nv
+        vertSlot.fill(-1)
+        run { var k = 0; for (i in 0 until n) if (onBound[i]) { vertSlot[i] = k; verts[k++] = i } }
 
         // Радиус контакта — половина самого длинного граничного ребра клетки,
         // с запасом. См. contactRadius: круги соседей по контуру обязаны
@@ -855,6 +861,7 @@ class BoundaryContacts(
                 bndOther[fill[boundB[e]]++] = boundA[e]
             }
         }
+        for (i in 0 until n) bndEnd[i] = bndStart[i + 1]
         cfgLap(1)
         java.util.Arrays.fill(contactRadius, 0.0)
         for (e in 0 until boundCount) {
@@ -886,7 +893,7 @@ class BoundaryContacts(
         // Радиус отломанной клетке даётся тот же, что свободной частице: она ею и стала.
         for (i in 0 until n) {
             if (contactRadius[i] > 0.0) continue
-            val lone = adjStart[i + 1] == adjStart[i]
+            val lone = adjEnd[i] == adjStart[i]
             if (lone || (isolated != null && isolated[i])) contactRadius[i] = radius[i] * contactScale
         }
         // У МЁРТВОЙ КЛЕТКИ КОНТАКТА НЕТ, И ЭТО НЕ ДЕЛАЕТ ЕЁ ПРИЗРАКОМ: хозяин её
@@ -899,10 +906,12 @@ class BoundaryContacts(
         // нельзя: пара из соседних ячеек тогда могла бы не попасть в перебор 3x3.
         // Запас — чтобы список пар жил дольше одного подшага, см. bpMargin.
         var maxR = 0.0
-        for (v in verts) if (contactRadius[v] > maxR) maxR = contactRadius[v]
+        for (vi in 0 until vertCount) { val v = verts[vi]; if (contactRadius[v] > maxR) maxR = contactRadius[v] }
         // Отрицательный запас — только увеличить ячейку, список всё равно строить каждый
         // подшаг. Нужно, чтобы отделить влияние РАЗМЕРА ЯЧЕЙКИ от влияния того, что
         // список живёт дольше подшага: иначе не понять, из-за чего поменялась сцена.
+        maxRadius = maxR
+        radiusMinimum.reset(contactRadius)
         bpMargin = Math.abs(BP_MARGIN) * maxR
         cellSize = maxOf(2.0 * maxR + bpMargin, 1e-6)
         bpValid = false
@@ -919,6 +928,67 @@ class BoundaryContacts(
         cfgLap(3)
     }
 
+    /** Подключение происходит только при загрузке/сбросе; строки имеют неизменную ёмкость. */
+    internal fun attachSurface(surface: LocalSurface) {
+        adjStart = surface.start; adj = surface.adj; adjEnd = surface.adjEnd
+        bndStart = surface.start; bndOther = surface.boundary
+        bndOpp = surface.opposite; bndEnd = surface.boundaryEnd
+    }
+
+    /** Обновить контактную геометрию только у затронутых клеток, не сбрасывая множители. */
+    internal fun updateSurface(surface: LocalSurface, changed: IntArray, count: Int) {
+        for (k in 0 until count) {
+            val v = changed[k]
+            val active = surface.active[v]
+            if (active != onBound[v]) {
+                if (active) { vertSlot[v] = vertCount; verts[vertCount++] = v }
+                else {
+                    val slot = vertSlot[v]; val last = verts[--vertCount]
+                    verts[slot] = last; vertSlot[last] = slot; vertSlot[v] = -1
+                }
+                onBound[v] = active
+            }
+            contactRadius[v] = surface.radius[v]
+            radiusMinimum.update(v, contactRadius[v])
+            maxRadius = maxOf(maxRadius, contactRadius[v])
+            // reconfigure при сбросе сравнивает с последней, а не исходной поверхностью.
+            prevRadius[v] = contactRadius[v]; prevBound[v] = onBound[v]
+            prevDeg[v] = adjEnd[v] - adjStart[v]
+        }
+        // Размер ячейки не уменьшаем при разрыве; увеличение требуется только при
+        // открытии более длинного ребра. Список кандидатов сразу недействителен.
+        bpMargin = Math.abs(BP_MARGIN) * maxRadius
+        cellSize = maxOf(2.0 * maxRadius + bpMargin, 1e-6)
+        bpValid = false
+        val rp = rest
+        for (k in 0 until count) {
+            val v = changed[k]
+            for (s in rp.start[v] until rp.start[v + 1]) {
+                val old = restState[s].toInt()
+                if (old == REST_NONE) continue
+                if (old == REST_SPACING) restSpacingN-- else restTouchN--
+                restState[s] = 0; restState[rp.mirror[s]] = 0
+            }
+        }
+        for (k in 0 until count) {
+            val v = changed[k]
+            if (!onBound[v]) continue
+            for (s in rp.start[v] until rp.start[v + 1]) {
+                val j = rp.other[s]
+                if (!onBound[j]) continue
+                val rr = contactRadius[v] + contactRadius[j]
+                if (rp.d2[s] >= rr * rr) continue
+                var linked = false
+                for (a in adjStart[v] until adjEnd[v]) if (adj[a] == j) { linked = true; break }
+                if (linked || restState[s].toInt() != REST_NONE) continue
+                val state = if (rp.ever[s]) REST_SPACING else REST_TOUCH
+                restState[s] = state.toByte(); restState[rp.mirror[s]] = state.toByte()
+                if (state == REST_SPACING) restSpacingN++ else restTouchN++
+            }
+        }
+        restDirtyTotal += count
+    }
+
     /** Разбор: смежность, контур, радиусы, пары покоя — наносекунды за прогон. */
     val cfgNs = LongArray(4)
 
@@ -931,9 +1001,9 @@ class BoundaryContacts(
     fun maxPenetration(px: DoubleArray, py: DoubleArray): Double {
         worstI = -1; worstJ = -1
         var worst = 0.0
-        for (a in verts.indices) {
+        for (a in 0 until vertCount) {
             val i = verts[a]
-            for (b in a + 1 until verts.size) {
+            for (b in a + 1 until vertCount) {
                 val j = verts[b]
                 if (bonded(i, j)) continue
                 val dx = px[i] - px[j]; val dy = py[i] - py[j]
@@ -949,48 +1019,6 @@ class BoundaryContacts(
 
     private fun key(ix: Int, iy: Int): Long =
         ((ix + BIAS).toLong() shl 32) or ((iy + BIAS).toLong() and 0xFFFFFFFFL)
-
-    /** Начало подшага: метка новая, значит все ячейки пусты. Таблица растёт по надобности. */
-    private fun gridBegin() {
-        // Ячеек бывает от одной на клетку до нескольких: свип-путь быстрой клетки задевает
-        // их пачку. Размер берётся с запасом вчетверо от прошлого подшага, чтобы таблица
-        // оставалась редкой и проба не вырождалась в перебор.
-        var want = 64
-        val need = maxOf(verts.size * 2, gN) * 4
-        while (want < need) want = want shl 1
-        if (gKey.size < want) {
-            gKey = LongArray(want); gStamp = IntArray(want); gHead = IntArray(want); gTail = IntArray(want)
-            gMask = want - 1; gStampNow = 0
-        }
-        gStampNow++
-        gN = 0
-    }
-
-    /** Ячейка по ключу: индекс слота. Занят он или свободен, видно по метке. */
-    private fun gridSlot(k: Long): Int {
-        var s = ((k * -0x61c8864680b583ebL) ushr 40).toInt() and gMask
-        while (gStamp[s] == gStampNow && gKey[s] != k) s = (s + 1) and gMask
-        return s
-    }
-
-    private fun gridInsert(k: Long, id: Int) {
-        val s = gridSlot(k)
-        if (gN == gNext.size) { gNext = gNext.copyOf(gN * 2); gId = gId.copyOf(gN * 2) }
-        gId[gN] = id; gNext[gN] = -1
-        if (gStamp[s] != gStampNow) { gStamp[s] = gStampNow; gKey[s] = k; gHead[s] = gN } else gNext[gTail[s]] = gN
-        gTail[s] = gN
-        gN++
-    }
-
-    /** Первая запись ячейки или -1. Дальше по gNext. */
-    private fun gridFirst(k: Long): Int {
-        var s = ((k * -0x61c8864680b583ebL) ushr 40).toInt() and gMask
-        while (gStamp[s] == gStampNow) {
-            if (gKey[s] == k) return gHead[s]
-            s = (s + 1) and gMask
-        }
-        return -1
-    }
 
     /**
      * Растеризация отрезка в ячейки. Возвращает число ячеек, координаты в ddaX/ddaY.
@@ -1048,7 +1076,7 @@ class BoundaryContacts(
      * Пересчитывать вместе с contactRadius.
      */
     private fun bonded(i: Int, j: Int): Boolean {
-        for (k in adjStart[i] until adjStart[i + 1]) if (adj[k] == j) return true
+        for (k in adjStart[i] until adjEnd[i]) if (adj[k] == j) return true
         return restTouchN > 0 && restStateOf(i, j) == REST_TOUCH
     }
 
@@ -1080,7 +1108,7 @@ class BoundaryContacts(
     private fun bpStale(px: DoubleArray, py: DoubleArray): Boolean {
         val lim = 0.5 * bpMargin
         val lim2 = lim * lim
-        for (v in verts) {
+        for (vi in 0 until vertCount) { val v = verts[vi];
             val dx = px[v] - bpX[v]; val dy = py[v] - bpY[v]
             if (dx * dx + dy * dy > lim2) return true
         }
@@ -1088,11 +1116,11 @@ class BoundaryContacts(
     }
 
     private fun broadphase(px: DoubleArray, py: DoubleArray, qx: DoubleArray, qy: DoubleArray) {
-        gridBegin()
-        if (sweepStart.size != verts.size + 1) sweepStart = IntArray(verts.size + 1)
-        if (sweepX.size < verts.size * 2) { sweepX = IntArray(verts.size * 2); sweepY = IntArray(verts.size * 2) }
+        grid.begin(vertCount)
+        if (sweepStart.size != vertCount + 1) sweepStart = IntArray(vertCount + 1)
+        if (sweepX.size < vertCount * 2) { sweepX = IntArray(vertCount * 2); sweepY = IntArray(vertCount * 2) }
         var sn = 0
-        for (a in verts.indices) {
+        for (a in 0 until vertCount) {
             val v = verts[a]
             sweepStart[a] = sn
             val c = dda(qx[v], qy[v], px[v], py[v])
@@ -1103,22 +1131,22 @@ class BoundaryContacts(
             }
             for (k in 0 until c) {
                 sweepX[sn] = ddaX[k]; sweepY[sn] = ddaY[k]; sn++
-                gridInsert(key(ddaX[k], ddaY[k]), v)
+                grid.insert(key(ddaX[k], ddaY[k]), v)
             }
         }
-        sweepStart[verts.size] = sn
+        sweepStart[vertCount] = sn
         pairN = 0
-        for (a in verts.indices) {
+        for (a in 0 until vertCount) {
             val v = verts[a]
             stamp++
             mark[v] = stamp
             for (k in sweepStart[a] until sweepStart[a + 1]) {
                 val cx = sweepX[k]; val cy = sweepY[k]
                 for (ox in -1..1) for (oy in -1..1) {
-                    var e = gridFirst(key(cx + ox, cy + oy))
+                    var e = grid.first(key(cx + ox, cy + oy))
                     while (e >= 0) {
-                        val j = gId[e]
-                        e = gNext[e]
+                        val j = grid.ids[e]
+                        e = grid.next[e]
                         if (mark[j] == stamp) continue
                         mark[j] = stamp
                         if (j < v) continue           // пара берётся ровно один раз
@@ -1183,7 +1211,10 @@ class BoundaryContacts(
      */
     private fun ccdClamp(px: DoubleArray, py: DoubleArray, qx: DoubleArray, qy: DoubleArray,
                          invMass: DoubleArray) {
-        for (v in verts) { toi[v] = 1.0; ccdParent[v] = v }
+        lastToiClamps = 0
+        if (pairN == 0) return
+        for (vi in 0 until vertCount) { val v = verts[vi]; toi[v] = 1.0; ccdParent[v] = v }
+        var hit = false
         for (p in 0 until pairN) {
             val a = pairA[p]; val j = pairB[p]
             val d0x = qx[a] - qx[j]; val d0y = qy[a] - qy[j]
@@ -1191,57 +1222,17 @@ class BoundaryContacts(
             val dvy = (py[a] - qy[a]) - (py[j] - qy[j])
             val rc = ccdCore * (contactRadius[a] + contactRadius[j])
 
-            // РАНЬШЕ ЗДЕСЬ БЫЛ РАННИЙ ВЫХОД — И ЧЕРЕЗ НЕГО ПРОЛЕЗАЛИ КЛЕТКИ.
-            //
-            // Рассуждение было такое: если относительное смещение за подшаг меньше ЯДРА,
-            // проскочить нельзя, а перекрытие поймает дискретная проверка в конце
-            // подшага. Дыра в том, что ядро — всего 0.4 контактного расстояния
-            // (CCD_CORE), то есть за подшаг пара могла сближаться на 0.4 rr без всякой
-            // проверки времени удара, а за тик это 6.4 rr.
-            //
-            // Замер на стенде, body-export (внутри чужого контура / выброс / |P|):
-            //   куча в теле     13 / 0.77 / 71.5  ->   3 / 0.46 / 63.1
-            //   ёмкость битком   2 / 2.26 / 12.5  ->   2 / 0.39 /  3.97
-            // Застрявших вчетверо меньше, выброс впятеро. Цена — 2% времени стенда:
-            // список кандидатов теперь короткий, и квадратное уравнение на паре дешевле,
-            // чем разбираться потом с застрявшей клеткой.
-            //
-            // Хуже стало по дребезгу заклиненной кучи (537 -> 1041) и по остаточному
-            // проникновению (0.046 -> 0.137): обрезка гасит сближение неупруго. Это
-            // плата, и она меньше, чем клетки внутри тела.
-
-            //
-            // Обрезка — позиционная правка, и updateVelocities делает из неё скорость.
-            // Импульс она теперь сохраняет (см. выше), но взаимное движение гасит
-            // неупруго, поэтому зря её включать всё равно не нужно.
-            //
-            // При этом она почти всегда НЕ НУЖНА. Проскочить мимо контакта за подшаг
-            // можно, только если относительное смещение за этот подшаг больше ядра.
-            // На нынешних настройках путь за подшаг равен 4 клеткам за тик, делённым
-            // на 16 подшагов, то есть 0.25 клетки, а контакт срабатывает на 1.0 —
-            // запас четырёхкратный. Условие ниже это и проверяет: пока смещение
-            // меньше ядра, дискретная проверка в конце подшага поймает перекрытие
-            // сама, и обрезка не нужна.
-            //
-            // Проверяется квадрат, чтобы не считать корень на каждую пару.
+            // Достаточный критерий пропуска — путь короче ЗАЗОРА до ядра.
+            // Полный контактный диаметр здесь неверен: при начальном зазоре 0.1
+            // центры могут поменяться местами, пройдя всего 0.9 диаметра.
             val move2 = dvx * dvx + dvy * dvy
-            // ОБРЕЗКА ТОЛЬКО ПРОТИВ ПРОСКОКА, а не против обычного сближения.
-            //
-            // Порог был 0.4 упора (ядро, CCD_CORE) — слишком мало: пара сближалась на
-            // 0.4 rr за подшаг вообще без проверки, за тик это 6.4 rr, и клетки проходили
-            // сквозь ткань. Я поднял порог до бесконечности (считать всегда) — застрявших
-            // стало вчетверо меньше, но появилась новая беда: обрезка останавливает пару
-            // РОВНО на упоре, и никакая мягкость контакта уже не видна. Игрок это и
-            // заметил: «две отдельные частицы как абсолютно твёрдые».
-            //
-            // Правильный порог — ПОЛНЫЙ УПОР. Пара, сближающаяся за подшаг медленнее
-            // упора, проскочить не может по построению: её поймает и разрулит контакт,
-            // мягко. Быстрее — обрежем по времени удара. Множитель CT_CCD_GATE.
             val gate = CCD_GATE * (contactRadius[a] + contactRadius[j])
-            if (move2 <= gate * gate) continue
-            val dbgRatio = sqrt(move2) / rc
-            if (dbgRatio > dbgCcdWorst) {
-                dbgCcdWorst = dbgRatio; dbgCcdI = a; dbgCcdJ = j
+            if (move2 <= gate * gate) {
+                val reach = rc + sqrt(move2)
+                if (d0x * d0x + d0y * d0y >= reach * reach) continue
+            }
+            if (move2 > dbgCcdWorst * dbgCcdWorst * rc * rc) {
+                dbgCcdWorst = sqrt(move2) / rc; dbgCcdI = a; dbgCcdJ = j
                 dbgCcdMoveA = sqrt((px[a] - qx[a]) * (px[a] - qx[a]) + (py[a] - qy[a]) * (py[a] - qy[a]))
                 dbgCcdMoveJ = sqrt((px[j] - qx[j]) * (px[j] - qx[j]) + (py[j] - qy[j]) * (py[j] - qy[j]))
             }
@@ -1256,18 +1247,20 @@ class BoundaryContacts(
             if (disc < 0) continue
             val t = (-bb - sqrt(disc)) / (2.0 * aa)
             if (t < 0 || t >= 1) continue
+            hit = true
             if (t < toi[a]) toi[a] = t
             if (t < toi[j]) toi[j] = t
             val ra = ccdFind(a); val rj = ccdFind(j)
             if (ra != rj) ccdParent[ra] = rj
         }
+        if (!hit) return
         var clamps = 0
-        for (v in verts) {
+        for (vi in 0 until vertCount) { val v = verts[vi];
             if (toi[v] >= 1.0) continue
             val r = ccdFind(v)
             islM[r] = 0.0; islX[r] = 0.0; islY[r] = 0.0
         }
-        for (v in verts) {
+        for (vi in 0 until vertCount) { val v = verts[vi];
             val tt = toi[v]
             if (tt >= 1.0) continue
             val ex = (px[v] - qx[v]) * (1.0 - tt)
@@ -1279,7 +1272,7 @@ class BoundaryContacts(
             val r = ccdFind(v)
             islM[r] += m; islX[r] += m * ex; islY[r] += m * ey
         }
-        if (clamps > 0) for (v in verts) {
+        if (clamps > 0) for (vi in 0 until vertCount) { val v = verts[vi];
             if (toi[v] >= 1.0 || invMass[v] <= 0.0) continue
             val r = ccdFind(v)
             val mm = islM[r]
@@ -1298,7 +1291,9 @@ class BoundaryContacts(
         return r
     }
 
-    private fun buildContacts(px: DoubleArray, py: DoubleArray, vx: DoubleArray, vy: DoubleArray) {
+    private val passCache = ContactPassCache()
+
+    private fun buildContacts(px: DoubleArray, py: DoubleArray, vx: DoubleArray, vy: DoubleArray, continuing: Boolean) {
         cN = 0
         for (p in 0 until pairN) {
             val i = pairA[p]; val j = pairB[p]
@@ -1328,6 +1323,7 @@ class BoundaryContacts(
             cLam[cN] = 0.0
             cLamTot[cN] = if (XPBD_WARM_START || abLegacy) lam.getOrDefault(pairKey(i, j), 0.0) else 0.0
             cLamInit[cN] = -1.0
+            if (continuing) passCache.restore(cN, i, j, cLamTot, cLamInit, cVn)
             cN++
         }
         lastContacts = cN
@@ -1342,7 +1338,9 @@ class BoundaryContacts(
         qx: DoubleArray, qy: DoubleArray,
         vx: DoubleArray, vy: DoubleArray,
         invMass: DoubleArray,
+        continuing: Boolean = false,
     ) {
+        if (continuing) passCache.save(cN, cI, cJ, cLamTot, cLamInit, cVn)
         // Перенос множителя: таблица каждый подшаг собирается заново из контактов
         // прошлого подшага. Пара, выскочившая из радиуса, в неё просто не попадёт —
         // протухший множитель не доживёт до следующего касания.
@@ -1351,16 +1349,16 @@ class BoundaryContacts(
         bpCalls++
         if (!bpValid || bpMargin <= 0.0 || BP_MARGIN < 0.0 || bpStale(px, py)) {
             broadphase(px, py, qx, qy)
-            for (v in verts) { bpX[v] = px[v]; bpY[v] = py[v] }
+            for (vi in 0 until vertCount) { val v = verts[vi]; bpX[v] = px[v]; bpY[v] = py[v] }
             bpValid = true
             bpBuilds++
         }
         // ПРОВЕРКА ПОЛНОТЫ СПИСКА: CT_BPCHECK=1. Полный перебор — ищем пары, которые
         // ПЕРЕКРЫЛИСЬ, но в списке кандидатов их нет. Таких быть не должно ни одной.
         if (BP_CHECK) {
-            for (a in verts.indices) {
+            for (a in 0 until vertCount) {
                 val i = verts[a]
-                for (b in a + 1 until verts.size) {
+                for (b in a + 1 until vertCount) {
                     val j = verts[b]
                     if (bonded(i, j)) continue
                     val dx = px[i] - px[j]; val dy = py[i] - py[j]
@@ -1377,8 +1375,10 @@ class BoundaryContacts(
             }
         }
         ccdClamp(px, py, qx, qy, invMass)
-        if (PIERCE_TEAR) findPierce(px, py, qx, qy)
-        buildContacts(px, py, vx, vy)
+        // Обновление контактов не должно повторять разрушение контура. Для
+        // дополнительных проверок пробоя у стенда есть отдельный RB_PIERCE_ITER.
+        if (PIERCE_TEAR && !continuing) findPierce(px, py, qx, qy)
+        buildContacts(px, py, vx, vy, continuing)
     }
 
     /**
@@ -1418,6 +1418,7 @@ class BoundaryContacts(
             boneM = DoubleArray(ids.size); boneCx = DoubleArray(ids.size)
             boneCy = DoubleArray(ids.size); boneI = DoubleArray(ids.size)
         }
+        if (cN == 0) return
         for (b in ids.indices) {
             var m = 0.0; var cx = 0.0; var cy = 0.0
             for (k in ids[b]) {
@@ -1451,24 +1452,7 @@ class BoundaryContacts(
         return 1.0 / boneM[b] + rot
     }
 
-    /** Разносит поправку по жёсткому кластеру, сохраняя позу. */
-    private fun applyRigid(i: Int, jx: Double, jy: Double, px: DoubleArray, py: DoubleArray,
-                           invMass: DoubleArray): Boolean {
-        val bo = boneOf ?: return false
-        val b = bo[i]
-        if (b < 0 || b >= boneM.size || boneM[b] <= 0.0) return false
-        val rx = px[i] - boneCx[b]; val ry = py[i] - boneCy[b]
-        val dOmega = if (boneI[b] > 1e-18) (rx * jy - ry * jx) / boneI[b] else 0.0
-        val tx = jx / boneM[b]; val ty = jy / boneM[b]
-        for (k in boneIds[b]) {
-            if (invMass[k] <= 0.0) continue
-            val kx = px[k] - boneCx[b]; val ky = py[k] - boneCy[b]
-            val sx = tx - dOmega * ky
-            val sy = ty + dOmega * kx
-            px[k] += sx; py[k] += sy
-        }
-        return true
-    }
+    private val rigidBatch = RigidContactBatch()
 
     /**
      * КОНТАКТ КАК СИЛА: пружина, демпфер и трение. Один канал вместо трёх.
@@ -1798,6 +1782,7 @@ class BoundaryContacts(
     fun solveRestitution(px: DoubleArray, py: DoubleArray,
                          vx: DoubleArray, vy: DoubleArray, invMass: DoubleArray) {
         if (restitution <= 0.0) return
+        rigidBatch.begin(boneM.size)
         for (c in 0 until cN) {
             // Отбор по СКОРОСТИ СБЛИЖЕНИЯ, а не по множителю. Множитель отражает
             // только последний заход решателя, а к последнему заходу позиционная часть
@@ -1824,7 +1809,12 @@ class BoundaryContacts(
             val wj = effInvMass(j, nx, ny, px, py, invMass)
             val w = wi + wj
             if (w <= 0.0) continue
-            val vn = (vx[i] - vx[j]) * nx + (vy[i] - vy[j]) * ny
+            val bi = boneIdx(i); val bj = boneIdx(j)
+            val vix = vx[i] + if (bi >= 0) rigidBatch.velocityX(bi, py[i] - boneCy[bi], boneM[bi], boneI[bi]) else 0.0
+            val viy = vy[i] + if (bi >= 0) rigidBatch.velocityY(bi, px[i] - boneCx[bi], boneM[bi], boneI[bi]) else 0.0
+            val vjx = vx[j] + if (bj >= 0) rigidBatch.velocityX(bj, py[j] - boneCy[bj], boneM[bj], boneI[bj]) else 0.0
+            val vjy = vy[j] + if (bj >= 0) rigidBatch.velocityY(bj, px[j] - boneCx[bj], boneM[bj], boneI[bj]) else 0.0
+            val vn = (vix - vjx) * nx + (viy - vjy) * ny
             val dvn = -restitution * approach - vn
             if (dvn <= 0.0) continue
             val p = dvn / w
@@ -1835,10 +1825,12 @@ class BoundaryContacts(
                 vx[j] -= p * nx * invMass[j]; vy[j] -= p * ny * invMass[j]
             }
         }
+        if (boneOf != null) rigidBatch.apply(boneIds, boneM, boneI,
+            boneCx, boneCy, px, py, invMass, vx, vy, positions = false)
     }
 
     /**
-     * То же, что applyRigid, но для СКОРОСТЕЙ: толчок в клетку кости раздаётся по
+     * То же, что позиционный проход, но для СКОРОСТЕЙ: толчок в клетку кости раздаётся по
      * всему кластеру как жёсткое движение, поступательное плюс вращательное. Отдать
      * его одной клетке нельзя — проекция кости вернёт её на позу и толчок пропадёт.
      */
@@ -1846,15 +1838,7 @@ class BoundaryContacts(
                               vx: DoubleArray, vy: DoubleArray, invMass: DoubleArray): Boolean {
         val b = boneIdx(i)
         if (b < 0) return false
-        val rx = px[i] - boneCx[b]; val ry = py[i] - boneCy[b]
-        val dOmega = if (boneI[b] > 1e-18) (rx * jy - ry * jx) / boneI[b] else 0.0
-        val tx = jx / boneM[b]; val ty = jy / boneM[b]
-        for (k in boneIds[b]) {
-            if (invMass[k] <= 0.0) continue
-            val kx = px[k] - boneCx[b]; val ky = py[k] - boneCy[b]
-            vx[k] += tx - dOmega * ky
-            vy[k] += ty + dOmega * kx
-        }
+        rigidBatch.add(b, px[i] - boneCx[b], py[i] - boneCy[b], jx, jy)
         return true
     }
 
@@ -1956,6 +1940,13 @@ class BoundaryContacts(
             val i = cI[c]; val j = cJ[c]
             val si = frcS[i]; val sj = frcS[j]
             val s = if (si < sj) si else sj
+            // XPBD хранит приложенную поправку. Потолок урезает и действие пары,
+            // и её множитель, иначе следующий проход считает невыполненную работу.
+            if (XPBD && s < 1.0) {
+                cLamTot[c] -= (1.0 - s) * (ax * cNx[c] + ay * cNy[c])
+                cLam[c] *= s
+                if (abLegacy) lam[pairKey(i, j)] = cLamTot[c]
+            }
             if (s <= 0.0) continue
             frcX[i] += ax * s; frcY[i] += ay * s
             frcX[j] -= ax * s; frcY[j] -= ay * s
@@ -1971,6 +1962,7 @@ class BoundaryContacts(
                 if (pn != null) { pn[i]++; pn[j]++ }
             }
         }
+        rigidBatch.begin(boneM.size)
         for (k in 0 until frcN) {
             val i = frcList[k]
             val ax = frcX[i]; val ay = frcY[i]
@@ -1979,10 +1971,14 @@ class BoundaryContacts(
                 // Кластер здесь не нужен: сила пойдёт в скорость, а жёсткую позу
                 // восстановит projectBone уже после интегрирования.
                 pxOut[i] += invMass[i] * ax / velH; pyOut[i] += invMass[i] * ay / velH
-            } else if (!applyRigid(i, ax, ay, px, py, invMass)) {
-                px[i] += invMass[i] * ax; py[i] += invMass[i] * ay
+            } else {
+                val b = boneIdx(i)
+                if (b >= 0) rigidBatch.add(b, px[i] - boneCx[b], py[i] - boneCy[b], ax, ay)
+                else { px[i] += invMass[i] * ax; py[i] += invMass[i] * ay }
             }
         }
+        if (!toVelocity && boneOf != null) rigidBatch.apply(boneIds, boneM, boneI,
+            boneCx, boneCy, px, py, invMass, px, py, positions = true)
     }
 
     companion object {
