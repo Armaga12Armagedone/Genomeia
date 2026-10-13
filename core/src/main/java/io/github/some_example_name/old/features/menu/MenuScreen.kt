@@ -1,6 +1,8 @@
 package io.github.some_example_name.old.features.menu
 
+import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
@@ -8,26 +10,32 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
+import com.kotcrab.vis.ui.widget.VisDialog
+import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.bug.ReplayTarget
 import io.github.some_example_name.old.commands.GameCommand
+import io.github.some_example_name.old.core.FileDropTarget
 import io.github.some_example_name.old.core.GameVersion
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.ui.STYLE_BEIGE_BLACK
 import io.github.some_example_name.old.core.ui.VisDslScreen
 import io.github.some_example_name.old.core.ui.h
+import io.github.some_example_name.old.core.ui.setupTitleSize
 import io.github.some_example_name.old.core.ui.visLabel
 import io.github.some_example_name.old.core.ui.visTable
 import io.github.some_example_name.old.core.ui.visTextButton
 import io.github.some_example_name.old.core.ui.w
 import io.github.some_example_name.old.features.simulation.GenomeListDialog
+import io.github.some_example_name.old.game.applyCustomFontMedium
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import io.github.some_example_name.render.RenderMode
 
 class MenuScreen : VisDslScreen(
     background = Color(0f, 0f, 0f, 1f),
     isScrollable = false
-), ReplayTarget {
+), ReplayTarget, FileDropTarget {
 
     private val batch = SpriteBatch()
     private val camera = OrthographicCamera()
@@ -39,7 +47,11 @@ class MenuScreen : VisDslScreen(
 
     private val menuViewModel = MenuViewModel()
 
+    /** Открытый список геномов: после импорта он открывается заново, уже с новыми. */
+    private var genomeList: GenomeListDialog? = null
+
     init {
+        menuViewModel.onGenomeImportFinished = ::showImportResult
         menuViewModel.startMenuSimulation()
         menuViewModel.renderSystem.isRenderUi = false
         // Мир за меню — всегда реалистичный. У него свой RenderSystem, и выбор режима в
@@ -114,16 +126,16 @@ class MenuScreen : VisDslScreen(
         ).show(stage)
     }
 
-    /** «Редактор»: список геномов, а если их нет — сразу пустой редактор. */
-    private fun browseGenomes() {
+    /**
+     * «Редактор»: свои геномы. Открывается и пустым — в нём же «Новый», встроенные и импорт.
+     * [selected] — какой геном отметить (только что импортированный).
+     */
+    private fun browseGenomes(selected: String? = null) {
         val genomes = menuViewModel.genomeNames()
-        if (genomes.isEmpty()) {
-            menuViewModel.handle(MenuIntent.OpenGenomeEditor(null))
-            return
-        }
-        val dialog = GenomeListDialog(
+        val isDesktop = Gdx.app.type == Application.ApplicationType.Desktop
+        genomeList = GenomeListDialog(
             genomesList = genomes,
-            selectedGenomeIndex = null,
+            selectedGenomeIndex = genomes.indexOf(selected).takeIf { it >= 0 },
             title = bundle.get("button.selectGenome"),
             new = bundle.get("button.new"),
             select = bundle.get("button.select"),
@@ -132,10 +144,68 @@ class MenuScreen : VisDslScreen(
             onNext = { name -> menuViewModel.handle(MenuIntent.OpenGenomeEditor(name)) },
             game = game,
             onResize = { h -> onResize = if (h == {}) null else h },
-            onImport = { menuViewModel.handle(MenuIntent.ImportGenome) }
-        )
-        menuViewModel.onGenomeImportFinished = { dialog.fadeOut() }
-        dialog.show(stage)
+            onImport = if (game.multiPlatformFileProvider.canPickGenomeFiles) {
+                { menuViewModel.handle(MenuIntent.ImportGenome) }
+            } else null,
+            hint = if (isDesktop) bundle.get("label.dropGenomes") else null,
+            bundled = bundle.get("button.bundledGenomes"),
+            // Свой список закрывается: два полупрозрачных окна друг на друге не читаются.
+            onBundled = {
+                genomeList?.let { if (it.stage != null) it.close() }
+                browseBundledGenomes()
+            },
+            emptyText = bundle.get("label.noGenomes")
+        ).also { it.show(stage) }
+    }
+
+    /**
+     * Встроенные геномы — поверх списка своих. Выбранный открывается в редакторе; в список
+     * своих он попадёт, только когда игрок его там сохранит.
+     */
+    private fun browseBundledGenomes() {
+        GenomeListDialog(
+            genomesList = menuViewModel.bundledGenomeNames(),
+            selectedGenomeIndex = null,
+            title = bundle.get("button.bundledGenomes"),
+            new = bundle.get("button.new"),
+            select = bundle.get("button.select"),
+            import = bundle.get("button.import"),
+            onNew = null,
+            onNext = { name -> menuViewModel.handle(MenuIntent.OpenGenomeEditor(name)) },
+            game = game,
+            onResize = { h -> onResize = if (h == {}) null else h },
+            displayName = GenomeCatalog::displayName
+        ).show(stage)
+    }
+
+    /** ПК: файлы перетащили в окно — это импорт геномов. */
+    override fun onFilesDropped(files: List<FileHandle>) = menuViewModel.importGenomeFiles(files)
+
+    /**
+     * Импорт закончился. Список открывается заново — уже с новыми геномами, последний
+     * отмечен, — а то, что не удалось, называется отдельным окном: иначе файл пропал бы молча.
+     * Отменённый выбор файлов ничего не меняет.
+     */
+    private fun showImportResult(result: GenomeImportResult) {
+        if (result.imported.isEmpty() && result.failed.isEmpty()) return
+        // close(), а не remove(): он же освобождает текстуры кнопок списка.
+        genomeList?.let { if (it.stage != null) it.close() }
+        genomeList = null
+        if (result.imported.isNotEmpty()) browseGenomes(selected = result.imported.last())
+        if (result.failed.isNotEmpty()) showImportFailed(result.failed)
+    }
+
+    private fun showImportFailed(files: List<String>) {
+        VisDialog(bundle.get("button.import")).apply {
+            isModal = true
+            setupTitleSize(game)
+            val message = VisLabel(bundle.format("label.importFailed", files.joinToString("\n")))
+            game.applyCustomFontMedium(message)
+            contentTable.add(message).pad(16f * Gdx.graphics.density)
+            closeOnEscape()
+            pack()
+            centerWindow()
+        }.show(stage)
     }
 
     override fun replay(command: GameCommand): Boolean {

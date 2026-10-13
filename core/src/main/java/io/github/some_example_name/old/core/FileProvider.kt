@@ -7,7 +7,17 @@ interface FileProvider {
     fun getGenomeFile(fileName: String): File
 
     fun exportGenome(fileName: String)
-    fun importGenome(callback: (FileHandle?) -> Unit)
+
+    /**
+     * Выбрать файлы геномов — и .genome, и старые .json: системное окно выбора. [callback]
+     * получает выбранные файлы (пустой список — отменили или платформа не умеет) и может
+     * прийти в любом потоке. Файлы только читаются: в папку геномов их кладёт игра
+     * (GenomeImport), одинаково на всех платформах.
+     */
+    fun pickGenomeFiles(callback: (List<FileHandle>) -> Unit) = callback(emptyList())
+
+    /** Умеет ли платформа [pickGenomeFiles]: нет — кнопки импорта нет. */
+    val canPickGenomeFiles: Boolean get() = false
 
     fun getExternalFilesDir(type: String?): File?
 

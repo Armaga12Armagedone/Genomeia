@@ -15,7 +15,7 @@ import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
 import io.github.some_example_name.old.systems.genomics.genome.getEmptyGenome
-import io.github.some_example_name.old.systems.genomics.genome.loadGenome
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import io.github.some_example_name.old.systems.physics.GridManager
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 
@@ -41,13 +41,15 @@ class EditorSimulationSystem(
 
     var maxCellId = 0
 
+    /** [genomeName] — свой или встроенный геном (см. GenomeCatalog), null — новый. */
     fun reinitGenome(genomeName: String?) {
+        useGenome(if (genomeName != null) GenomeCatalog.load(genomeName) else getEmptyGenome())
+    }
+
+    /** Геном не из папки: импорт и перенос старых JSON пекут его здесь (GenomeBaker). */
+    fun useGenome(genome: Genome) {
         genomeManager.genomes.clear()
-        genome = if (genomeName != null) {
-            loadGenome(genomeName)
-        } else {
-            getEmptyGenome()
-        }
+        this.genome = genome
         genomeStageInstruction.clear()
         genomeStageInstruction.addAll(genome.genomeStageInstruction)
         genomeManager.genomes.add(genome)
@@ -84,6 +86,11 @@ class EditorSimulationSystem(
     fun simulate() {
         maxCellId = 0
         mapCellGenomeIdToIndex.clear()
+        // И карта мира редактора: её только дописывали, и в ней оставались клетки прошлого
+        // расчёта — другого генома или до правки. Действие для клетки, которой сейчас нет,
+        // находило по ней чужой индекс (видно на переводе старых JSON подряд: «Tardigrade»
+        // после «Megalodon» падал на organIndex = -1).
+        worldCommandsManager.mapCellGenomeIdToIndex.clear()
         gridManager.clearAll()
         entityList.forEach { it.clear() }
         newGenome()
@@ -99,11 +106,20 @@ class EditorSimulationSystem(
 
         replays.forEach { it.reset() }
 
+        var stage = organEntity.stage[baseOrganIndex]
+        var stageStartedAt = 0
         for (tick in 0..TIME_SIMULATION) {
             updateTick()
             replays.forEach { it.copy() }
 
             if (organEntity.alreadyGrownUp[baseOrganIndex]) break
+
+            if (organEntity.stage[baseOrganIndex] != stage) {
+                stage = organEntity.stage[baseOrganIndex]
+                stageStartedAt = tick
+            } else if (tick - stageStartedAt >= STUCK_STAGE_TICKS) {
+                throw IllegalStateException("рост застрял на стадии $stage: $STUCK_STAGE_TICKS тиков без перехода")
+            }
 
             if (tick == TIME_SIMULATION) throw Exception("Too long simulation!")
         }
@@ -113,7 +129,12 @@ class EditorSimulationSystem(
 
     private fun updateTick() = with(cellEntity) {
         genomeManager.genomes[0].stageInstruction[organEntity.stage[0]].cellActions.forEach { id, _ ->
-            cellSystem.genomicTransformations(worldCommandsManager.mapCellGenomeIdToIndex[id])
+            // Действие для клетки, которой на этой стадии нет, пропускается — как в мире: там
+            // действия раздаются живым клеткам, и лишнее просто никому не достаётся (стадия
+            // всё равно закрывается, см. OrganManager). Такие есть в старых геномах из JSON
+            // («Tapeworm», «Tardigrade»), и на них редактор падал на индексе -1.
+            val cellIndex = worldCommandsManager.mapCellGenomeIdToIndex[id]
+            if (cellIndex != -1) cellSystem.genomicTransformations(cellIndex)
         }
 
         worldCommandsManager.executingCommandsFromTheWorld()
@@ -144,5 +165,17 @@ class EditorSimulationSystem(
 
     companion object {
         const val TIME_SIMULATION = 1_000_000
+
+        /**
+         * Сколько тиков стадия может идти в редакторе, прежде чем рост считается застрявшим.
+         *
+         * В редакторе энергия клеток пополняется каждый тик, и стадия закрывается за один тик:
+         * замер :lwjgl3:genomeJsonCheck 13.10 на 18 старых геномах (до 2134 стадий и 5120
+         * клеток) — ровно 1 тик на стадию у всех. Без предела застрявший геном шёл до
+         * TIME_SIMULATION, копируя тело в повтор (replays) на каждом тике, и память кончалась
+         * раньше. При переводе старых JSON на запуске игры (GenomeLibrary) это повторялось бы
+         * при каждом запуске: такой JSON не переводится и остаётся на месте.
+         */
+        const val STUCK_STAGE_TICKS = 1_000
     }
 }

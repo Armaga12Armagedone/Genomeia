@@ -42,6 +42,7 @@ import io.github.some_example_name.old.features.editor.GenomeEditorScreen
 import io.github.some_example_name.old.features.menu.MenuScreen
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
 import io.github.some_example_name.old.game.applyCustomFontMedium
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.debug.RenderSceneDump
 import java.io.File
@@ -575,10 +576,15 @@ class SimulationScreen(
             })
         }
 
+    /**
+     * Выбор генома для посадки: свои, а под чертой — встроенные, их можно сажать сразу.
+     * Список — тот же, что у ViewModel: номер в нём и есть номер генома в мире.
+     */
     private fun showGenomeList() {
         val bundle = DIGameGlobalContainer.bundle
+        val genomes = viewModel.genomeNames
         GenomeListDialog(
-            genomesList = DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder(),
+            genomesList = genomes,
             selectedGenomeIndex = simulationSystem.simulationData.currentGenomeIndex,
             title = bundle.get("button.selectGenome"),
             new = bundle.get("button.new"),
@@ -595,7 +601,10 @@ class SimulationScreen(
             game = DIGameGlobalContainer.game,
             onResize = { handler ->
                 onResize = if (handler == {}) null else handler
-            }
+            },
+            displayName = GenomeCatalog::displayName,
+            sectionStart = genomes.indexOfFirst(GenomeCatalog::isBundled),
+            sectionTitle = bundle.get("label.bundledGenomes")
         ).show(stage)
     }
 

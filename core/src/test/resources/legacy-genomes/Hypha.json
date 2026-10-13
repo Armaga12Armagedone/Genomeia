@@ -1,0 +1,190 @@
+{
+"name": "Hypha",
+"genomeStageInstruction": [
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"0": {
+				"divide": {
+					"id": "1",
+					"angle": 0.02165,
+					"cellType": 0,
+					"physicalLink": {
+						"0": {
+							"length": 30
+						}
+					},
+					"colorHsv": "218a21ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"0": {
+				"divide": {
+					"id": "2",
+					"angle": 1.0968453,
+					"cellType": 0,
+					"physicalLink": {
+						"0": {
+							"length": 29.99995
+						},
+						"1": {
+							"length": 30.724007
+						}
+					},
+					"colorHsv": "218a21ff"
+				}
+			},
+			"1": {
+				"divide": {
+					"id": "3",
+					"angle": -2.0961785,
+					"cellType": 0,
+					"physicalLink": {
+						"0": {
+							"length": 29.953281
+						},
+						"1": {
+							"length": 30.000074
+						}
+					},
+					"colorHsv": "218a21ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"1": {
+				"divide": {
+					"id": "6",
+					"angle": 0.03667573,
+					"cellType": 19,
+					"physicalLink": {
+						"1": {
+							"length": 29.999989,
+							"directedNeuronLink": 6
+						},
+						"4": {
+							"length": 31.025742,
+							"directedNeuronLink": 4
+						},
+						"5": {
+							"length": 31.864334
+						}
+					},
+					"colorHsv": "8a0000ff",
+					"angleDirected": 0,
+					"funActivation": 4,
+					"a": 0.5,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"2": {
+				"divide": {
+					"id": "4",
+					"angle": -1.0272825,
+					"cellType": 4,
+					"physicalLink": {
+						"1": {
+							"length": 31.255375,
+							"directedNeuronLink": 1
+						},
+						"2": {
+							"length": 30.000046
+						},
+						"6": {
+							"length": 31.025742,
+							"directedNeuronLink": 4
+						}
+					},
+					"colorHsv": "ffc0caff",
+					"funActivation": 10,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"3": {
+				"divide": {
+					"id": "5",
+					"angle": 2.0611491,
+					"cellType": 13,
+					"physicalLink": {
+						"1": {
+							"length": 30.869621,
+							"directedNeuronLink": 5
+						},
+						"3": {
+							"length": 29.999998
+						},
+						"6": {
+							"length": 31.864334
+						}
+					},
+					"colorHsv": "ffffffff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"4": {
+				"divide": {
+					"id": "7",
+					"angle": -0.08562796,
+					"cellType": 11,
+					"physicalLink": {
+						"4": {
+							"length": 29.999964
+						},
+						"6": {
+							"length": 29.28291
+						}
+					},
+					"colorHsv": "ef8080ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"5": {
+				"divide": {
+					"id": "8",
+					"angle": -0.008196302,
+					"cellType": 11,
+					"physicalLink": {
+						"5": {
+							"length": 29.999903
+						},
+						"6": {
+							"length": 32.97346
+						}
+					},
+					"colorHsv": "ef8080ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	}
+]
+}

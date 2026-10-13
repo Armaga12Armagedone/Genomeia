@@ -33,8 +33,11 @@ import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.features.settings.GlobalSettings.MUSIC_VOLUME
 import io.github.some_example_name.old.features.settings.UserPreferences
+import io.github.some_example_name.old.core.FileDropTarget
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.features.menu.MenuScreen
+import io.github.some_example_name.old.journal.SessionAttachments
+import io.github.some_example_name.old.systems.genomics.library.GenomeLibrary
 import kotlin.math.max
 
 interface KeyBoardListener {
@@ -77,6 +80,13 @@ class MyGame(
         UserPreferences.load()
         DISimulationContainer
         DIGenomeEditorContainer
+        // Перенос старых JSON и запекание старых .genome — до первого экрана: меню сразу
+        // читает папку геномов. После контейнеров: запекание идёт в мире редактора.
+        // При повторе бага папка геномов — снимок из .bug, уже прошедший этот шаг у игрока.
+        if (!BugReplay.isActive) {
+            GenomeLibrary.prepare(DIGenomeEditorContainer.genomeBaker)
+            SessionAttachments.retakeGenomes()
+        }
 
         Gdx.input.setCatchKey(Input.Keys.BACK, true)
 
@@ -180,6 +190,21 @@ class MyGame(
     override fun resize(width: Int, height: Int) {
         super.resize(width, height)
         BugOverlay.resize(width, height)
+    }
+
+    /**
+     * Файлы перетащили в окно игры (ПК; зовёт лаунчер в потоке игры). Принимает их текущий
+     * экран, если умеет ([FileDropTarget]). При повторе бага — нет: всё, что тогда сделал
+     * игрок, приходит из записи.
+     */
+    fun filesDropped(paths: List<String>) {
+        if (BugReplay.isActive) return
+        val target = screen as? FileDropTarget
+        if (target == null) {
+            Gdx.app.log("FileDrop", "экран ${screen?.let { it::class.simpleName }} не принимает файлы: $paths")
+            return
+        }
+        target.onFilesDropped(paths.map { Gdx.files.absolute(it) })
     }
 
     private fun shuffleTracks() {

@@ -231,24 +231,16 @@ class EditorLogicSystem(
 
     /**
      * Запись генома в файл. Тело в этот момент уже выращено в сущностях редактора,
-     * поэтому раскладка считается прямо по ним. Организм в редакторе всегда один, с
-     * organIndex = 0.
+     * поэтому раскладка считается прямо по ним (GenomeBaker.bakeGrown).
      */
     private fun saveCurrentGenome(genomeName: String) {
-        val layout = DIGenomeEditorContainer.rcmSort.bake()
+        val genome = DIGenomeEditorContainer.genomeBaker.bakeGrown(genomeName)
 
         // Выгрузка топологии для стенда физики. Здесь же, потому что момент тот
         // самый: тело выращено целиком и отработало последний тик, значит координаты
         // это реальная поза покоя. Путь к файлу уходит в лог.
         DIGenomeEditorContainer.bodyExport.exportToFile()
 
-        val genome = editorSimulationSystem.getGenome().copy(
-            name = genomeName,
-            cellsAmount = cellEntity.aliveList.size,
-            linksAmount = linkEntity.aliveList.size,
-            neuralLinksAmount = DIGenomeEditorContainer.neuralLinkEntity.aliveList.size,
-            sortedGraph = layout
-        )
         saveGenome(genome, genomeName)
     }
 }

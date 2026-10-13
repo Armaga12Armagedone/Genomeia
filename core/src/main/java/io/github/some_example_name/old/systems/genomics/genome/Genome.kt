@@ -144,8 +144,17 @@ private const val MAGIC = "genomeia"
 private const val CURRENT_FORMAT_VERSION = 1
 
 // ==================== СОХРАНЕНИЕ ====================
-@OptIn(ExperimentalSerializationApi::class)
 fun saveGenome(genome: Genome, fileName: String) {
+    // Сохраняем файл с расширением .genome
+    GameFiles.genomesDir().child("$fileName.genome").writeBytes(encodeGenome(genome), false)
+}
+
+/**
+ * Файл .genome целиком, в памяти. Отдельно от [saveGenome]: импорт сравнивает байты с уже
+ * лежащим файлом, прежде чем что-то писать (см. GenomeImport).
+ */
+@OptIn(ExperimentalSerializationApi::class)
+fun encodeGenome(genome: Genome): ByteArray {
     val protobufBytes = ProtoBuf.encodeToByteArray(genome)
 
     val byteArrayOutput = ByteArrayOutputStream()
@@ -161,9 +170,7 @@ fun saveGenome(genome: Genome, fileName: String) {
         // 3. Данные protobuf
         dataOutput.write(protobufBytes)
 
-        // Сохраняем файл с расширением .genome
-        val file = GameFiles.genomesDir().child("$fileName.genome")
-        file.writeBytes(byteArrayOutput.toByteArray(), false)
+        return byteArrayOutput.toByteArray()
 
     } finally {
         dataOutput.close()
@@ -171,7 +178,6 @@ fun saveGenome(genome: Genome, fileName: String) {
 }
 
 // ==================== ЗАГРУЗКА ====================
-@OptIn(ExperimentalSerializationApi::class)
 fun loadGenome(fileName: String): Genome {
     val file = GameFiles.genomesDir().child("$fileName.genome")
 
@@ -179,7 +185,18 @@ fun loadGenome(fileName: String): Genome {
         throw IllegalStateException("Файл генома не найден: $fileName.genome")
     }
 
-    val allBytes = file.readBytes()
+    return decodeGenome(file.readBytes())
+}
+
+/**
+ * Начинается ли содержимое с заголовка .genome. Импорт узнаёт формат по байтам, а не по
+ * расширению: на Android выбранный файл приходит временной копией, и имени верить нельзя.
+ */
+fun isGenomeFile(bytes: ByteArray): Boolean =
+    bytes.size >= MAGIC.length && String(bytes, 0, MAGIC.length, Charsets.UTF_8) == MAGIC
+
+@OptIn(ExperimentalSerializationApi::class)
+fun decodeGenome(allBytes: ByteArray): Genome {
     val byteArrayInput = ByteArrayInputStream(allBytes)
     val dataInput = DataInputStream(byteArrayInput)
 

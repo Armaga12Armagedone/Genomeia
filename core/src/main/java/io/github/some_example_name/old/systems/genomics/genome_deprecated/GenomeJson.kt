@@ -7,6 +7,7 @@ import com.badlogic.gdx.utils.Json
 import com.badlogic.gdx.utils.JsonWriter
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.GameFiles
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import java.io.File
 
 @Deprecated("Теперь используется protobuf")
@@ -62,14 +63,6 @@ class GenomeJsonReader() {
         return names
     }
 
-    fun getGenomeFileNamesFromFolder(): List<String> {
-        val folderHandle: FileHandle = GameFiles.genomesDir()
-//        if (!folderHandle.exists() || !folderHandle.isDirectory) {
-//            println("Folder not found: ${folderHandle.path()}")
-//            return emptyList()
-//        }
-        return folderHandle.list()
-            .filter { !it.isDirectory && it.extension().equals("genome", ignoreCase = true) }
-            .map { it.nameWithoutExtension() }
-    }
+    /** Свои геномы игрока, без встроенных. См. GenomeCatalog. */
+    fun getGenomeFileNamesFromFolder(): List<String> = GenomeCatalog.playerNames()
 }

@@ -17,7 +17,8 @@ import io.github.some_example_name.old.systems.maps.MapSave
  *  - maps/     — сохранённый мир, когда его впервые загрузили за сессию. Не все миры
  *                сразу: их может быть много и они тяжёлые, а нужны только загруженные.
  *                Мир, записанный в этой же сессии, не снимается — повтор запишет его сам;
- *  - imported/ — геномы, импортированные через системное окно выбора.
+ *  - imported/ — импортированные геномы (окно выбора, перетаскивание в окно на ПК) — уже
+ *                в виде .genome, старый JSON снимается переведённым и запечённым.
  *
  * Пути внутри [dir] — те же, что в .bug под attachments/, и те же, что в песочнице
  * повтора относительно её корня данных.
@@ -42,6 +43,16 @@ object SessionAttachments {
         copyDirectory(GameFiles.genomesDir(), target.child(GameFiles.GENOMES)) { it.extension().equals("genome", true) }
         val settings = GameFiles.settingsDir().child(SubstrateSettings.FILE_NAME)
         if (settings.exists()) settings.copyTo(target.child(GameFiles.SETTINGS).child(settings.name()))
+    }
+
+    /**
+     * Снять геномы ещё раз: игра при запуске сама дополнила папку (встроенные геномы,
+     * перенос старых JSON — GenomeLibrary), а первый снимок сделан раньше, до контейнеров.
+     * Команд к этому моменту ещё нет, так что снимок остаётся «папкой до первой команды».
+     */
+    fun retakeGenomes() {
+        val target = dir ?: return
+        copyDirectory(GameFiles.genomesDir(), target.child(GameFiles.GENOMES)) { it.extension().equals("genome", true) }
     }
 
     /** Мир записан в этой сессии — снимать его при загрузке уже не нужно. */

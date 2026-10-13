@@ -25,7 +25,24 @@ cell_textures/texture.png
 cell_textures/zygote.png
 fonts/Roboto-Regular.ttf
 fonts/Rubik-Regular.ttf
-hs_err_pid22808.log
+genomes/Armored Glist.genome
+genomes/Big walker.genome
+genomes/Burdock leaf.genome
+genomes/Chloroplast Bacterium.genome
+genomes/ControllWASD.genome
+genomes/Controlled Glist.genome
+genomes/Crayfish.genome
+genomes/Earthworm.genome
+genomes/Glist.genome
+genomes/Hypha.genome
+genomes/Leech.genome
+genomes/Maggot.genome
+genomes/Megalodon.genome
+genomes/Morphogenesis.genome
+genomes/Stem grow emitter.genome
+genomes/Sucker.genome
+genomes/Tapeworm.genome
+genomes/Tardigrade.genome
 ost/track1.ogg
 ost/track2.ogg
 ost/track3.ogg

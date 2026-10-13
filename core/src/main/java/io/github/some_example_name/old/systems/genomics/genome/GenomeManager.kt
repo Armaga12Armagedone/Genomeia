@@ -2,11 +2,10 @@ package io.github.some_example_name.old.systems.genomics.genome
 
 import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.core.prettyPrint
-import io.github.some_example_name.old.systems.genomics.genome_deprecated.GenomeJsonReader
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import io.github.some_example_name.old.systems.simulation.SimulationData
 
 class GenomeManager(
-    val genomeJsonReader: GenomeJsonReader,
     val simulationData: SimulationData
 ) {
 
@@ -18,8 +17,9 @@ class GenomeManager(
         genomes.clear()
         simulationData.currentGenomeIndex = 0
         if (genomeName == null) {
-            val genomeNames = genomeJsonReader.getGenomeFileNamesFromFolder()
-            genomeNames.forEach {
+            // Свои и встроенные, в порядке GenomeCatalog.all(): номер в этом списке — номер
+            // генома в мире, и список выбора в симуляции показывает тот же порядок.
+            GenomeCatalog.all().forEach {
                 genomes.add(parseGenome(it))
             }
         } else {
@@ -39,7 +39,7 @@ class GenomeManager(
         return genomes.size - 1
     }
 
-    private fun parseGenome(name: String): Genome = loadGenome(name).prepare()
+    private fun parseGenome(name: String): Genome = GenomeCatalog.load(name).prepare()
 
     /** Досчитывает @Transient-поля генома: и после чтения файла, и после загрузки мира. */
     private fun Genome.prepare(): Genome = apply {

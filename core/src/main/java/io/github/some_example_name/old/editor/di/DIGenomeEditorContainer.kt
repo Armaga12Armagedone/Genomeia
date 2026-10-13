@@ -26,6 +26,7 @@ import io.github.some_example_name.old.editor.system.render.DrawingHelperElement
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.EyeEntity
 import io.github.some_example_name.old.editor.baking.BodyExport
+import io.github.some_example_name.old.editor.baking.GenomeBaker
 import io.github.some_example_name.old.editor.baking.RCMSort
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralEntity
@@ -85,7 +86,6 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     val simulationData = SimulationData()
 
     override val genomeManager = GenomeManager(
-        genomeJsonReader = DIGameGlobalContainer.genomeJsonReader,
         simulationData = simulationData
     )
 
@@ -321,6 +321,18 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         zygote = zygote,
         entityList = entityList,
         userCommandManager = userCommandManager
+    )
+
+    /**
+     * Запекание генома: и для кнопки «Сохранить», и для геномов не из редактора (импорт,
+     * перенос старых JSON) — те выращиваются в этом же мире.
+     */
+    val genomeBaker = GenomeBaker(
+        editorSimulationSystem = editorSimulationSystem,
+        rcmSort = rcmSort,
+        cellEntity = cellEntity,
+        linkEntity = linkEntity,
+        neuralLinkEntity = neuralLinkEntity
     )
 
     val nextStageTick get() = (currentTick + 1).coerceIn(0, lastTick)

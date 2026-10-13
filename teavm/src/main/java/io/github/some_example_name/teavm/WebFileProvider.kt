@@ -1,6 +1,5 @@
 package io.github.some_example_name.teavm
 
-import com.badlogic.gdx.files.FileHandle
 import  io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.systems.simulation.SimulationSystem
 import java.io.File
@@ -12,10 +11,6 @@ class WebFileProvider : FileProvider {
     }
 
     override fun exportGenome(fileName: String) {
-
-    }
-
-    override fun importGenome(callback: (FileHandle?) -> Unit) {
 
     }
 

@@ -4,7 +4,6 @@ import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.base.CellListBuilder
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandsManager
-import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
 import io.github.some_example_name.old.core.DIGameGlobalContainer.worldRenderer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.entities.CellEntity
@@ -169,7 +168,6 @@ object DISimulationContainer : DIContext, Disposable {
     )
 
     override val genomeManager = GenomeManager(
-        genomeJsonReader = genomeJsonReader,
         simulationData = simulationData
     )
 

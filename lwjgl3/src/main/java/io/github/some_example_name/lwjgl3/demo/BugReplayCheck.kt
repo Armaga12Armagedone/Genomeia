@@ -18,6 +18,7 @@ import io.github.some_example_name.old.commands.GoSimulation
 import io.github.some_example_name.old.commands.PlayerCommand
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.GameFiles
 import io.github.some_example_name.old.core.PlatformTuning
 import io.github.some_example_name.old.editor.system.Axial
 import io.github.some_example_name.old.editor.system.logic.GoToEndOfTimeLine
@@ -30,6 +31,7 @@ import io.github.some_example_name.old.features.worldeditor.WorldEdit
 import io.github.some_example_name.old.features.worldeditor.WorldEditorIntent
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
 import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.render.RenderMode
 import java.io.File
@@ -38,8 +40,9 @@ import kotlin.system.exitProcess
 /**
  * Сквозная проверка записи и повтора бага: настоящая игра в окне, два запуска.
  *
- *  record — игра проходит сценарий ТОЛЬКО через обработчики команд, как игрок: меню,
- *           редактор генома, редактор мира, мир с организмами, клавиши контроллера,
+ *  record — игра проходит сценарий ТОЛЬКО через обработчики команд, как игрок: импорт
+ *           старого JSON-генома перетаскиванием в окно, меню, редактор генома, редактор
+ *           мира, мир с организмами (импортированный — первым), клавиши контроллера,
  *           сохранение мира, рестарт. В конце — отчёт кнопкой-жуком (без окна).
  *  replay — новый процесс проигрывает этот .bug и сверяет: все команды применены,
  *           контрольные суммы журнала сошлись, хэши состояния мира совпали.
@@ -60,6 +63,9 @@ fun main(args: Array<String>) {
     when (phase) {
         "record" -> {
             System.setProperty("genomeia.replay", "off")
+            // Остаток прошлого прогона: попал бы в снимок папки геномов при запуске, и повтор
+            // прошёл бы, даже не восстановив импорт из .bug.
+            File("${GameFiles.GENOMES}/$IMPORT_NAME.genome").delete()
             listener = { game -> Recorder(game, pathFile) }
         }
         "replay" -> {
@@ -82,6 +88,10 @@ fun main(args: Array<String>) {
 }
 
 private var exitCode = 1
+
+/** Старый JSON, который сценарий перетаскивает в окно, и имя, под которым он импортируется. */
+private const val IMPORT_SOURCE = "core/src/test/resources/legacy-genomes/Leech.json"
+private const val IMPORT_NAME = "bugReplayCheck-import"
 
 /** Сценарий игрока. Каждый шаг — команда через экран (ReplayTarget) или навигацию. */
 private class Recorder(private val game: MyGame, private val pathFile: File) : ApplicationListener by game {
@@ -115,11 +125,24 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
         val data = DISimulationContainer.simulationData
         val navigation = DIGameGlobalContainer.navigationCommandsManager
         when (step++) {
-            0 -> pause(10)
+            // Старый JSON перетаскивают в окно меню — как игрок на ПК. Импорт переводит и
+            // запекает его, в журнал идёт GenomeImported со снимком .genome: повтор обязан
+            // взять геном оттуда (в снимке папки при запуске его нет — см. main).
+            0 -> {
+                val dropped = File(pathFile.parentFile, "$IMPORT_NAME.json")
+                dropped.parentFile.mkdirs()
+                File(IMPORT_SOURCE).copyTo(dropped, overwrite = true)
+                game.filesDropped(listOf(dropped.absolutePath))
+                check(IMPORT_NAME in GenomeCatalog.playerNames()) {
+                    "перетащенный $IMPORT_SOURCE не появился среди геномов"
+                }
+                pause(10)
+            }
 
-            // Редактор генома: первый геном из папки, листаем стадии, симметрия, цвет связей.
+            // Редактор генома: первый встроенный геном (он читается из ассетов, а не из папки),
+            // листаем стадии, симметрия, цвет связей.
             1 -> {
-                val genome = DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder().first()
+                val genome = GenomeCatalog.bundledNames().first()
                 screen(MenuIntent.OpenGenomeEditor(genome))
                 pause(5)
             }
@@ -159,9 +182,12 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 screen(SimulationIntent.SetMaxSpeed(true))
                 screen(SimulationIntent.SetRenderMode(RenderMode.DEBUG))
                 val genomes = DISimulationContainer.genomeManager.genomes
-                val baked = genomes.indices.filter { genomes[it].cellsAmount > 0 }
-                check(baked.isNotEmpty()) { "в папке genomes нет запечённых геномов" }
-                screen(SimulationIntent.SelectGenome(DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder()[baked.first()]))
+                // Импортированный — первым: геномов в папке больше, чем мест посадки, а он
+                // должен попасть в мир, чтобы хэши проверили, что повтор взял тот же геном.
+                val imported = GenomeCatalog.all().indexOf(IMPORT_NAME)
+                check(imported >= 0 && genomes[imported].cellsAmount > 0) { "импортированный JSON не в мире или не запечён" }
+                val baked = listOf(imported) + genomes.indices.filter { it != imported && genomes[it].cellsAmount > 0 }
+                screen(SimulationIntent.SelectGenome(GenomeCatalog.all()[baked.first()]))
                 // Все запечённые геномы по кругу: нейросвязи, феромоны, глаза — всё, что
                 // есть в папке, должно попасть в мир и в хэш состояния.
                 println("Запечённых геномов: ${baked.size} из ${genomes.size}")
@@ -239,6 +265,8 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 pathFile.writeText(bug.file().absolutePath)
                 println("Записан ${bug.file().absolutePath} (${bug.length() / 1024} КБ) на тике ${data.tickCounter}")
                 savedSlot?.let { MapSave.mapFile(it).delete() }
+                // Импортированный геном уже в .bug (приложения сессии) — из папки разработчика долой.
+                GameFiles.genomesDir().child("$IMPORT_NAME.genome").delete()
                 exitCode = 0
                 Gdx.app.exit()
             }
