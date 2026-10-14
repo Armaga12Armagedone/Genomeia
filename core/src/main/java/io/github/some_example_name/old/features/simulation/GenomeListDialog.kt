@@ -5,6 +5,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.scenes.scene2d.InputEvent
+import com.badlogic.gdx.scenes.scene2d.InputListener
 import com.badlogic.gdx.scenes.scene2d.actions.Actions
 import com.badlogic.gdx.scenes.scene2d.ui.ButtonGroup
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
@@ -75,6 +76,16 @@ class GenomeListDialog(
             setForceScroll(false, true)
             setFlickScroll(true)
             setOverscroll(false, true)
+            addListener(object : InputListener() {
+                override fun enter(event: InputEvent?, x: Float, y: Float, pointer: Int, fromActor: com.badlogic.gdx.scenes.scene2d.Actor?) {
+                    stage?.scrollFocus = this@apply
+                }
+
+                override fun mouseMoved(event: InputEvent?, x: Float, y: Float): Boolean {
+                    stage?.scrollFocus = this@apply
+                    return false
+                }
+            })
         }
 
         contentTable.add(scrollPane).grow().maxHeight(Gdx.graphics.height * 0.8f)
@@ -83,6 +94,7 @@ class GenomeListDialog(
         onResize.invoke { centerWindow() }
         pack()
         centerWindow()
+        addAction(Actions.run { stage?.scrollFocus = scrollPane })
     }
 
     private fun setupUI(scrollContentTable: VisTable) {
