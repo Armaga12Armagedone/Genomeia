@@ -213,6 +213,9 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 pause(5)
             }
             4 -> {
+                // Мир 256×256: на него рассчитаны точки посадки SPAWN.
+                screen(WorldEditorIntent.SetWorldWidth(256))
+                screen(WorldEditorIntent.SetWorldHeight(256))
                 screen(WorldEditorIntent.SetDayNight(9))
                 screen(WorldEditorIntent.SetBrushSize(4))
                 screen(WorldEditorIntent.Paint(40, 40))
@@ -220,7 +223,7 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 screen(WorldEditorIntent.SetErasing(true))
                 screen(WorldEditorIntent.Paint(90, 90))
                 // Кнопка «Создать мир» — сама навигация, рецепт — то, что сейчас в редакторе.
-                val world = WorldSpec(192, 192, "31415926", 9, 0, listOf(
+                val world = WorldSpec(WorldSpec.mapCells(256), WorldSpec.mapCells(256), "31415926", 9, 0, listOf(
                     WorldEdit.Stroke(40, 40, 4, erase = false, circle = true),
                     WorldEdit.Stroke(41, 41, 4, erase = false, circle = true),
                     WorldEdit.Stroke(90, 90, 4, erase = true, circle = true),

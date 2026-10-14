@@ -89,7 +89,8 @@ private class Shooter(private val game: MyGame) : ApplicationListener by game {
         when (step) {
             0 -> pause(10)
             1 -> {
-                val world = WorldSpec(192, 192, "31415926", 9, 0, emptyList())
+                // Мир 256×256: организмы ниже расставлены до x = 140.
+                val world = WorldSpec(WorldSpec.mapCells(256), WorldSpec.mapCells(256), "31415926", 9, 0, emptyList())
                 DIGameGlobalContainer.navigationCommandsManager.performCommand(GoSimulation(world, null))
                 pause(5)
             }

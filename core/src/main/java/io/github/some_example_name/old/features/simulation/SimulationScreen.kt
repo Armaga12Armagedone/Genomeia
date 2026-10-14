@@ -73,8 +73,7 @@ class SimulationScreen(
     val cameraControl = CameraControl(
         camera = camera,
         zoom = 0.08f,
-        positionX = DISimulationContainer.gridWidth / 2f,
-        positionY = DISimulationContainer.gridHeight / 2f,
+        // Центр мира ставится в show(), когда размер сетки уже взят из мира.
         onTouchDown = { x, y, isLeft ->
             userCommandManager.push(PlayerCommand.TouchDown(x, y, isLeftButton = isLeft))
         },
@@ -139,7 +138,6 @@ class SimulationScreen(
         // Масштабируем шрифт симуляционной информации под DPI (density)
         // Это обеспечивает корректный размер текста при любом разрешении/DPI
         font.data.setScale(Gdx.graphics.density)
-        DISimulationContainer.resizeWorld()
 
         root = Table()
         root.setFillParent(true)
@@ -158,7 +156,11 @@ class SimulationScreen(
         )
 
         // Построение мира и запуск потока симуляции — в ViewModel, см. startWorld.
-        if (!viewModel.startWorld()) showLoadError()
+        val started = viewModel.startWorld()
+        // Размер сетки известен только теперь: его задаёт рецепт или сохранение мира.
+        camera.position.set(DISimulationContainer.gridWidth / 2f, DISimulationContainer.gridHeight / 2f, 0f)
+        camera.update()
+        if (!started) showLoadError()
     }
 
     private fun showLoadError() {

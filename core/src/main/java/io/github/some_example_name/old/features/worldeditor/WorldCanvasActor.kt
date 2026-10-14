@@ -25,10 +25,12 @@ class WorldCanvasActor(
     private val emptyColor: Color
 ) : Widget(), Disposable {
 
-    private val pixmap = Pixmap(viewModel.gridWidth, viewModel.gridHeight, Pixmap.Format.RGBA8888)
-    private val texture = Texture(pixmap).apply {
-        setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest)
-    }
+    /**
+     * Пиксмап и текстура — ровно по карте. Размер мира меняется ползунком, тогда оба
+     * пересоздаются ([ensureSize]); на мазок кистью — нет.
+     */
+    private var pixmap = Pixmap(viewModel.gridWidth, viewModel.gridHeight, Pixmap.Format.RGBA8888)
+    private var texture = createTexture(pixmap)
     /**
      * Рамка рисуется собственным белым пикселем, а не skin-drawable "white": тот лежит
      * в атласе VisUI, и при растягивании в тонкую полоску к нему по краям подмешиваются
@@ -63,9 +65,14 @@ class WorldCanvasActor(
         })
     }
 
-    override fun getPrefWidth(): Float = viewModel.gridWidth.dp()
+    /**
+     * Желаемый размер — постоянный, а не по числу ячеек карты: холст всё равно растягивается
+     * на свободное место (grow), а у scene2d минимальный размер виджета равен желаемому, и
+     * карта 576×576 из большого мира выдавила бы панель настроек с экрана.
+     */
+    override fun getPrefWidth(): Float = PREF_SIZE.dp()
 
-    override fun getPrefHeight(): Float = viewModel.gridHeight.dp()
+    override fun getPrefHeight(): Float = PREF_SIZE.dp()
 
     override fun layout() {
         val aspect = viewModel.gridWidth.toFloat() / viewModel.gridHeight.toFloat()
@@ -82,6 +89,7 @@ class WorldCanvasActor(
     }
 
     override fun draw(batch: Batch, parentAlpha: Float) {
+        ensureSize()
         validate()
         syncTexture()
 
@@ -95,6 +103,7 @@ class WorldCanvasActor(
 
     /** Локальные координаты актора -> клетка карты. Промах мимо карты просто игнорируется. */
     private fun paintAt(localX: Float, localY: Float) {
+        ensureSize()
         validate()
         if (mapWidth <= 0f || mapHeight <= 0f) return
 
@@ -127,6 +136,7 @@ class WorldCanvasActor(
      */
     private fun syncTexture() {
         if (uploadedVersion == viewModel.mapVersion) return
+        ensureSize()
 
         val map = viewModel.map
         for (y in 0 until viewModel.gridHeight) {
@@ -142,6 +152,18 @@ class WorldCanvasActor(
         uploadedVersion = viewModel.mapVersion
     }
 
+    /** Размер мира сменился — новая карта другого размера: другие пиксмап, текстура и пропорции. */
+    private fun ensureSize() {
+        if (pixmap.width == viewModel.gridWidth && pixmap.height == viewModel.gridHeight) return
+        texture.dispose()
+        pixmap.dispose()
+        pixmap = Pixmap(viewModel.gridWidth, viewModel.gridHeight, Pixmap.Format.RGBA8888)
+        texture = createTexture(pixmap)
+        uploadedVersion = -1
+        // Пропорции карты считаются в layout().
+        invalidate()
+    }
+
     override fun dispose() {
         texture.dispose()
         pixmap.dispose()
@@ -150,7 +172,12 @@ class WorldCanvasActor(
 
     private companion object {
         const val BORDER_THICKNESS = 2f
+        const val PREF_SIZE = 192f
         val BORDER_COLOR: Color = Color(0.35f, 0.35f, 0.40f, 1f)
+
+        fun createTexture(pixmap: Pixmap): Texture = Texture(pixmap).apply {
+            setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest)
+        }
 
         fun createPixelTexture(): Texture {
             val pixel = Pixmap(1, 1, Pixmap.Format.RGBA8888).apply {

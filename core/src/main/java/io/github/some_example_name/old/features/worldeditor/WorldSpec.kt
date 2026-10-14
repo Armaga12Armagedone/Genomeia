@@ -32,6 +32,7 @@ sealed interface WorldEdit {
  */
 @Serializable
 data class WorldSpec(
+    /** Размер КАРТЫ редактора в её ячейках, не мира: см. [worldWidth]. */
     val gridWidth: Int,
     val gridHeight: Int,
     val seed: String,
@@ -39,9 +40,33 @@ data class WorldSpec(
     val smoothing: Int,
     val edits: List<WorldEdit> = emptyList()
 ) {
+    /**
+     * Размер мира в клетках сетки симуляции. Карта мельче сетки в полтора раза
+     * ([mapCells]), поэтому размер мира из рецепта выводится, а не хранится отдельным
+     * полем: два поля могли бы разойтись, и мир снова вышел бы не того размера, что карта.
+     *
+     * Раньше сетка симуляции была жёстко 256×256, а карта 192×192 покрывала только 128×128
+     * — рельеф лежал в углу мира, остальное было пусто.
+     */
+    val worldWidth: Int get() = gridWidth * MAP_SCALE_DEN / MAP_SCALE_NUM
+    val worldHeight: Int get() = gridHeight * MAP_SCALE_DEN / MAP_SCALE_NUM
+
     /** Короткая сводка для журнала. */
     val detail: String
-        get() = "seed=$seed dn=$dayNight sm=$smoothing edits=${edits.size}"
+        get() = "size=${worldWidth}x$worldHeight seed=$seed dn=$dayNight sm=$smoothing edits=${edits.size}"
+
+    companion object {
+        /**
+         * Ячеек карты на клетку мира — 3/2: частицы рельефа стоят с шагом 1/1.5 клетки
+         * (см. WorldTerrainManager). Дробью из целых, чтобы размер мира считался точно.
+         */
+        const val MAP_SCALE_NUM = 3
+        const val MAP_SCALE_DEN = 2
+        const val MAP_CELLS_PER_WORLD_CELL = MAP_SCALE_NUM.toFloat() / MAP_SCALE_DEN
+
+        /** Ячеек карты на сторону мира в [worldCells] клеток. */
+        fun mapCells(worldCells: Int): Int = worldCells * MAP_SCALE_NUM / MAP_SCALE_DEN
+    }
 
     fun buildMap(generator: WorldGenerator = WorldGenerator()): Array<BooleanArray> {
         // Параметры генератора живут в его companion — их читает generateWorld.
