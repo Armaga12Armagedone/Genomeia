@@ -1,6 +1,7 @@
 package io.github.some_example_name.old.features.worldeditor
 
 import io.github.some_example_name.old.commands.GameCommand
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.journal.CommandSource
 import io.github.some_example_name.old.journal.SessionJournal
 import kotlinx.serialization.Serializable
@@ -98,8 +99,10 @@ class WorldEditorViewModel(
     val gridHeight: Int = DEFAULT_GRID_HEIGHT
 ) {
     companion object {
-        val DEFAULT_GRID_WIDTH = (128 * 1.5f).toInt()
-        val DEFAULT_GRID_HEIGHT = (128 * 1.5f).toInt()
+//        val DEFAULT_GRID_WIDTH = (128 * 1.5f).toInt()
+//        val DEFAULT_GRID_HEIGHT = (128 * 1.5f).toInt()
+        val DEFAULT_GRID_WIDTH = DISimulationContainer.gridWidth
+        val DEFAULT_GRID_HEIGHT = DISimulationContainer.gridHeight
 
         const val DAY_NIGHT_MIN = 0f
         const val DAY_NIGHT_MAX = 25f

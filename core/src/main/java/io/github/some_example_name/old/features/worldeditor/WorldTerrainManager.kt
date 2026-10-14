@@ -1,9 +1,9 @@
 package io.github.some_example_name.old.features.worldeditor
 
 import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.math.MathUtils.ceil
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
-import io.github.some_example_name.old.features.settings.GlobalSettings
 import kotlin.Float
 import kotlin.random.Random
 
@@ -12,7 +12,7 @@ class WorldTerrainManager(
     val substancesEntity: SubstancesEntity
 ) {
     var map: Array<BooleanArray>? = null
-    val gridWith: Float = 0f
+    val gridWidth: Float = 0f
     val gridHeight: Float = 0f
 
     fun getColor(random: Random): Int {
@@ -24,23 +24,23 @@ class WorldTerrainManager(
     }
 
     fun initWorld(
-        gridWith: Int = 128,
-        gridHeight: Int = 128
+        gridWidth: Int = 128,
+        gridHeight: Int = 128,
     ) {
         val random = Random(3)
         map?.let {
             for ((y, element) in it.withIndex()) {
                 for ((x, element1) in element.withIndex()) {
 
-                    val scaleX = x.toFloat() / 1.5f
-                    val scaleY = y.toFloat() / 1.5f
+                    val scaleX = x.toFloat()
+                    val scaleY = y.toFloat()
                     if (x == 0 || x == it.size - 1 || y == 0 || y == element.size - 1) continue
                     if (element1) {
-                        if (scaleX < gridWith && scaleY < gridHeight) {
+                        if (scaleX < gridWidth && scaleY < gridHeight) {
                             particleEntity.addParticle(
                                 x = scaleX,
                                 y = scaleY,
-                                radius = 0.5f,
+                                radius = 1f,
                                 color = getColor(random),
                                 isCell = false,
                                 isSub = false,
@@ -63,11 +63,12 @@ class WorldTerrainManager(
                 }
             }
         }
-        for (i in 1..<(gridWith / 2 * 3)) {
+        // Walls
+        for (i in 1..<gridWidth) {
             particleEntity.addParticle(
-                x = i.toFloat() / 1.5f,
-                y = 0.5f,
-                radius = 0.5f,
+                x = i.toFloat(),
+                y = 1f,
+                radius = 1f,
                 color = getColor(random),
                 isCell = false,
                 isSub = false,
@@ -75,11 +76,11 @@ class WorldTerrainManager(
                 dragCoefficient = 1.0f
             )
         }
-        for (i in 1..<(gridHeight / 2 * 3)) {
+        for (i in 1..<gridHeight) {
             particleEntity.addParticle(
-                x = 0.5f,
-                y = i.toFloat() / 1.5f,
-                radius = 0.5f,
+                x = 1f,
+                y = i.toFloat(),
+                radius = 1f,
                 color = getColor(random),
                 isCell = false,
                 isSub = false,
@@ -88,11 +89,11 @@ class WorldTerrainManager(
             )
         }
 
-        for (i in 1..<(gridHeight / 2 * 3)) {
+        for (i in 1..<gridHeight) {
             particleEntity.addParticle(
-                x = gridWith - 0.5f,
-                y = i.toFloat() / 1.5f,
-                radius = 0.5f,
+                x = gridWidth - 1f,
+                y = i.toFloat(),
+                radius = 1f,
                 color = getColor(random),
                 isCell = false,
                 isSub = false,
@@ -100,11 +101,11 @@ class WorldTerrainManager(
                 dragCoefficient = 1.0f
             )
         }
-        for (i in 1..<(gridWith / 2 * 3)) {
+        for (i in 1..<gridWidth) {
             particleEntity.addParticle(
-                x = i.toFloat() / 1.5f,
-                y = gridHeight - 0.5f,
-                radius = 0.5f,
+                x = i.toFloat(),
+                y = gridHeight - 1f,
+                radius = 1f,
                 color = getColor(random),
                 isCell = false,
                 isSub = false,
