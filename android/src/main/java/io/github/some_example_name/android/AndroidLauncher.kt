@@ -1,9 +1,9 @@
 package io.github.some_example_name.android
 
+import android.content.Intent
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Rect
-import android.net.Uri
 import android.opengl.GLES32
 import android.os.Bundle
 import android.text.InputType
@@ -16,7 +16,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.Toast
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import games.spooky.gdx.nativefilechooser.android.AndroidFileChooser
@@ -24,7 +23,6 @@ import io.github.some_example_name.old.core.PlatformTuning
 import io.github.some_example_name.old.game.KeyBoardListener
 import io.github.some_example_name.old.game.MyGame
 import java.io.File
-import java.io.FileOutputStream
 
 //class AndroidLauncher : AndroidApplication() {
 //    override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,6 +39,8 @@ import java.io.FileOutputStream
 
 
 class AndroidLauncher : AndroidApplication(), KeyBoardListener {
+
+    private lateinit var game: MyGame
 
     companion object {
         var inputCallback: ((Float) -> Unit)? = null
@@ -64,8 +64,9 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         GLES32.glGenBuffers(1, buf, 0)
 
         val fileProvider = AndroidFileProvider(this, AndroidFileChooser(this))
+        game = MyGame(fileProvider)
         val gameView = initializeForView(
-            MyGame(fileProvider),
+            game,
             config
         )
 
@@ -107,6 +108,7 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         ))
 
         setContentView(rootLayout)
+        openMapIntent(intent)
 
         // Смещение при открытии клавиатуры
         rootLayout.viewTreeObserver.addOnGlobalLayoutListener {
@@ -167,18 +169,34 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         }
     }
 
-    private fun copyImportedFile(uri: Uri) {
-        val targetFile = File(filesDir, "gen3.bin")
-        try {
-            contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(targetFile).use { output ->
-                    input.copyTo(output)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openMapIntent(intent)
+    }
+
+    private fun openMapIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val uri = intent.data ?: return
+        // URI может быть content:// с непрозрачным именем: формат проверяет core.
+        // Копирование — вне GL-потока; временный файл удаляем после снимка для журнала.
+        Thread({
+            val temporary = File.createTempFile("opened-", ".map", cacheDir)
+            try {
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw java.io.IOException("не удалось открыть $uri")
+                input.use { source -> temporary.outputStream().use { source.copyTo(it) } }
+                postRunnable {
+                    try {
+                        game.openFiles(listOf(temporary.absolutePath))
+                    } finally {
+                        temporary.delete()
+                    }
                 }
+            } catch (e: Exception) {
+                temporary.delete()
+                Log.e("MapImport", "не удалось прочитать $uri", e)
             }
-            Toast.makeText(this, "Файл импортирован как gen3.bin", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Log.e("AndroidLauncher", "Import failed: ${e.message}")
-            Toast.makeText(this, "Ошибка импорта: ${e.message}", Toast.LENGTH_LONG).show()
-        }
+        }, "map-import").start()
     }
 }

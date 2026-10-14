@@ -56,23 +56,16 @@ object GameFiles {
     }
 
     /**
-     * Файлы геномов (*.genome).
-     *
-     * Как и раньше — в Gdx.files.local, кроме одного случая: запуска из исходников через
-     * `gradlew :lwjgl3:run`, где рабочий каталог — assets/. Там в assets/genomes лежат
-     * встроенные геномы, а всё из assets/ уходит в сборку; геномы разработчика, сохранённые
-     * или импортированные при проверке, туда попадать не должны. Тогда — корень проекта,
-     * как у [gameDir]. У собранной игры рабочий каталог не assets/, и для неё ничего не
-     * меняется.
+     * Файлы геномов рядом с игрой, на Android — в личном хранилище приложения.
+     * Рабочий каталог проводника при открытии .map не должен менять библиотеку геномов.
      */
     fun genomesDir(): FileHandle = (dataRoot ?: localDataRoot()).child(GENOMES)
 
     private fun localDataRoot(): FileHandle {
         if (Gdx.app.type == Application.ApplicationType.Desktop) {
-            val working = File("").absoluteFile
-            if (working.name.equals("assets", ignoreCase = true) && working.parentFile != null) {
-                return Gdx.files.absolute(working.parentFile.absolutePath)
-            }
+            // При открытии .map рабочий каталог задаёт проводник, а не игра.
+            // Геномы должны остаться рядом с игрой, как карты и настройки.
+            return gameDir
         }
         return Gdx.files.local("")
     }

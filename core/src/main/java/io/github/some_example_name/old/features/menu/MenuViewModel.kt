@@ -86,6 +86,12 @@ sealed interface MenuIntent : GameCommand {
     }
 
     @Serializable
+    data class MapImported(val slot: String, val attachment: String) : MenuIntent {
+        override val name get() = "MapImported"
+        override val detail get() = slot
+    }
+
+    @Serializable
     data object OpenSettings : MenuIntent {
         override val name get() = "OpenSettings"
     }
@@ -176,6 +182,14 @@ class MenuViewModel(
                 }
             }
 
+            is MenuIntent.MapImported -> {
+                val target = GameFiles.mapsDir().child("${intent.slot}.map")
+                check(SessionAttachments.restore(intent.attachment, target)) { "нет снимка импортированной карты" }
+                // Снимок уже есть в attachment: не дублируем весь мир второй раз в .bug.
+                SessionAttachments.markMapWritten(intent.slot)
+                navigation.performCommand(GoSimulation(world = null, genomeName = null, savedWorld = intent.slot))
+            }
+
             is MenuIntent.OpenSettings -> navigation.performCommand(GoSettings)
 
             is MenuIntent.OpenSupport -> navigation.performCommand(GoSupport)
@@ -209,6 +223,20 @@ class MenuViewModel(
             imported += genome.nameWithoutExtension()
         }
         onGenomeImportFinished?.invoke(GenomeImportResult(imported, failed))
+    }
+
+    /** Карта открывается через команду, внешний файл остаётся нетронутым. */
+    fun importMapFile(file: FileHandle) {
+        if (BugReplay.isActive) return
+        try {
+            MapSave.validateImport(file)
+            val slot = ((MapSave.listMaps().maxOfOrNull { it.slot.toIntOrNull() ?: 0 } ?: 0) + 1).toString()
+            val attachment = SessionAttachments.attachImported(file)
+            handle(MenuIntent.MapImported(slot, attachment))
+        } catch (e: Exception) {
+            Gdx.app.error("MapImport", "не удалось открыть ${file.path()}", e)
+            onGenomeImportFinished?.invoke(GenomeImportResult(emptyList(), listOf(file.name())))
+        }
     }
 
     fun startMenuSimulation() {

@@ -101,6 +101,7 @@ object CommandRegistry {
         t<MenuIntent.Exit>(205),
         t<MenuIntent.ImportGenome>(206),
         t<MenuIntent.GenomeImported>(207),
+        t<MenuIntent.MapImported>(208),
 
         // --- Настройки ---
         t<SettingsIntent.SelectTab>(300),

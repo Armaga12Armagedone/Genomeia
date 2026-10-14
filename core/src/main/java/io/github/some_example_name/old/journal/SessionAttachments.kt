@@ -73,22 +73,27 @@ object SessionAttachments {
         }
     }
 
-    /** Импортированный геном. Возвращает путь снимка — он едет в команде GenomeImported. */
+    /** Импортированный файл. Путь снимка едет в команде GenomeImported или MapImported. */
     fun attachImported(file: FileHandle): String {
         val path = "imported/${importCounter++}-${file.name()}"
         val target = dir ?: return path
         try {
             file.copyTo(target.child(path))
         } catch (e: Exception) {
-            Gdx.app?.error(TAG, "не удалось снять импортированный геном ${file.name()}", e)
+            Gdx.app?.error(TAG, "не удалось снять импортированный файл ${file.name()}", e)
         }
         return path
     }
 
-    /** Повтор: положить снимок [path] на место [target]. */
-    fun restore(path: String, target: FileHandle) {
-        val source = (dir ?: return).child(path)
-        if (source.exists()) source.copyTo(target) else Gdx.app?.error(TAG, "в .bug нет файла $path")
+    /** Положить снимок [path] на место [target]; false — снимка нет. */
+    fun restore(path: String, target: FileHandle): Boolean {
+        val source = (dir ?: return false).child(path)
+        if (!source.exists()) {
+            Gdx.app?.error(TAG, "в .bug нет файла $path")
+            return false
+        }
+        source.copyTo(target)
+        return true
     }
 
     /** Повтор: снимки сессии — это распакованный .bug, а не запись. */

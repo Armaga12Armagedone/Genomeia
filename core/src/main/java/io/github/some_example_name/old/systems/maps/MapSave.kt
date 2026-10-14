@@ -27,8 +27,6 @@ import java.io.DataOutputStream
 import java.io.File
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
 
 /** Сохранённый мир в списке: [slot] — имя файла без расширения. */
 class SavedMap(val slot: String, val lastModified: Long)
@@ -37,7 +35,7 @@ class SavedMap(val slot: String, val lastModified: Long)
  * Сохранение мира целиком: сущности, геномы организмов, время симуляции, рецепт рельефа
  * и превью для списка миров.
  *
- * Мир лежит в maps/<номер>.zip:
+ * Мир лежит в maps/<номер>.map:
  *  - preview.png        превью, первым — чтобы список миров читал его, не распаковывая остальное;
  *  - meta.bin           версия формата, размер сетки, время, рецепт рельефа (для «Перезапуска»);
  *  - genomes.bin        геномы, на которые ссылаются организмы;
@@ -370,9 +368,9 @@ class MapSave(
      * закрыли игру) не должна портить уже существующее сохранение.
      */
     private fun writeArchive(slot: String, entries: Map<String, ByteArray>) {
-        val target = mapFile(slot)
+        val target = mapsDir().child("$slot$EXTENSION")
         val temporary = mapsDir().child("$slot$EXTENSION.tmp")
-        ZipOutputStream(temporary.write(false, IO_BUFFER)).use { zip ->
+        MapFile.write(temporary.write(false, IO_BUFFER)).use { zip ->
             // Массивы сущностей — это в основном нули и повторы, они жмутся и на самом
             // быстром уровне, а лишние секунды на максимальном заметны при каждом сохранении.
             zip.setLevel(Deflater.BEST_SPEED)
@@ -389,7 +387,7 @@ class MapSave(
         /** Сторона квадратного превью в пикселях: его показывают в маленьком окошке списка. */
         const val PREVIEW_SIZE = 128
 
-        private const val EXTENSION = ".zip"
+        private const val EXTENSION = MapFile.EXTENSION
         private const val IO_BUFFER = 64 * 1024
 
         /**
@@ -410,7 +408,8 @@ class MapSave(
         private const val EDIT_CLEAR = 1
 
         /** Сохранённые миры, последние сохранённые первыми. Без симуляции — нужен меню. */
-        fun listMaps(): List<SavedMap> = mapsDir().list(EXTENSION)
+        fun listMaps(): List<SavedMap> = mapsDir().list()
+            .filter { !it.isDirectory && it.extension() == "map" }
             .map { SavedMap(slot = it.nameWithoutExtension(), lastModified = it.lastModified()) }
             .sortedByDescending { it.lastModified }
 
@@ -419,7 +418,7 @@ class MapSave(
             val file = mapFile(slot)
             if (!file.exists()) return null
             return try {
-                ZipInputStream(file.read(IO_BUFFER)).use { zip ->
+                MapFile.read(file.read(IO_BUFFER)).use { zip ->
                     generateSequence { zip.nextEntry }
                         .firstOrNull { it.name == PREVIEW }
                         ?.let { zip.readBytes() }
@@ -436,13 +435,43 @@ class MapSave(
 
         fun mapFile(slot: String): FileHandle = mapsDir().child("$slot$EXTENSION")
 
+        /** Проверка внешнего контейнера до помещения в библиотеку и до изменения мира. */
+        fun validateImport(file: FileHandle) {
+            val names = HashSet<String>()
+            val buffer = ByteArray(IO_BUFFER)
+            // Проверяем CRC всех записей потоком: вторую копию массивов мира в RAM не держим.
+            MapFile.read(file.read(IO_BUFFER)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (entry.isDirectory) continue
+                    require(names.add(entry.name)) { "повторная запись в карте: ${entry.name}" }
+                    if (entry.name == META) {
+                        val meta = DataInputStream(zip)
+                        require(meta.readInt() == FORMAT_VERSION) { "неподдерживаемый формат состояния мира" }
+                        require(meta.readInt() > 0 && meta.readInt() > 0) { "некорректный размер мира" }
+                        meta.readInt() // тик
+                        meta.readFloat() // время
+                        meta.readBoolean() // наличие рецепта рельефа
+                    }
+                    while (zip.read(buffer) != -1) { /* CRC проверяется в конце записи. */ }
+                }
+            }
+            for (required in arrayOf(META, TYPES, GENOMES, CELL_ACTIONS)) {
+                require(required in names) { "в карте нет $required" }
+            }
+            require(names.any { it.startsWith("entities/") }) { "в карте нет сущностей" }
+        }
+
         private fun readArchive(file: FileHandle): Map<String, ByteArray> {
             check(file.exists()) { "файл мира не найден: ${file.path()}" }
             val entries = HashMap<String, ByteArray>()
-            ZipInputStream(file.read(IO_BUFFER)).use { zip ->
+            MapFile.read(file.read(IO_BUFFER)).use { zip ->
                 generateSequence { zip.nextEntry }
                     .filterNot { it.isDirectory }
-                    .forEach { entries[it.name] = zip.readBytes() }
+                    .forEach {
+                        require(!entries.containsKey(it.name)) { "повторная запись в карте: ${it.name}" }
+                        entries[it.name] = zip.readBytes()
+                    }
             }
             return entries
         }
