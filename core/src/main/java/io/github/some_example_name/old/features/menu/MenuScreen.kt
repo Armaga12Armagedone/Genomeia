@@ -178,8 +178,16 @@ class MenuScreen : VisDslScreen(
         ).show(stage)
     }
 
-    /** ПК: файлы перетащили в окно — это импорт геномов. */
-    override fun onFilesDropped(files: List<FileHandle>) = menuViewModel.importGenomeFiles(files)
+    /** Файлы из лаунчера или перетаскивания: карта открывает мир, остальные — импорт геномов. */
+    override fun onFilesDropped(files: List<FileHandle>) {
+        val maps = files.filter { it.extension().equals("map", true) }
+        if (maps.isNotEmpty()) {
+            // Один жест открывает один мир: несколько переходов подряд скрыли бы ошибки первого.
+            menuViewModel.importMapFile(maps.first())
+        } else {
+            menuViewModel.importGenomeFiles(files)
+        }
+    }
 
     /**
      * Импорт закончился. Список открывается заново — уже с новыми геномами, последний

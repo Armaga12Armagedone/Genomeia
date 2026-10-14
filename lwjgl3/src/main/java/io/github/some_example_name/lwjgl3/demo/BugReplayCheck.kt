@@ -149,6 +149,7 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
     private var step = 0
     private var waitUntilFrame = 0
     private var waitUntilTick = -1
+    private var importedMapSlot: String? = null
     private var savedSlot: String? = null
     private var startedAt = System.nanoTime()
 
@@ -313,8 +314,19 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 untilTick(data.tickCounter + GROW_TICKS)
             }
 
-            // Отчёт кнопкой-жуком (без окна) — и конец.
+            // Внешняя .map: новый слот и снимок во вложении, затем продолжение мира.
+            // Проверяет именно путь лаунчера и команду MapImported, а не только ZIP-кодек.
             14 -> {
+                importedMapSlot = DISimulationContainer.mapSave.nextSlot()
+                game.openFiles(listOf(MapSave.mapFile(savedSlot!!).file().absolutePath))
+                check(MapSave.mapFile(importedMapSlot!!).exists()) { "карта не импортирована" }
+                screen(SimulationIntent.SetPaused(false))
+                screen(SimulationIntent.SetMaxSpeed(true))
+                untilTick(data.tickCounter + 240)
+            }
+
+            // Отчёт кнопкой-жуком (без окна) — и конец.
+            15 -> {
                 val bug = BugReports.create(BugKind.REPORT, "bugReplayCheck: сквозная проверка")
                 // Как в окне отчёта: игрок дописал пояснение и приложил картинку после
                 // первой кнопки — перепаковка не должна задеть журнал (повтор это проверит).
@@ -323,6 +335,7 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 pathFile.writeText(bug.file().absolutePath)
                 println("Записан ${bug.file().absolutePath} (${bug.length() / 1024} КБ) на тике ${data.tickCounter}")
                 savedSlot?.let { MapSave.mapFile(it).delete() }
+                importedMapSlot?.let { MapSave.mapFile(it).delete() }
                 // Импортированный геном уже в .bug (приложения сессии) — из папки разработчика долой.
                 GameFiles.genomesDir().child("$IMPORT_NAME.genome").delete()
                 GameFiles.genomesDir().child("$CONTROLLER_NAME.genome").delete()

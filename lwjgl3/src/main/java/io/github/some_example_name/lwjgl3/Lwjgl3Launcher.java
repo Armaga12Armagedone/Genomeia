@@ -21,17 +21,25 @@ public class Lwjgl3Launcher {
      * обычно.
      */
     public static void main(String[] args) {
-        if (StartupHelper.startNewJvmIfRequired())
+        if (StartupHelper.startNewJvmIfRequired(true, args))
             return; // This handles macOS support and helps on Windows.
-        createApplication();
+        WindowsFileAssociations.register();
+        createApplication(args);
     }
 
-    private static Lwjgl3Application createApplication() {
+    private static Lwjgl3Application createApplication(String[] args) {
         MyGame game = new MyGame(new DesktopFileProvider(), null);
+        // created вызывается после MyGame.create: меню и журнал уже готовы.
+
         Lwjgl3ApplicationConfiguration configuration = getDefaultConfiguration();
-        // Перетаскивание файлов в окно — импорт геномов (MyGame.filesDropped). На macOS это
+        // Перетаскивание файлов в окно — импорт геномов и карт (MyGame.filesDropped). На macOS это
         // единственный способ: системное окно выбора там не открывается (DesktopFileProvider).
         configuration.setWindowListener(new Lwjgl3WindowAdapter() {
+            @Override
+            public void created(com.badlogic.gdx.backends.lwjgl3.Lwjgl3Window window) {
+                com.badlogic.gdx.Gdx.app.postRunnable(() -> game.openFiles(Arrays.asList(args)));
+            }
+
             @Override
             public void filesDropped(String[] files) {
                 game.filesDropped(Arrays.asList(files));

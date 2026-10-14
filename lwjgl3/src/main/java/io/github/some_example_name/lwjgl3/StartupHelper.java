@@ -66,6 +66,10 @@ public class StartupHelper {
      *         in this one
      */
     public static boolean startNewJvmIfRequired(boolean redirectOutput) {
+        return startNewJvmIfRequired(redirectOutput, new String[0]);
+    }
+
+    public static boolean startNewJvmIfRequired(boolean redirectOutput, String[] args) {
         String osName = System.getProperty("os.name").toLowerCase();
         if (!osName.contains("mac")) {
             if (osName.contains("windows")) {
@@ -129,6 +133,7 @@ public class StartupHelper {
             }
         }
         jvmArgs.add(mainClass);
+        java.util.Collections.addAll(jvmArgs, args);
 
         try {
             if (!redirectOutput) {

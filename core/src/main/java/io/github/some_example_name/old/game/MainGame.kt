@@ -26,6 +26,11 @@ import com.kotcrab.vis.ui.widget.VisValidatableTextField
 import io.github.some_example_name.old.bug.BugOverlay
 import io.github.some_example_name.old.bug.BugReplay
 import io.github.some_example_name.old.bug.BugSession
+import io.github.some_example_name.old.bug.ReplayTarget
+import io.github.some_example_name.old.commands.GoMenu
+import io.github.some_example_name.old.commands.GoReplace
+import io.github.some_example_name.old.features.simulation.SimulationIntent
+import io.github.some_example_name.old.features.simulation.SimulationScreen
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.journal.SessionJournal
 import io.github.some_example_name.old.core.DevStartup
@@ -205,6 +210,25 @@ class MyGame(
             return
         }
         target.onFilesDropped(paths.map { Gdx.files.absolute(it) })
+    }
+
+    /** Лаунчер вызывает после create; переход в меню тоже записывается командой. */
+    fun openFiles(paths: List<String>) {
+        if (BugReplay.isActive || paths.isEmpty()) return
+        if (screen is SimulationScreen) {
+            (screen as ReplayTarget).replay(
+                SimulationIntent.SetPaused(true)
+            )
+            // Навигация запишется на последнем завершённом тике. Иначе до dispose мир
+            // успевал дописать хэши, до которых повтор с другим числом воркеров не доходил.
+            DISimulationContainer.simulationSystem.betweenTicks { }
+        }
+        if (screen !is MenuScreen) {
+            DIGameGlobalContainer.navigationCommandsManager.performCommand(
+                GoReplace(GoMenu)
+            )
+        }
+        filesDropped(paths)
     }
 
     private fun shuffleTracks() {

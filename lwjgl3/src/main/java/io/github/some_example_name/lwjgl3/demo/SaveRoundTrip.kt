@@ -33,7 +33,7 @@ import kotlin.system.exitProcess
  * Запуск: gradlew :lwjgl3:saveRoundTrip. Ненулевой код — регрессия.
  *
  * gradlew :lwjgl3:saveRoundTrip -PloadSlot=<слот> — мир, сохранённый ДРУГОЙ версией игры
- * (maps/<слот>.zip): только загрузка, узнаны ли геномы организмов (без дублей) и
+ * (maps/<слот>.map): только загрузка, узнаны ли геномы организмов (без дублей) и
  * RUN_AFTER_LOAD_TICKS тиков без нарушений инвариантов. Сравнивать побайтно тут не с чем;
  * файл не перезаписывается.
  */
@@ -144,7 +144,7 @@ private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by g
             }
 
             Step.WAIT_SAVE -> if (slot != null) {
-                val file = File("maps/$slot.zip")
+                val file = MapSave.mapFile(slot!!).file()
                 println("Файл: ${file.path}, ${file.length() / 1024} КБ")
 
                 val preview = MapSave.readPreview(slot!!) ?: throw IllegalStateException("в сохранении нет превью")
@@ -206,7 +206,7 @@ private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by g
             }
 
             Step.OVERWRITE -> {
-                if (System.getProperty("keep") == null && foreignSlot == null) File("maps/$slot.zip").delete()
+                if (System.getProperty("keep") == null && foreignSlot == null) MapSave.mapFile(slot!!).file().delete()
                 println("PASS")
                 exitCode = 0
                 next(Step.DONE)
