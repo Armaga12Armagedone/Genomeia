@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.ui.Cell
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextField
+import kotlin.math.roundToInt
 import io.github.some_example_name.old.commands.GoBack
 import io.github.some_example_name.old.commands.GoSimulation
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
@@ -28,6 +29,9 @@ import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel
 import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel.Companion.DAY_NIGHT_MIN
 import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel.Companion.SMOOTHING_MAX
 import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel.Companion.SMOOTHING_MIN
+import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel.Companion.WORLD_SIZE_MAX
+import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel.Companion.WORLD_SIZE_MIN
+import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel.Companion.WORLD_SIZE_STEP
 
 /**
  * Редактор мира: рисование карты кистью плюс параметры генератора.
@@ -154,6 +158,34 @@ class WorldEditorScreen(
         seedRow()
         row()
 
+        val worldWidthLabel = visLabel(worldWidthText()) { left().growX() }
+        row()
+        visSlider(
+            min = WORLD_SIZE_MIN.toFloat(),
+            max = WORLD_SIZE_MAX.toFloat(),
+            step = WORLD_SIZE_STEP.toFloat(),
+            value = viewModel.worldWidth.toFloat(),
+            onValueChange = { value ->
+                viewModel.handle(WorldEditorIntent.SetWorldWidth(value.roundToInt()))
+                worldWidthLabel.setText(worldWidthText())
+            }
+        ) { growX().padBottom(GAP.dp()) }
+        row()
+
+        val worldHeightLabel = visLabel(worldHeightText()) { left().growX() }
+        row()
+        visSlider(
+            min = WORLD_SIZE_MIN.toFloat(),
+            max = WORLD_SIZE_MAX.toFloat(),
+            step = WORLD_SIZE_STEP.toFloat(),
+            value = viewModel.worldHeight.toFloat(),
+            onValueChange = { value ->
+                viewModel.handle(WorldEditorIntent.SetWorldHeight(value.roundToInt()))
+                worldHeightLabel.setText(worldHeightText())
+            }
+        ) { growX().padBottom(GAP.dp()) }
+        row()
+
         val dayNightLabel = visLabel(dayNightText()) { left().growX() }
         row()
         visSlider(
@@ -262,6 +294,10 @@ class WorldEditorScreen(
     private fun VisTable.spacer() {
         visTable({ expandX().fillX() }) { }
     }
+
+    private fun worldWidthText() = bundle.get("label.worldWidth") + viewModel.worldWidth
+
+    private fun worldHeightText() = bundle.get("label.worldHeight") + viewModel.worldHeight
 
     private fun dayNightText() = bundle.get("label.dayNight") + viewModel.dayNight
 

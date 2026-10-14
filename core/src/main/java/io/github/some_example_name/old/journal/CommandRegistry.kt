@@ -123,6 +123,8 @@ object CommandRegistry {
         t<WorldEditorIntent.Paint>(507),
         t<WorldEditorIntent.ClearMap>(508),
         t<WorldEditorIntent.SetSettingsOpen>(509),
+        t<WorldEditorIntent.SetWorldWidth>(510),
+        t<WorldEditorIntent.SetWorldHeight>(511),
 
         // --- Экран симуляции ---
         t<SimulationIntent.SetPaused>(600),

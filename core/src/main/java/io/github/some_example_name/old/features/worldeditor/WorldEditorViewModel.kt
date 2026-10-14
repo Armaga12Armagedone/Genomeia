@@ -1,7 +1,6 @@
 package io.github.some_example_name.old.features.worldeditor
 
 import io.github.some_example_name.old.commands.GameCommand
-import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.journal.CommandSource
 import io.github.some_example_name.old.journal.SessionJournal
 import kotlinx.serialization.Serializable
@@ -35,6 +34,19 @@ sealed interface WorldEditorIntent : GameCommand {
     @Serializable
     data class SetSmoothing(val value: Int) : WorldEditorIntent {
         override val name get() = "SetSmoothing"
+        override val detail get() = value.toString()
+    }
+
+    /** Ширина мира в клетках сетки симуляции, не в ячейках карты: см. WorldSpec.worldWidth. */
+    @Serializable
+    data class SetWorldWidth(val value: Int) : WorldEditorIntent {
+        override val name get() = "SetWorldWidth"
+        override val detail get() = value.toString()
+    }
+
+    @Serializable
+    data class SetWorldHeight(val value: Int) : WorldEditorIntent {
+        override val name get() = "SetWorldHeight"
         override val detail get() = value.toString()
     }
 
@@ -94,15 +106,24 @@ sealed interface WorldEditorIntent : GameCommand {
 class WorldEditorViewModel(
     /** Стартовый сид — из команды навигации GoWorldEditor, см. её описание. */
     initialSeed: String,
-    private val worldGenerator: WorldGenerator = WorldGenerator(),
-    val gridWidth: Int = DEFAULT_GRID_WIDTH,
-    val gridHeight: Int = DEFAULT_GRID_HEIGHT
+    private val worldGenerator: WorldGenerator = WorldGenerator()
 ) {
     companion object {
-//        val DEFAULT_GRID_WIDTH = (128 * 1.5f).toInt()
-//        val DEFAULT_GRID_HEIGHT = (128 * 1.5f).toInt()
-        val DEFAULT_GRID_WIDTH = DISimulationContainer.gridWidth
-        val DEFAULT_GRID_HEIGHT = DISimulationContainer.gridHeight
+        /**
+         * Размер мира по умолчанию — тот, что редактор показывал всегда (карта 192×192).
+         * Мир в симуляции раньше был 256×256 при той же карте, то есть пустовал на 3/4.
+         */
+        const val DEFAULT_WORLD_SIZE = 128
+
+        /**
+         * Границы размера мира. Шаг — 16 клеток: высота сетки обязана делиться на
+         * chunkHeight * 2 (см. DISimulationContainer.resizeWorld), ширина — для единообразия.
+         * Сверху 384: карта 576×576 и больше сотни тысяч частиц рельефа, генерация на каждое
+         * движение ползунка на телефоне уже ощутима.
+         */
+        const val WORLD_SIZE_MIN = 64
+        const val WORLD_SIZE_MAX = 384
+        const val WORLD_SIZE_STEP = 16
 
         const val DAY_NIGHT_MIN = 0f
         const val DAY_NIGHT_MAX = 25f
@@ -114,6 +135,18 @@ class WorldEditorViewModel(
 
     var seed: String = initialSeed
         private set
+
+    /** Размер мира в клетках сетки симуляции. Карта под него — [gridWidth] × [gridHeight]. */
+    var worldWidth: Int = DEFAULT_WORLD_SIZE
+        private set
+
+    var worldHeight: Int = DEFAULT_WORLD_SIZE
+        private set
+
+    /** Размер карты в её ячейках — то, что рисует холст и правит кисть. */
+    val gridWidth: Int get() = WorldSpec.mapCells(worldWidth)
+
+    val gridHeight: Int get() = WorldSpec.mapCells(worldHeight)
 
     /**
      * Оба параметра генератора живут в companion WorldGenerator (их читает generateWorld),
@@ -180,6 +213,22 @@ class WorldEditorViewModel(
                 }
             }
 
+            is WorldEditorIntent.SetWorldWidth -> {
+                val value = clampWorldSize(intent.value)
+                if (value != worldWidth) {
+                    worldWidth = value
+                    regenerate()
+                }
+            }
+
+            is WorldEditorIntent.SetWorldHeight -> {
+                val value = clampWorldSize(intent.value)
+                if (value != worldHeight) {
+                    worldHeight = value
+                    regenerate()
+                }
+            }
+
             is WorldEditorIntent.SetBrushSize -> brushSize = intent.value
 
             is WorldEditorIntent.SetErasing -> isErasing = intent.value
@@ -226,6 +275,13 @@ class WorldEditorViewModel(
         map = generate()
         mapVersion++
     }
+
+    /**
+     * Размер приходит из ползунка, но команда — это данные из журнала: кривое значение
+     * не должно уронить симуляцию (высота не кратна чанку) уже после выхода из редактора.
+     */
+    private fun clampWorldSize(value: Int): Int =
+        (value / WORLD_SIZE_STEP * WORLD_SIZE_STEP).coerceIn(WORLD_SIZE_MIN, WORLD_SIZE_MAX)
 
     private fun generate(): Array<BooleanArray> =
         worldGenerator.generateWorld(gridWidth, gridHeight, seed.hashCode().toLong())

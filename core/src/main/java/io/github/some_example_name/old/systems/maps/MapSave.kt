@@ -53,7 +53,9 @@ class MapSave(
     private val genomeManager: GenomeManager,
     private val simulationData: SimulationData,
     private val simulationSystem: SimulationSystem,
-    private val diContext: DIContext
+    private val diContext: DIContext,
+    /** Пересобрать сетку под размер загружаемого мира: у каждого мира он свой. */
+    private val resizeWorld: (width: Int, height: Int) -> Unit
 ) {
 
     init {
@@ -102,9 +104,10 @@ class MapSave(
         val entries = readArchive(mapFile(slot))
         val meta = decodeMeta(entries[META] ?: throw IllegalStateException("в мире $slot нет $META"))
 
-        check(meta.gridWidth == diContext.gridWidth && meta.gridHeight == diContext.gridHeight) {
-            "мир $slot сохранён с сеткой ${meta.gridWidth}x${meta.gridHeight}, " +
-                "а сейчас ${diContext.gridWidth}x${diContext.gridHeight}"
+        // Размер мира задаёт редактор карты, поэтому сетка подстраивается под сохранение,
+        // а не наоборот. Поток симуляции ещё не запущен (см. контракт выше).
+        if (meta.gridWidth != diContext.gridWidth || meta.gridHeight != diContext.gridHeight) {
+            resizeWorld(meta.gridWidth, meta.gridHeight)
         }
 
         return simulationSystem.betweenTicks {
