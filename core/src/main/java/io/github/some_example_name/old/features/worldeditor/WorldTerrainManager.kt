@@ -1,7 +1,6 @@
 package io.github.some_example_name.old.features.worldeditor
 
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.math.MathUtils.ceil
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
 import kotlin.Float

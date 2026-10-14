@@ -3,9 +3,6 @@ package io.github.some_example_name.old.features.settings
 import com.badlogic.gdx.Gdx
 import io.github.some_example_name.old.bug.BugReplay
 import io.github.some_example_name.old.core.DIGameGlobalContainer
-import io.github.some_example_name.old.core.DISimulationContainer.renderSystem
-import io.github.some_example_name.old.features.simulation.SimulationIntent
-import io.github.some_example_name.render.RenderMode
 import java.util.Locale
 
 /**
