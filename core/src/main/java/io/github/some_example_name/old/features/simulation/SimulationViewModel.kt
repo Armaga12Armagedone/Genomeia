@@ -298,6 +298,14 @@ class SimulationViewModel(
         // останавливается раньше, чем доходит до тика, который бы его обработал. Тогда
         // первый же тик ЭТОЙ сессии вызвал бы dispose() и стёр только что построенный —
         // или только что загруженный — мир.
+        //
+        // Сетка — по размеру мира из редактора карты. Раньше она была жёстко 256×256, а
+        // рельеф 128×128 лежал в её углу: мир в симуляции был вдвое больше, чем в редакторе.
+        // Сохранённый мир поправит размер сам, при загрузке (MapSave.load).
+        DISimulationContainer.resizeWorld(
+            worldSpec?.worldWidth ?: DISimulationContainer.DEFAULT_GRID_SIZE,
+            worldSpec?.worldHeight ?: DISimulationContainer.DEFAULT_GRID_SIZE
+        )
         simulationSystem.dispose()
         // С этого момента UI-команды экрана получают отметку тика мира.
         SessionJournal.simTick = { simulationData.tickCounter }

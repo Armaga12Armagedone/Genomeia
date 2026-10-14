@@ -32,9 +32,12 @@ class WorldTerrainManager(
             for ((y, element) in it.withIndex()) {
                 for ((x, element1) in element.withIndex()) {
 
-                    val scaleX = x.toFloat() / 1.5f
-                    val scaleY = y.toFloat() / 1.5f
-                    if (x == 0 || x == it.size - 1 || y == 0 || y == element.size - 1) continue
+                    val scaleX = x.toFloat() / WorldSpec.MAP_CELLS_PER_WORLD_CELL
+                    val scaleY = y.toFloat() / WorldSpec.MAP_CELLS_PER_WORLD_CELL
+                    // it — строки (высота), element — строка (ширина). Раньше ширину сравнивали
+                    // с числом строк и наоборот: на квадратной карте незаметно, на
+                    // неквадратной край пропускался не там.
+                    if (x == 0 || x == element.size - 1 || y == 0 || y == it.size - 1) continue
                     if (element1) {
                         if (scaleX < gridWith && scaleY < gridHeight) {
                             particleEntity.addParticle(

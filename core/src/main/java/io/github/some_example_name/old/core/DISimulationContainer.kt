@@ -39,8 +39,14 @@ import kotlin.getValue
 
 object DISimulationContainer : DIContext, Disposable {
 
-    override var gridWidth = 256
-    override var gridHeight = 256
+    /**
+     * Мир без рецепта (тест генома из редактора) — 256×256. Мир из редактора карты берёт
+     * размер из рецепта, сохранённый — из сохранения: см. [resizeWorld].
+     */
+    const val DEFAULT_GRID_SIZE = 256
+
+    override var gridWidth = DEFAULT_GRID_SIZE
+    override var gridHeight = DEFAULT_GRID_SIZE
     const val HALF_CHUNK_HEIGHT = 4 // Also max particle speed
     var chunkHeight = HALF_CHUNK_HEIGHT * 2
     var heightMultiplier = chunkHeight * 2
@@ -353,7 +359,8 @@ object DISimulationContainer : DIContext, Disposable {
             genomeManager = genomeManager,
             simulationData = simulationData,
             simulationSystem = simulationSystem,
-            diContext = this
+            diContext = this,
+            resizeWorld = ::resizeWorld
         )
     }
 
@@ -361,7 +368,13 @@ object DISimulationContainer : DIContext, Disposable {
         TODO("Not yet implemented")
     }
 
-    fun resizeWorld() {
+    /**
+     * Сетка под мир [width]×[height]. Звать только при остановленном потоке симуляции:
+     * массивы сетки, буферы команд и воркеры пересоздаются.
+     */
+    fun resizeWorld(width: Int, height: Int) {
+        gridWidth = width
+        gridHeight = height
         chunkHeight = HALF_CHUNK_HEIGHT * 2
         heightMultiplier = chunkHeight * 2
         gridSize = gridWidth * gridHeight
