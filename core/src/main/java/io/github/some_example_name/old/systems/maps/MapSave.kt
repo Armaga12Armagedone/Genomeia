@@ -9,16 +9,18 @@ import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.PixmapIO
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.GameFiles
+import io.github.some_example_name.old.cells.base.Formulas
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.Entity
+import io.github.some_example_name.old.entities.NeuralEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.features.worldeditor.WorldEdit
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
 import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
+import io.github.some_example_name.old.systems.genomics.genome.GenomeProto
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.systems.simulation.SimulationSystem
-import kotlinx.serialization.protobuf.ProtoBuf
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -40,6 +42,7 @@ class SavedMap(val slot: String, val lastModified: Long)
  *  - meta.bin           версия формата, размер сетки, время, рецепт рельефа (для «Перезапуска»);
  *  - genomes.bin        геномы, на которые ссылаются организмы;
  *  - cellActions.bin    из какой стадии генома взято действие каждой клетки;
+ *  - types.bin          ключи типов клеток и формул по номерам, какими они были при сохранении;
  *  - entities/<имя>.bin состояние каждой сущности, см. EntityState.
  */
 class MapSave(
@@ -78,6 +81,7 @@ class MapSave(
             entries[META] = encodeMeta(world)
             entries[GENOMES] = encodeGenomes()
             entries[CELL_ACTIONS] = encodeInts(cellEntity.cellActionStages(genomeManager.genomes))
+            entries[TYPES] = encodeTypes()
             for ((name, entity) in entities) {
                 entries[entityEntry(name)] = entity.encodeState()
             }
@@ -121,6 +125,9 @@ class MapSave(
             entries[entityEntry(name)]?.let { entity.decodeState(it) }
         }
 
+        // До restoreAfterLoad: тот уже читает типы клеток.
+        remapTypes(entries[TYPES] ?: throw IllegalStateException("в мире нет $TYPES"))
+
         remapGenomes(decodeGenomes(entries[GENOMES] ?: ByteArray(0)))
 
         // Только когда загружены все сущности: индексы клеток собираются по их организмам.
@@ -148,12 +155,16 @@ class MapSave(
         val resolved = IntArray(saved.size) { -1 }
         val encoded = HashMap<Int, ByteArray>()
 
-        fun resolve(bytes: ByteArray): Int {
+        fun resolve(savedBytes: ByteArray): Int {
+            // Сначала в текущий формат: геном из старого сохранения записан номерами типов,
+            // а не ключами, и побайтно не совпал бы ни с одним — копился бы дубль за дублем.
+            val genome = GenomeProto.decodeFromByteArray(Genome.serializer(), savedBytes)
+            val bytes = encodeGenome(genome)
             for (i in genomeManager.genomes.indices) {
                 val current = encoded.getOrPut(i) { encodeGenome(genomeManager.genomes[i]) }
                 if (current.contentEquals(bytes)) return i
             }
-            return genomeManager.addSavedGenome(ProtoBuf.decodeFromByteArray(Genome.serializer(), bytes))
+            return genomeManager.addSavedGenome(genome)
         }
 
         val organs = organEntity.aliveList
@@ -192,6 +203,8 @@ class MapSave(
         val input = DataInputStream(bytes.inputStream())
         val version = input.readInt()
         check(version <= FORMAT_VERSION) { "мир сохранён более новой версией игры (формат $version)" }
+        // Формат 1 был только у сборок до выхода сохранений в релиз — переводить его некому.
+        check(version >= FORMAT_VERSION) { "мир сохранён старой сборкой (формат $version) и не читается" }
         return Meta(
             gridWidth = input.readInt(),
             gridHeight = input.readInt(),
@@ -278,7 +291,36 @@ class MapSave(
         }
     }
 
-    private fun encodeGenome(genome: Genome) = ProtoBuf.encodeToByteArray(Genome.serializer(), genome)
+    private fun encodeGenome(genome: Genome) = GenomeProto.encodeToByteArray(Genome.serializer(), genome)
+
+    /**
+     * Номер типа клетки (CellEntity.cellType) и формулы (NeuralEntity.activationFuncType) —
+     * это место в реестре того запуска, который сохранял мир. Здесь записано, какой ключ
+     * стоял под каким номером, и при загрузке номера переставляются под текущий реестр:
+     * так сохранение переживает перестановку и удаление клеток и формул, а с модом —
+     * его появление.
+     */
+    private fun encodeTypes(): ByteArray = writeBytes { out ->
+        val cellKeys = cellEntity.cellList.keys()
+        out.writeInt(cellKeys.size)
+        cellKeys.forEach(out::writeUTF)
+        val formulas = Formulas.all()
+        out.writeInt(formulas.size)
+        formulas.forEach { out.writeUTF(it.key) }
+    }
+
+    private fun remapTypes(bytes: ByteArray) {
+        val input = DataInputStream(bytes.inputStream())
+        val savedCellKeys = List(input.readInt()) { input.readUTF() }
+        val savedFormulaKeys = List(input.readInt()) { input.readUTF() }
+
+        val cellList = cellEntity.cellList
+        cellEntity.remapCellTypes(IntArray(savedCellKeys.size) { cellList.indexOfKey(savedCellKeys[it]) }, savedCellKeys)
+        neuralEntity.remapFormulas(IntArray(savedFormulaKeys.size) { Formulas.indexOfKey(savedFormulaKeys[it]) }, savedFormulaKeys)
+    }
+
+    private val neuralEntity: NeuralEntity
+        get() = entities.map { it.second }.filterIsInstance<NeuralEntity>().single()
 
     private fun encodeInts(values: IntArray): ByteArray = writeBytes { out ->
         out.writeInt(values.size)
@@ -347,12 +389,18 @@ class MapSave(
         private const val EXTENSION = ".zip"
         private const val IO_BUFFER = 64 * 1024
 
-        private const val FORMAT_VERSION = 1
+        /**
+         * 2 — есть types.bin, типы клеток в геномах записаны ключами, а глаза, хвосты,
+         * продюсеры и излучатели лежат своими данными в specialModData.bin. С него сохранения
+         * миров выходят в релиз; формат 1 был только у сборок до этого и не читается.
+         */
+        private const val FORMAT_VERSION = 2
 
         private const val PREVIEW = "preview.png"
         private const val META = "meta.bin"
         private const val GENOMES = "genomes.bin"
         private const val CELL_ACTIONS = "cellActions.bin"
+        private const val TYPES = "types.bin"
         private fun entityEntry(name: String) = "entities/$name.bin"
 
         private const val EDIT_STROKE = 0

@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
  */
 class EditorCommandsTest {
 
-    private val mutation = Action(cellType = 7, color = RED)
+    private val mutation = Action(cellType = "sucker", color = RED)
 
     private fun dividesOf(cellId: Int, tick: Int) = baseGenome()[tick].cellActions.getValue(cellId).divide!!
 
@@ -68,7 +68,7 @@ class EditorCommandsTest {
         val expectedDivide = Action(
             id = 6,
             angle = atan2(0.5f, 0.5f) - 0.3f,
-            cellType = 2,
+            cellType = "bone",
             physicalLink = mapOf(4 to link(len(1.5f, 0.5f)), 2 to link(len(0.5f, -0.5f))),
             color = RED,
             radius = 0.4f
@@ -76,7 +76,7 @@ class EditorCommandsTest {
         checkCommand(
             initial = ::baseGenome,
             expected = baseGenome().withAction(
-                4, 5, CellAction(divide = expectedDivide, mutate = Action(cellType = 4))
+                4, 5, CellAction(divide = expectedDivide, mutate = Action(cellType = "neuron"))
             )
         ) { stages ->
             DivideCellCommand(
@@ -85,7 +85,7 @@ class EditorCommandsTest {
                     cellAt(stages, 4, 4, x = 0f, y = 0f),
                     cellAt(stages, 4, 2, x = 1f, y = 1f)
                 ),
-                divide = Action(cellType = 2, color = RED, radius = 0.4f),
+                divide = Action(cellType = "bone", color = RED, radius = 0.4f),
                 newId = 6,
                 newPoint = 1.5f to 0.5f,
                 stageInstruction = stages,
@@ -99,7 +99,7 @@ class EditorCommandsTest {
         val expectedDivide = Action(
             id = 6,
             angle = atan2(0f, 0.6f) - 0f,
-            cellType = 0,
+            cellType = "leaf",
             physicalLink = mapOf(0 to link(len(0.6f, 0f)))
         )
         checkCommand(
@@ -109,7 +109,7 @@ class EditorCommandsTest {
             DivideCellCommand(
                 clickedCell = cellAt(stages, 5, 0),
                 neighboursCells = listOf(cellAt(stages, 5, 0)),
-                divide = Action(cellType = 0),
+                divide = Action(cellType = "leaf"),
                 newId = 6,
                 newPoint = 0.6f to 0f,
                 stageInstruction = stages,
@@ -122,8 +122,8 @@ class EditorCommandsTest {
 
     private val changedDivide = Action(
         id = 99, angle = 9f, physicalLink = mapOf(7 to link(1f)),
-        cellType = 6, color = BLUE, radius = 0.3f, angleDirected = 0.7f,
-        funActivation = 2, a = 1.5f, b = 0.5f, c = 0.25f, isSum = false,
+        cellType = "food_sensor", color = BLUE, radius = 0.3f, angleDirected = 0.7f,
+        funActivation = "cos", a = 1.5f, b = 0.5f, c = 0.25f, isSum = false,
         colorRecognition = 3, lengthDirected = 4f, pheromoneType = 1
     )
 
@@ -133,8 +133,8 @@ class EditorCommandsTest {
         expected = baseGenome().withAction(
             2, 1, CellAction(
                 divide = dividesOf(1, 2).copy(
-                    cellType = 6, color = BLUE, radius = 0.3f, angleDirected = 0.7f,
-                    funActivation = 2, a = 1.5f, b = 0.5f, c = 0.25f, isSum = false,
+                    cellType = "food_sensor", color = BLUE, radius = 0.3f, angleDirected = 0.7f,
+                    funActivation = "cos", a = 1.5f, b = 0.5f, c = 0.25f, isSum = false,
                     colorRecognition = 3, lengthDirected = 4f, pheromoneType = 1
                 )
             )
@@ -311,9 +311,9 @@ class EditorCommandsTest {
 
     /** Геном, где на средней стадии нет ничего, кроме одной нейросвязи. */
     private fun genomeWithLinkOnlyStage() = listOf(
-        stage(0 to CellAction(divide = divideOf(1, 0f, 0, 0 to link()))),
+        stage(0 to CellAction(divide = divideOf(1, 0f, "leaf", 0 to link()))),
         stage(1 to CellAction(mutate = Action(physicalLink = hashMapOf(0 to neural(0))))),
-        stage(0 to CellAction(mutate = Action(cellType = 2)))
+        stage(0 to CellAction(mutate = Action(cellType = "bone")))
     )
 
     @Test
@@ -361,7 +361,7 @@ class EditorCommandsTest {
     @Test
     fun `cancel - деление клетки на той же стадии остаётся`() = checkCommand(
         initial = {
-            baseGenome().withAction(2, 1, CellAction(divide = dividesOf(1, 2), mutate = Action(cellType = 2)))
+            baseGenome().withAction(2, 1, CellAction(divide = dividesOf(1, 2), mutate = Action(cellType = "bone")))
         },
         expected = baseGenome()
     ) { stages ->
@@ -372,7 +372,7 @@ class EditorCommandsTest {
     fun `cancel - нейросвязи мутации остаются`() = checkCommand(
         initial = {
             baseGenome().withAction(
-                3, 0, CellAction(mutate = Action(cellType = 5, physicalLink = hashMapOf(3 to neural(3))))
+                3, 0, CellAction(mutate = Action(cellType = "muscle", physicalLink = hashMapOf(3 to neural(3))))
             )
         },
         expected = baseGenome().withAction(3, 0, CellAction(mutate = Action(physicalLink = mapOf(3 to neural(3)))))
@@ -389,9 +389,9 @@ class EditorCommandsTest {
     }
 
     private fun genomeWithMutateOnlyStage() = listOf(
-        stage(0 to CellAction(divide = divideOf(1, 0f, 0, 0 to link()))),
-        stage(1 to CellAction(mutate = Action(cellType = 2))),
-        stage(0 to CellAction(mutate = Action(cellType = 3)))
+        stage(0 to CellAction(divide = divideOf(1, 0f, "leaf", 0 to link()))),
+        stage(1 to CellAction(mutate = Action(cellType = "bone"))),
+        stage(0 to CellAction(mutate = Action(cellType = "tail")))
     )
 
     @Test
@@ -404,7 +404,7 @@ class EditorCommandsTest {
 
     @Test
     fun `cancel - единственная стадия генома не удаляется, даже опустев`() = checkCommand(
-        initial = { listOf(stage(0 to CellAction(mutate = Action(cellType = 2)))) },
+        initial = { listOf(stage(0 to CellAction(mutate = Action(cellType = "bone")))) },
         expected = listOf(GenomeStage())
     ) { stages ->
         CancelMutationCommand(cellAt(stages, 0, 0), stages, currentTick = 0)
@@ -416,7 +416,7 @@ class EditorCommandsTest {
         assertFalse(Action().hasCellMutation())
         assertFalse(Action(physicalLink = mapOf(0 to neural(0))).hasCellMutation())
         assertFalse(Action(physicalLink = mapOf(0 to null)).hasCellMutation())
-        assertTrue(Action(cellType = 1).hasCellMutation())
+        assertTrue(Action(cellType = "fat").hasCellMutation())
         assertTrue(Action(color = RED, physicalLink = mapOf(0 to neural(0))).hasCellMutation())
     }
 }

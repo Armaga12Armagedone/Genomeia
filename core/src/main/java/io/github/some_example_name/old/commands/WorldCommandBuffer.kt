@@ -43,12 +43,32 @@ class WorldCommandBuffer(
     // Текущий размер (кол-во команд в буфере). Пишется на каждый push из своего потока.
     var size = 0
 
+    // Сколько объектов в [objects]. Пишется тем же потоком, что и size, — в той же
+    // огороженной линии.
+    @JvmField var objectCount = 0
+
     // --- 64 байта padding после size (не использовать) ---
     @JvmField var pad16 = 0; @JvmField var pad17 = 0; @JvmField var pad18 = 0; @JvmField var pad19 = 0
     @JvmField var pad20 = 0; @JvmField var pad21 = 0; @JvmField var pad22 = 0; @JvmField var pad23 = 0
     @JvmField var pad24 = 0; @JvmField var pad25 = 0; @JvmField var pad26 = 0; @JvmField var pad27 = 0
     @JvmField var pad28 = 0; @JvmField var pad29 = 0; @JvmField var pad30 = 0; @JvmField var pad31 = 0
 
+
+    /**
+     * Объекты к командам этого буфера: число в команду не влезает, поэтому объект кладётся
+     * сюда ([pushObject]), а в команду — его номер. Сейчас это свои данные клеток
+     * (SpecialModData) для ADD_CELL и ADD_SPECIAL_MOD_DATA. Живут до [clear].
+     */
+    @JvmField var objects = arrayOfNulls<Any>(16)
+
+    /** Положить объект к команде и вернуть его номер для неё. */
+    fun pushObject(obj: Any): Int {
+        if (objectCount == objects.size) objects = objects.copyOf(objectCount * 2)
+        objects[objectCount] = obj
+        return objectCount++
+    }
+
+    fun objectAt(index: Int): Any = objects[index]!!
 
     // Добавление команды (push)
     fun push(type: WorldCommandType, ints: IntArray? = null, floats: FloatArray? = null, booleans: BooleanArray? = null) {
@@ -165,6 +185,9 @@ class WorldCommandBuffer(
     fun clear() {
         size = 0
         // Не нужно fill(-1), т.к. при push перезапишем
+        // Объекты — обнулить: иначе буфер держал бы их до перезаписи, мешая сборщику.
+        objects.fill(null, 0, objectCount)
+        objectCount = 0
     }
 
     private fun resize() {

@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.editor.system.render
 
+import io.github.some_example_name.old.cells.eyeData
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.OrthographicCamera
@@ -153,7 +154,7 @@ class DrawingHelperElements(
                             startY = particleEntity.y[index],
                             angleCos = angleCos,
                             angleSin = angleSin,
-                            length = cellEntity.specialEntity.getVisibilityRange(index),
+                            length = cellEntity.specialEntity.eyeData(index).visibilityRange,
                             isDrawWithoutTriangle = true,
                         )
                     }

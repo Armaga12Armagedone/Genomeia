@@ -6,6 +6,7 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSetti
 import io.github.some_example_name.old.core.utils.orangeColors
 
 class Sucker(cellTypeId: Int) : Cell(
+    key = "sucker",
     defaultColor = orangeColors.first(),
     cellTypeId = cellTypeId,
     textureName = "sucker.png",

@@ -3,6 +3,7 @@ package io.github.some_example_name.old.cells
 import io.github.some_example_name.old.core.utils.redColors
 
 class Muscle(cellTypeId: Int) : Cell(
+    key = "muscle",
     defaultColor = redColors[3],
     cellTypeId = cellTypeId,
     textureName = "muscle.png",

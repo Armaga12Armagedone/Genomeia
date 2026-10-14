@@ -7,6 +7,7 @@ import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.systems.genomics.genome.CellAction
 import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
+import io.github.some_example_name.old.systems.genomics.genome.LegacyTypeIds
 import io.github.some_example_name.old.systems.genomics.genome.LinkData
 
 /**
@@ -41,7 +42,8 @@ import io.github.some_example_name.old.systems.genomics.genome.LinkData
  *    перехода, клетка управления не работала уже тогда;
  *  - indexOfNew и startDirectionId: их не читал и старый код.
  *
- * Номера типов клеток переносятся как есть. Типы 16 и 21 в JSON были неработающими
+ * Номера типов клеток и формул в JSON — те же старые номера, что и в .genome формата 1:
+ * они переводятся в ключи по LegacyTypeIds. Типы 16 и 21 в JSON были неработающими
  * заглушками (NonWorkingCell1/2), теперь под ними Synapse и Fin.
  */
 object LegacyGenomeJson {
@@ -118,13 +120,13 @@ object LegacyGenomeJson {
         return Action(
             id = action.opt("id")?.let(::readId) ?: -1,
             angle = action.float("angle"),
-            cellType = action.int("cellType"),
+            cellType = action.int("cellType")?.let(LegacyTypeIds::cellType),
             physicalLink = readLinks(action.opt("physicalLink")),
             // Объект color у старого чтения шёл первым, colorHsv — запасным.
             color = readColor(action.opt("color")) ?: readColor(action.opt("colorHsv")),
             radius = action.float("radius"),
             angleDirected = action.float("angleDirected"),
-            funActivation = action.int("funActivation"),
+            funActivation = action.int("funActivation")?.let(LegacyTypeIds::formula),
             a = action.float("a"),
             b = action.float("b"),
             c = action.float("c"),

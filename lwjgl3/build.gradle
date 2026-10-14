@@ -320,6 +320,7 @@ tasks.register('saveRoundTrip', JavaExec) {
   workingDir = rootProject.projectDir
   jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
   if (project.hasProperty('keep')) systemProperty 'keep', 'true'
+  if (project.hasProperty('loadSlot')) systemProperty 'saveRoundTrip.load', project.property('loadSlot')
 }
 
 // Перевод старых JSON-геномов в .genome с запеканием из редактора: gradlew :lwjgl3:genomeJsonCheck

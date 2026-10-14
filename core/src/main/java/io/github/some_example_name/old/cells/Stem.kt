@@ -8,6 +8,7 @@ import io.github.some_example_name.old.core.utils.pinkColors
 import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 
 class Stem(cellTypeId: Int): Cell(
+    key = "stem",
     defaultColor = pinkColors[0],
     cellTypeId = cellTypeId,
     textureName = "Pumper.png"

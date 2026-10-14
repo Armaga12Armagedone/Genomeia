@@ -21,14 +21,14 @@ class SimulationData {
 
     var showControllerKeys = false
     /** Что нажато сейчас. Пишет поток рендера в любой момент, читать в симуляции нельзя. */
-    val controllerKeyTouched = BooleanArray(19)
+    val controllerKeyTouched = BooleanArray(ControllerKeys.COUNT)
 
     /**
      * Клавиши, которые видит симуляция: снимок [controllerKeyTouched] в начале тика.
      * Весь тик одинаковые для всех клеток (рендер не переключит их посреди фазы), и ровно
      * их пишет в журнал сессии и подставляет повтор бага (SessionJournal / BugReplay).
      */
-    val controllerKeys = BooleanArray(19)
+    val controllerKeys = BooleanArray(ControllerKeys.COUNT)
 
     /**
      * Отладочный стресс-тест жизненного цикла клеток: пока клавиша зажата, каждый тик

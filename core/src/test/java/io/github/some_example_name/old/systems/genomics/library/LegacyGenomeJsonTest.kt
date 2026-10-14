@@ -130,7 +130,7 @@ class LegacyGenomeJsonTest {
         val zygote = genome.stageInstruction[0].cellActions.getValue(0).divide!!
         assertEquals(1, zygote.id)
         assertEquals(0.02165f, zygote.angle)
-        assertEquals(0, zygote.cellType)
+        assertEquals("leaf", zygote.cellType)
         assertEquals(Color.valueOf("218a21ff"), zygote.color)
         // Длина в JSON — в пикселях старой сетки, в геноме — в клетках.
         assertEquals(30f / 40f, zygote.physicalLink.getValue(0)!!.length)
@@ -141,7 +141,7 @@ class LegacyGenomeJsonTest {
 
         val eye = stage.getValue(1).divide!!
         assertEquals(6, eye.id)
-        assertEquals(19, eye.cellType)
+        assertEquals("producer", eye.cellType)
         assertEquals(170f / 40f, eye.lengthDirected)
         assertEquals(1.5f, eye.angleDirected)
         assertEquals(3, eye.colorRecognition)
@@ -153,8 +153,8 @@ class LegacyGenomeJsonTest {
 
         val mutate = stage.getValue(0).mutate!!
         assertEquals(-1, mutate.id)
-        assertEquals(22, mutate.cellType)
-        assertEquals(0, mutate.funActivation)
+        assertEquals("pheromone_emitter", mutate.cellType)
+        assertEquals("linear", mutate.funActivation)
         assertEquals(1f, mutate.a)
         assertEquals(1f, mutate.b)
         assertEquals(0f, mutate.c)

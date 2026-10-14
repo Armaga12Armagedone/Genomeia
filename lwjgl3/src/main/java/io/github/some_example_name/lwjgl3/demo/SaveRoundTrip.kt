@@ -31,6 +31,11 @@ import kotlin.system.exitProcess
  *  5. загруженный мир живёт дальше: тики идут, отладочные инварианты (DEBUG_CHECKS) молчат.
  *
  * Запуск: gradlew :lwjgl3:saveRoundTrip. Ненулевой код — регрессия.
+ *
+ * gradlew :lwjgl3:saveRoundTrip -PloadSlot=<слот> — мир, сохранённый ДРУГОЙ версией игры
+ * (maps/<слот>.zip): только загрузка, узнаны ли геномы организмов (без дублей) и
+ * RUN_AFTER_LOAD_TICKS тиков без нарушений инвариантов. Сравнивать побайтно тут не с чем;
+ * файл не перезаписывается.
  */
 fun main() {
     val config = Lwjgl3ApplicationConfiguration().apply {
@@ -47,6 +52,9 @@ fun main() {
 private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by game {
 
     private enum class Step { START, SPAWN, GROW, SAVE, WAIT_SAVE, MENU, LOAD, VERIFY, RUN_AFTER, OVERWRITE, DONE }
+
+    /** Чужое сохранение для режима -PloadSlot, см. описание проверки. */
+    private val foreignSlot: String? = System.getProperty("saveRoundTrip.load")
 
     private var step = Step.START
     private var frames = 0
@@ -86,7 +94,16 @@ private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by g
         val data = DISimulationContainer.simulationData
         when (step) {
             // Тем же маршрутом, что игрок: из меню в мир, из мира в меню, из меню в сохранённый мир.
-            Step.START -> if (frames > 5) {
+            Step.START -> if (frames > 5 && foreignSlot != null) {
+                slot = foreignSlot
+                // На паузе, как в обычном сценарии: снимок после загрузки — ровно то, что в
+                // файле, а не на тик позже.
+                data.isPlay = false
+                DIGameGlobalContainer.navigationCommandsManager.performCommand(
+                    GoSimulation(world = null, genomeName = null, savedWorld = foreignSlot)
+                )
+                next(Step.LOAD)
+            } else if (frames > 5) {
                 DIGameGlobalContainer.navigationCommandsManager.performCommand(GoSimulation(world, null))
                 data.isPlay = true
                 data.maxSpeed = true
@@ -154,7 +171,7 @@ private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by g
             Step.LOAD -> if (frames > 3) {
                 val after = simulation.betweenTicks { Snapshot.take() }
                 println("После загрузки: ${after.summary}")
-                before.compare(after)
+                if (foreignSlot == null) before.compare(after) else check(after.cells > 0) { "в загруженном мире нет клеток" }
 
                 // Свои из папки и встроенные: организмы любых из них обязаны найти свой геном.
                 val folderGenomes = GenomeCatalog.all().size
@@ -162,7 +179,7 @@ private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by g
                     "геномы из папки не узнаны: в списке ${DISimulationContainer.genomeManager.genomes.size}, " +
                         "в папке и встроенных $folderGenomes — организмы получили дубликаты"
                 }
-                println("Состояние совпало побайтно, геномы сопоставлены с папкой")
+                println(if (foreignSlot == null) "Состояние совпало побайтно, геномы сопоставлены с папкой" else "Геномы сопоставлены с папкой")
 
                 tickAfterLoad = data.tickCounter
                 data.isPlay = true
@@ -172,7 +189,8 @@ private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by g
             Step.VERIFY -> if (data.tickCounter >= tickAfterLoad + RUN_AFTER_LOAD_TICKS) {
                 println("После загрузки прошло ${data.tickCounter - tickAfterLoad} тиков без нарушений инвариантов")
                 data.isPlay = false
-                next(Step.RUN_AFTER)
+                // Чужое сохранение не перезаписывается: его могут прогнать ещё раз.
+                next(if (foreignSlot == null) Step.RUN_AFTER else Step.OVERWRITE)
             } else timeout(120)
 
             // Повторное сохранение в тот же слот: файл заменяется, а не плодится новый.
@@ -188,7 +206,7 @@ private class SaveRoundTrip(private val game: MyGame) : ApplicationListener by g
             }
 
             Step.OVERWRITE -> {
-                if (System.getProperty("keep") == null) File("maps/$slot.zip").delete()
+                if (System.getProperty("keep") == null && foreignSlot == null) File("maps/$slot.zip").delete()
                 println("PASS")
                 exitCode = 0
                 next(Step.DONE)

@@ -3,6 +3,7 @@ package io.github.some_example_name.old.cells
 import io.github.some_example_name.old.core.utils.purpleColors
 
 class FoodSensor(cellTypeId: Int): Cell(
+    key = "food_sensor",
     defaultColor = purpleColors.first(),
     cellTypeId = cellTypeId,
     textureName = "sensor.png",

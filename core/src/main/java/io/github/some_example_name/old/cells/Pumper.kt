@@ -3,6 +3,7 @@ package io.github.some_example_name.old.cells
 import io.github.some_example_name.old.core.utils.redColors
 
 class Pumper(cellTypeId: Int): Cell(
+    key = "pumper",
     defaultColor = redColors[2],
     cellTypeId = cellTypeId,
     effectOnContact = true

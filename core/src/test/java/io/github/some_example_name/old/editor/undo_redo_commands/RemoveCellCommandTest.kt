@@ -30,10 +30,10 @@ class RemoveCellCommandTest {
             base[1],
             // У 2 было только деление — запись ушла. Сосед 4 рождается на этой же стадии
             // и был связан с 3 — связь снята.
-            stage(1 to CellAction(divide = divideOf(4, -0.5f, 2, 1 to link()))),
+            stage(1 to CellAction(divide = divideOf(4, -0.5f, "bone", 1 to link()))),
             stage(
-                4 to CellAction(divide = divideOf(5, 0f, 0, 4 to link())),
-                0 to CellAction(mutate = Action(cellType = 5))
+                4 to CellAction(divide = divideOf(5, 0f, "leaf", 4 to link())),
+                0 to CellAction(mutate = Action(cellType = "muscle"))
             ),
             base[4]
         )
@@ -45,11 +45,11 @@ class RemoveCellCommandTest {
         expected = listOf(
             base[0],
             base[1],
-            stage(2 to CellAction(divide = divideOf(3, 0.5f, 1, 2 to link(), 0 to link()))),
+            stage(2 to CellAction(divide = divideOf(3, 0.5f, "fat", 2 to link(), 0 to link()))),
             // 4 делилась на 5 — уходят обе.
             stage(
                 3 to CellAction(mutate = Action(physicalLink = hashMapOf(0 to neural(0)))),
-                0 to CellAction(mutate = Action(cellType = 5))
+                0 to CellAction(mutate = Action(cellType = "muscle"))
             )
             // Стадия 4 мутировала только 5 — опустела и удалена.
         )
@@ -62,12 +62,12 @@ class RemoveCellCommandTest {
             // 0 больше ничего не делает на стадии 0, но стадия остаётся: она не последняя.
             GenomeStage(),
             // 2 рождается связанной с 0 и 1 — связь с удалённой 1 снята. Мутация 1 ушла.
-            stage(0 to CellAction(divide = divideOf(2, 1f, 0, 0 to link()))),
+            stage(0 to CellAction(divide = divideOf(2, 1f, "leaf", 0 to link()))),
             // Деление 1 -> 4 ушло вместе с 1.
-            stage(2 to CellAction(divide = divideOf(3, 0.5f, 1, 2 to link(), 0 to link()))),
+            stage(2 to CellAction(divide = divideOf(3, 0.5f, "fat", 2 to link(), 0 to link()))),
             stage(
                 3 to CellAction(mutate = Action(physicalLink = hashMapOf(0 to neural(0)))),
-                0 to CellAction(mutate = Action(cellType = 5))
+                0 to CellAction(mutate = Action(cellType = "muscle"))
             )
         )
     ) { stages -> remove(stages, tick = 0, cellId = 1) }
@@ -96,19 +96,19 @@ class RemoveCellCommandTest {
     fun `мутация родителя на той же стадии остаётся`() = checkCommand(
         initial = {
             baseGenome().withAction(
-                2, 1, CellAction(divide = baseGenome()[2].cellActions.getValue(1).divide, mutate = Action(cellType = 2))
+                2, 1, CellAction(divide = baseGenome()[2].cellActions.getValue(1).divide, mutate = Action(cellType = "bone"))
             )
         },
         expected = listOf(
             base[0],
             base[1],
             stage(
-                2 to CellAction(divide = divideOf(3, 0.5f, 1, 2 to link(), 0 to link())),
-                1 to CellAction(mutate = Action(cellType = 2))
+                2 to CellAction(divide = divideOf(3, 0.5f, "fat", 2 to link(), 0 to link())),
+                1 to CellAction(mutate = Action(cellType = "bone"))
             ),
             stage(
                 3 to CellAction(mutate = Action(physicalLink = hashMapOf(0 to neural(0)))),
-                0 to CellAction(mutate = Action(cellType = 5))
+                0 to CellAction(mutate = Action(cellType = "muscle"))
             )
         )
     ) { stages -> remove(stages, tick = 2, cellId = 4) }
@@ -124,11 +124,11 @@ class RemoveCellCommandTest {
         expected = listOf(
             base[0],
             base[1],
-            stage(2 to CellAction(divide = divideOf(3, 0.5f, 1, 2 to link(), 0 to link()))),
+            stage(2 to CellAction(divide = divideOf(3, 0.5f, "fat", 2 to link(), 0 to link()))),
             GenomeStage(),
             stage(
                 3 to CellAction(mutate = Action(physicalLink = hashMapOf(0 to neural(0)))),
-                0 to CellAction(mutate = Action(cellType = 5))
+                0 to CellAction(mutate = Action(cellType = "muscle"))
             )
         )
     ) { stages -> remove(stages, tick = 2, cellId = 4) }
@@ -140,7 +140,7 @@ class RemoveCellCommandTest {
             DivideCellCommand(
                 clickedCell = cellAt(harness.stages, 5, 0),
                 neighboursCells = listOf(cellAt(harness.stages, 5, 0)),
-                divide = Action(cellType = 0),
+                divide = Action(cellType = "leaf"),
                 newId = 6,
                 newPoint = 0.6f to 0f,
                 stageInstruction = harness.stages,
@@ -167,12 +167,12 @@ class RemoveCellCommandTest {
         val harness = EditorHarness(baseGenome())
         val states = mutableListOf(harness.snapshot())
 
-        harness.execute(MutateCellCommand(Action(cellType = 7), cellAt(harness.stages, 3, 2), harness.stages, 3))
+        harness.execute(MutateCellCommand(Action(cellType = "sucker"), cellAt(harness.stages, 3, 2), harness.stages, 3))
         states += harness.snapshot()
         // Удаление меняет число стадий — следующие команды работают уже с новой нумерацией.
         harness.execute(remove(harness.stages, tick = 2, cellId = 4))
         states += harness.snapshot()
-        harness.execute(MutateCellCommand(Action(cellType = 8), cellAt(harness.stages, 3, 3), harness.stages, 3))
+        harness.execute(MutateCellCommand(Action(cellType = "stem"), cellAt(harness.stages, 3, 3), harness.stages, 3))
         states += harness.snapshot()
 
         assertEquals(4, states.toSet().size)
@@ -187,7 +187,7 @@ class RemoveCellCommandTest {
     }
 
     /** Ровно то, что даёт getEmptyGenome(): зигота один раз делится на стадии 0. */
-    private fun newUserGenome() = listOf(stage(0 to CellAction(divide = divideOf(1, 0f, 0, 0 to link()))))
+    private fun newUserGenome() = listOf(stage(0 to CellAction(divide = divideOf(1, 0f, "leaf", 0 to link()))))
 
     @Test
     fun `единственная стадия генома не удаляется, даже опустев`() = checkCommand(

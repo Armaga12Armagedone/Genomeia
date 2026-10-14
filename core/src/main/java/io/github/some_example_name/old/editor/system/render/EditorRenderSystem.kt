@@ -5,7 +5,8 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
-import io.github.some_example_name.old.cells.Cell
+import io.github.some_example_name.old.cells.base.CellTypeList
+import io.github.some_example_name.old.cells.eyeData
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.entities.CellReplay
@@ -40,7 +41,7 @@ class EditorRenderSystem(
     val neuralLinkReplay: NeuralLinkReplay,
     val particleEntity: ParticleEntity,
     val cellEntity: CellEntity,
-    val cellList: List<Cell>,
+    val cellList: CellTypeList,
     val editorSimulationSystem: EditorSimulationSystem,
     val drawingHelperElements: DrawingHelperElements
 ) {
@@ -176,7 +177,8 @@ class EditorRenderSystem(
                         angleSin = sin(angle),
                         radius = particleEntity.radius[index],
                         energy = 0f,
-                        cellType = GHOST_CELL_TYPE,
+                        // Пустая текстура, а не текстура какого-то типа: клетки ещё нет.
+                        cellType = cellList.emptyTextureLayer,
                         noiseSeed = index
                     )
                 }
@@ -203,7 +205,7 @@ class EditorRenderSystem(
             if (palette.isEye(type)) {
                 palette.writeEyeRay(
                     overlaySink, type, x, y, angleCos, angleSin, radius,
-                    range = cellEntity.specialEntity.getVisibilityRange(index),
+                    range = cellEntity.specialEntity.eyeData(index).visibilityRange,
                     signal = 0f
                 )
             } else if (palette.hasArrow(type)) {
@@ -230,9 +232,6 @@ class EditorRenderSystem(
     }
 
     private companion object {
-        /** Слой в TextureArray, которым рисуется призрак будущей клетки. */
-        const val GHOST_CELL_TYPE = 20
-
         /** Энергия клеток редактора в ностальгическом режиме — см. [fillBuffer]. */
         const val NOSTALGIC_ENERGY = 5f
     }

@@ -1,7 +1,11 @@
 package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.cells.SpecialModData
+import io.github.some_example_name.old.cells.base.CellTypeList
+import io.github.some_example_name.old.cells.base.Formula
+import io.github.some_example_name.old.cells.base.Formulas
+import io.github.some_example_name.old.cells.base.SpecialModData
+import io.github.some_example_name.old.cells.base.UnknownCellTypeException
 import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DISimulationContainer.cellsSettings
 import io.github.some_example_name.old.core.SubstrateSettings
@@ -17,7 +21,7 @@ class CellEntity(
     private val particleEntity: ParticleEntity,
     val simulationData: SimulationData,
     val substrateSettings: SubstrateSettings,
-    val cellList: List<Cell>,
+    val cellList: CellTypeList,
     private val neuralEntity: NeuralEntity,
     val specialEntity: SpecialEntity,
     /**
@@ -29,6 +33,12 @@ class CellEntity(
      */
     val organEntity: OrganEntity
 ) : Entity(cellsStartMaxAmount) {
+    /**
+     * Формулы активации по номеру — копия ссылки в поле: activation читает её на каждый
+     * нейрон за тик, а Formulas.all() идёт через lazy (volatile-чтение на вызов).
+     */
+    val formulas: Array<Formula> = Formulas.all()
+
     //Particle entity
     var particleIndexes = IntArray(maxAmount) { -1 }
     fun getParticleIndex(index: Int) = particleIndexes[index]
@@ -335,14 +345,11 @@ class CellEntity(
         angleSin: Float = 0f,
         angleDiffCos: Float = 1f,
         angleDiffSin: Float = 0f,
-        colorDifferentiation: Int = 7,
-        visibilityRange: Float = 4.25f,
         a: Float = 1f,
         b: Float = 0f,
         c: Float = 0f,
         isSum: Boolean = true,
         activationFuncType: Byte = 7,
-        speed: Float = 0f,
         pheromoneType: Int = -1,
         specialModData: SpecialModData? = null
     ): Int {
@@ -470,14 +477,9 @@ class CellEntity(
             neuralIndexes[cellIndex] = -1
         }
 
-        specialEntity.addSpecial(
-            cellIndex = cellIndex,
-            cell = cell,
-            colorDifferentiation = colorDifferentiation,
-            visibilityRange = visibilityRange,
-            speed = speed,
-            specialModData = specialModData
-        )
+        // Свои данные клетки приходят с командой (деление, см. DivideManager). Кто создаёт
+        // клетку напрямую, без генома, — получает данные типа по умолчанию.
+        specialEntity.addSpecial(cellIndex, specialModData ?: cell.createSpecialData(Cell.NO_GENOME_ACTION))
 
         // Ключ (organIndex, cellGenomeId) обязан быть уникальным: по нему деление и мутация
         // находят «клетку-соседа по чертежу генома». Если запись перетирается, значит две
@@ -643,8 +645,6 @@ class CellEntity(
         energyNecessaryToMutate[cellIndex] = 1f
         isDividedInThisStage[cellIndex] = true
         isMutateInThisStage[cellIndex] = true
-        val cellType = cellType[cellIndex]
-        val cell = cellList[cellType.toInt()]
         this.cellType[cellIndex] = 0
         energy[cellIndex] = 0f
         maxEnergy[cellIndex] = 0f
@@ -660,7 +660,7 @@ class CellEntity(
 
         deleteNeural(cellIndex = cellIndex)
 
-        specialEntity.delete(cell = cell, cellIndex = cellIndex)
+        specialEntity.deleteSpecial(cellIndex)
     }
 
     override fun persistFields(state: EntityState) {
@@ -730,6 +730,23 @@ class CellEntity(
      * после смены стадии (justChangedStage) у клеток ещё лежат действия предыдущей — их
      * перезапишет только следующий тик.
      */
+    /**
+     * После загрузки мира: номера типов клеток из реестра того запуска, что сохранял мир,
+     * в номера текущего. [newIndexByOld] — новый номер по старому (-1 — типа больше нет),
+     * [savedKeys] — ключи по старым номерам, для сообщения об ошибке. Только живые клетки:
+     * в мёртвых слотах тип никто не читает.
+     */
+    fun remapCellTypes(newIndexByOld: IntArray, savedKeys: List<String>) {
+        if (newIndexByOld.withIndex().all { (old, new) -> old == new }) return
+        for (i in 0 until aliveList.size) {
+            val cellIndex = aliveList.getInt(i)
+            val old = cellType[cellIndex].toInt()
+            val new = newIndexByOld.getOrElse(old) { -1 }
+            if (new == -1) throw UnknownCellTypeException(savedKeys.getOrElse(old) { "#$old" })
+            cellType[cellIndex] = new.toByte()
+        }
+    }
+
     fun cellActionStages(genomes: List<Genome>): IntArray {
         val packed = IntArrayList()
         for (i in 0 until aliveList.size) {

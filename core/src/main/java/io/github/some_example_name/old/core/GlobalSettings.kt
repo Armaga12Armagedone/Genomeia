@@ -31,12 +31,21 @@ data class CellSettings(
 class SubstrateSettings {
 
     var data = readSettings()
-    var cellsSettings: List<CellSettings> = data.cellsSettings.values.toList()
+
+    /**
+     * Настройки по номеру типа клетки. Собираются по реестру клеток (порядок
+     * defaultCellSettingsMap), а не по порядку в файле игрока: в файле может не быть новой
+     * клетки или порядок может быть другим, и тогда номер типа указывал бы на чужие настройки.
+     */
+    var cellsSettings: List<CellSettings> = byCellType(data)
 
     fun update() {
         data = readSettings()
-        cellsSettings = data.cellsSettings.values.toList()
+        cellsSettings = byCellType(data)
     }
+
+    private fun byCellType(data: GlobalSimulationSettings): List<CellSettings> =
+        defaultCellSettingsMap.map { (name, default) -> data.cellsSettings[name] ?: default }
 
     private fun readSettings(): GlobalSimulationSettings {
         val json = Json()

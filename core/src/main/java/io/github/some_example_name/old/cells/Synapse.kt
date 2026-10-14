@@ -1,9 +1,24 @@
 package io.github.some_example_name.old.cells
 
 import com.badlogic.gdx.graphics.Color
+import com.kotcrab.vis.ui.util.FloatDigitsOnlyFilter
+import com.kotcrab.vis.ui.widget.VisLabel
+import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.commands.WorldCommandType
+import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DIGameGlobalContainer.game
+import io.github.some_example_name.old.core.ui.dp
+import io.github.some_example_name.old.core.ui.hoverPopup
+import io.github.some_example_name.old.core.ui.visLabel
+import io.github.some_example_name.old.core.ui.visTable
+import io.github.some_example_name.old.core.ui.visTextField
 import io.github.some_example_name.old.core.utils.skyBlueColors
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellPalette
 import io.github.some_example_name.old.entities.CellEntity
+import io.github.some_example_name.old.features.editor.dialog.CellDialog
+import io.github.some_example_name.old.features.editor.dialog.CellEditorSection
+import io.github.some_example_name.old.features.editor.dialog.NeuralSection
+import io.github.some_example_name.old.systems.genomics.genome.Action
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
@@ -41,8 +56,14 @@ import kotlin.random.Random
  * weight — вес; dTime — вход прошлого тика; remember — учительский сигнал прошлого тика;
  * tickRed / tickPain — тики последних входного и учительского спайков (NO_SPIKE — нет).
  * Пока синапс подключён неправильно, tickRed / tickPain заняты меткой, см. markMiswired.
+ *
+ * РЕДАКТОР
+ * --------
+ * Вместо обычных a, b, c и формулы нейрона диалог показывает параметры обучения —
+ * [SynapseSection] в конце этого файла.
  */
 class Synapse(cellTypeId: Int): Cell(
+    key = "synapse",
     defaultColor = skyBlueColors.last(),
     cellTypeId = cellTypeId,
     isNeural = true,
@@ -50,6 +71,8 @@ class Synapse(cellTypeId: Int): Cell(
 ) {
 
     private val defaultColorBits = defaultColor.toIntBits()
+
+    override fun editorSections(): List<CellEditorSection> = listOf(SynapseSection)
 
     override fun onStart(cellIndex: Int, threadId: Int, genomeIndex: Int): Unit = with(cellEntity) {
         // Случайный, но воспроизводимый: зависит только от индекса клетки.
@@ -250,5 +273,126 @@ class Synapse(cellTypeId: Int): Cell(
         /** Спайк старше окна обучения или из будущего (счётчик тиков отмотан) забывается. */
         private fun isForgotten(tick: Int, now: Int, window: Int) =
             tick != NO_SPIKE && (now - tick > window || tick > now)
+    }
+}
+
+/**
+ * Параметры синапса в диалоге редактора вместо a, b, c обычного нейрона. Хранятся они в тех
+ * же полях (a = decayRate, b = learningRate, c = depression), см. Synapse.
+ *
+ * Пустое поле — значение по умолчанию. У learningRate и depression ноль тоже означает
+ * «по умолчанию» (так их видит симуляция), поэтому ноль показывается пустым полем.
+ *
+ * Пояснения к полям не занимают место в диалоге, а всплывают при наведении мыши
+ * или при зажатии пальцем — см. hoverPopup.
+ */
+object SynapseSection : CellEditorSection {
+
+    // Формула и сложение входов синапсу не нужны (вход один, активацию он не вызывает),
+    // но поля нейрона общие — ставятся те же значения, что у обычного нейрона.
+    override fun applyDefaults(action: Action) = action.copy(
+        funActivation = cellPalette.defaultFormula().key,
+        a = Synapse.DEFAULT_DECAY_RATE,
+        b = Synapse.DEFAULT_LEARNING_RATE,
+        c = Synapse.DEFAULT_DEPRESSION,
+        isSum = true
+    )
+
+    // В a, b, c у синапса параметры обучения, а не коэффициенты формулы: при переходе
+    // в обычный нейрон они сбрасываются, и тот получает свои значения по умолчанию.
+    override fun clear(action: Action) = NeuralSection.clear(action)
+
+    override fun VisTable.compose(dialog: CellDialog) {
+        val actionSystem = dialog.actionSystem
+        val actual = actionSystem.clickedCell.actual
+        var decayRate = actionSystem.action.a ?: actual?.a ?: Synapse.DEFAULT_DECAY_RATE
+        var learningRate = actionSystem.action.b ?: actual?.b ?: Synapse.DEFAULT_LEARNING_RATE
+        var depression = actionSystem.action.c ?: actual?.c ?: Synapse.DEFAULT_DEPRESSION
+
+        fun windowText() = bundle.format(
+            "synapse.window",
+            Synapse.learningWindowTicks(
+                Synapse.decayRate(decayRate),
+                Synapse.learningRate(learningRate),
+                Synapse.depression(depression)
+            )
+        )
+
+        // Метка окна стоит под полями, а обновляется из них — поэтому ссылка заводится заранее.
+        var windowLabel: VisLabel? = null
+        fun updateWindow() = windowLabel?.setText(windowText())
+
+        visTable({ left() }) {
+            synapseParam(
+                name = bundle.get("synapse.learningRate"),
+                hint = bundle.get("synapse.learningRate.hint"),
+                value = learningRate,
+                default = Synapse.DEFAULT_LEARNING_RATE,
+                zeroMeansDefault = true
+            ) {
+                learningRate = it
+                actionSystem.action = actionSystem.action.copy(b = it)
+                updateWindow()
+            }
+
+            synapseParam(
+                name = bundle.get("synapse.depression"),
+                hint = bundle.get("synapse.depression.hint"),
+                value = depression,
+                default = Synapse.DEFAULT_DEPRESSION,
+                zeroMeansDefault = true
+            ) {
+                depression = it
+                actionSystem.action = actionSystem.action.copy(c = it)
+                updateWindow()
+            }
+
+            synapseParam(
+                name = bundle.get("synapse.decayRate"),
+                hint = bundle.get("synapse.decayRate.hint"),
+                value = decayRate,
+                default = Synapse.DEFAULT_DECAY_RATE,
+                zeroMeansDefault = false
+            ) {
+                decayRate = it
+                actionSystem.action = actionSystem.action.copy(a = it)
+                updateWindow()
+            }
+        }
+        row()
+
+        windowLabel = visLabel(windowText()) { left().padBottom(32.dp()) }
+        row()
+    }
+
+    override fun describeMutation(actual: Action, mutate: Action, out: StringBuilder) = with(mutate) {
+        if (a != null && a != actual.a) out.append("${bundle.get("synapse.decayRate")}: ${actual.a} -> $a\n")
+        if (b != null && b != actual.b) out.append("${bundle.get("synapse.learningRate")}: ${actual.b} -> $b\n")
+        if (c != null && c != actual.c) out.append("${bundle.get("synapse.depression")}: ${actual.c} -> $c\n")
+    }
+
+    /** Строка «название + поле» с всплывающим пояснением. Отрицательные значения синапсу не нужны. */
+    private fun VisTable.synapseParam(
+        name: String,
+        hint: String,
+        value: Float,
+        default: Float,
+        zeroMeansDefault: Boolean,
+        onChange: (Float) -> Unit
+    ) {
+        // Пояснение висит и на названии, и на поле: на телефоне зажатие названия показывает
+        // его, не открывая клавиатуру.
+        visLabel("$name:", font = game.extraLargeFont) { left().padRight(16.dp()) }
+            .hoverPopup { visLabel(hint) }
+        visTextField(
+            text = if (zeroMeansDefault && value <= 0f) "" else value.toString(),
+            hint = default.toString(),
+            textFieldFilter = FloatDigitsOnlyFilter(false),
+            onTextChange = { text ->
+                if (text.isBlank()) onChange(default) else text.toFloatOrNull()?.let(onChange)
+            }
+        ) { left() }
+            .hoverPopup { visLabel(hint) }
+        row()
     }
 }

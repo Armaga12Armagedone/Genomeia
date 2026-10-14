@@ -38,11 +38,10 @@ import io.github.some_example_name.old.core.ui.makeStyledButton
 import io.github.some_example_name.old.core.ui.setupTitleSize
 import io.github.some_example_name.old.core.ui.renderModeSelectBox
 import io.github.some_example_name.old.core.ui.w
-import io.github.some_example_name.old.features.editor.GenomeEditorScreen
-import io.github.some_example_name.old.features.menu.MenuScreen
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
 import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
+import io.github.some_example_name.old.systems.simulation.ControllerKeys
 import io.github.some_example_name.render.debug.RenderSceneDump
 import java.io.File
 
@@ -615,7 +614,8 @@ class SimulationScreen(
     private companion object {
         /**
          * Клавиши контроллера на клавиатуре — по индексу в controllerKeyTouched:
-         * 0–9 цифры, 10–13 WASD, 14 пробел, 15–18 стрелки.
+         * 0–9 цифры, 10–13 WASD, 14 пробел, 15–18 стрелки. Порядок — тот же, что у имён
+         * в ControllerKeys.NAMES: по имени клетка Controller находит номер клавиши.
          */
         val CONTROLLER_KEY_CODES = intArrayOf(
             Input.Keys.NUM_0, Input.Keys.NUM_1, Input.Keys.NUM_2, Input.Keys.NUM_3,
@@ -624,6 +624,6 @@ class SimulationScreen(
             Input.Keys.W, Input.Keys.A, Input.Keys.S, Input.Keys.D,
             Input.Keys.SPACE,
             Input.Keys.UP, Input.Keys.LEFT, Input.Keys.DOWN, Input.Keys.RIGHT
-        )
+        ).also { check(it.size == ControllerKeys.COUNT) { "клавиш контроллера ${it.size}, а имён ${ControllerKeys.COUNT}" } }
     }
 }

@@ -4,6 +4,7 @@ import com.badlogic.gdx.ApplicationListener
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
+import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.lwjgl3.DesktopFileProvider
 import io.github.some_example_name.old.bug.BugImage
 import io.github.some_example_name.old.bug.BugKind
@@ -30,7 +31,14 @@ import io.github.some_example_name.old.features.simulation.SimulationIntent
 import io.github.some_example_name.old.features.worldeditor.WorldEdit
 import io.github.some_example_name.old.features.worldeditor.WorldEditorIntent
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
+import io.github.some_example_name.old.cells.ControllerData
 import io.github.some_example_name.old.game.MyGame
+import io.github.some_example_name.old.systems.genomics.genome.Action
+import io.github.some_example_name.old.systems.genomics.genome.CellAction
+import io.github.some_example_name.old.systems.genomics.genome.Genome
+import io.github.some_example_name.old.systems.genomics.genome.GenomeStage
+import io.github.some_example_name.old.systems.genomics.genome.LinkData
+import io.github.some_example_name.old.systems.genomics.genome.encodeGenome
 import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.render.RenderMode
@@ -66,6 +74,7 @@ fun main(args: Array<String>) {
             // Остаток прошлого прогона: попал бы в снимок папки геномов при запуске, и повтор
             // прошёл бы, даже не восстановив импорт из .bug.
             File("${GameFiles.GENOMES}/$IMPORT_NAME.genome").delete()
+            File("${GameFiles.GENOMES}/$CONTROLLER_NAME.genome").delete()
             listener = { game -> Recorder(game, pathFile) }
         }
         "replay" -> {
@@ -92,6 +101,46 @@ private var exitCode = 1
 /** Старый JSON, который сценарий перетаскивает в окно, и имя, под которым он импортируется. */
 private const val IMPORT_SOURCE = "core/src/test/resources/legacy-genomes/Leech.json"
 private const val IMPORT_NAME = "bugReplayCheck-import"
+
+/**
+ * Геном с клетками Controller — его перетаскивают вместе с JSON. Своих данных клеток
+ * (SpecialModData) нет ни в одном встроенном геноме, а без них хэши не проверяли бы ни
+ * деление со своими данными (ADD_CELL), ни мутацию в Controller и из него
+ * (ADD/DELETE_SPECIAL_MOD_DATA), ни замену данных на месте. Клавиши W и SPACE сценарий
+ * зажимает — контроллеры их слышат. Геном не запечён: импорт допечёт его сам.
+ */
+private const val CONTROLLER_NAME = "bugReplayCheck-controller"
+
+private fun controllerGenome(): Genome {
+    val link = mapOf(0 to LinkData(length = 0.6f))
+    return Genome(
+        version = 24,
+        name = CONTROLLER_NAME,
+        stageInstruction = listOf(
+            // Деление в Controller: данные (клавиша W) едут к применению вместе с ADD_CELL.
+            GenomeStage(mapOf(
+                0 to CellAction(divide = Action(
+                    id = 1, angle = 0f, cellType = "controller", physicalLink = link, color = Color.PURPLE,
+                    funActivation = "linear", a = 1f, b = 0f, c = 0f, isSum = true, special = ControllerData("W")
+                ))
+            )),
+            // Контроллер меняет клавишу на месте: тот же тип данных, новый объект в своём слоте.
+            GenomeStage(mapOf(
+                0 to CellAction(divide = Action(id = 2, angle = 3.14f, cellType = "leaf", physicalLink = link, color = Color.GREEN)),
+                1 to CellAction(mutate = Action(special = ControllerData("SPACE")))
+            )),
+            // Лист становится контроллером, контроллер — листом: слоты данных заводятся и
+            // удаляются командами.
+            GenomeStage(mapOf(
+                2 to CellAction(mutate = Action(
+                    cellType = "controller", funActivation = "spike", a = 0.5f, b = 0f, c = 0f, isSum = true,
+                    special = ControllerData("D")
+                )),
+                1 to CellAction(mutate = Action(cellType = "leaf"))
+            ))
+        )
+    )
+}
 
 /** Сценарий игрока. Каждый шаг — команда через экран (ReplayTarget) или навигацию. */
 private class Recorder(private val game: MyGame, private val pathFile: File) : ApplicationListener by game {
@@ -132,10 +181,13 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 val dropped = File(pathFile.parentFile, "$IMPORT_NAME.json")
                 dropped.parentFile.mkdirs()
                 File(IMPORT_SOURCE).copyTo(dropped, overwrite = true)
-                game.filesDropped(listOf(dropped.absolutePath))
+                val controllers = File(pathFile.parentFile, "$CONTROLLER_NAME.genome")
+                controllers.writeBytes(encodeGenome(controllerGenome()))
+                game.filesDropped(listOf(dropped.absolutePath, controllers.absolutePath))
                 check(IMPORT_NAME in GenomeCatalog.playerNames()) {
                     "перетащенный $IMPORT_SOURCE не появился среди геномов"
                 }
+                check(CONTROLLER_NAME in GenomeCatalog.playerNames()) { "геном с контроллерами не импортировался" }
                 pause(10)
             }
 
@@ -186,7 +238,10 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 // должен попасть в мир, чтобы хэши проверили, что повтор взял тот же геном.
                 val imported = GenomeCatalog.all().indexOf(IMPORT_NAME)
                 check(imported >= 0 && genomes[imported].cellsAmount > 0) { "импортированный JSON не в мире или не запечён" }
-                val baked = listOf(imported) + genomes.indices.filter { it != imported && genomes[it].cellsAmount > 0 }
+                val controllers = GenomeCatalog.all().indexOf(CONTROLLER_NAME)
+                check(controllers >= 0 && genomes[controllers].cellsAmount > 0) { "геном с контроллерами не в мире или не запечён" }
+                val baked = listOf(imported, controllers) +
+                    genomes.indices.filter { it != imported && it != controllers && genomes[it].cellsAmount > 0 }
                 screen(SimulationIntent.SelectGenome(GenomeCatalog.all()[baked.first()]))
                 // Все запечённые геномы по кругу: нейросвязи, феромоны, глаза — всё, что
                 // есть в папке, должно попасть в мир и в хэш состояния.
@@ -267,6 +322,7 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 savedSlot?.let { MapSave.mapFile(it).delete() }
                 // Импортированный геном уже в .bug (приложения сессии) — из папки разработчика долой.
                 GameFiles.genomesDir().child("$IMPORT_NAME.genome").delete()
+                GameFiles.genomesDir().child("$CONTROLLER_NAME.genome").delete()
                 exitCode = 0
                 Gdx.app.exit()
             }

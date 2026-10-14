@@ -62,6 +62,7 @@ object DIGameGlobalContainer {
 
     private val cellListBuilder = CellListBuilder()
 
+    /** Текстуры по номеру типа клетки и последней — пустая (CellTypeList.emptyTextureLayer). */
     val particleTexturePaths: List<String> = cellListBuilder.instances.map {
         "cell_textures/" + it.textureName
     } + "cell_textures/not_cell.png"

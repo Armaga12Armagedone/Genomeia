@@ -14,8 +14,8 @@ import kotlin.test.assertTrue
  */
 class CommandStackTest {
 
-    private fun mutateCell0OnLastStage(cellType: Int, harness: EditorHarness) =
-        MutateCellCommand(Action(cellType = cellType), cellAt(harness.stages, 4, 0), harness.stages, currentTick = 4)
+    private fun mutateCell0OnLastStage(n: Int, harness: EditorHarness) =
+        MutateCellCommand(Action(cellType = "type$n"), cellAt(harness.stages, 4, 0), harness.stages, currentTick = 4)
 
     @Test
     fun `цепочка разных команд откатывается и повторяется по шагам`() {
@@ -23,14 +23,14 @@ class CommandStackTest {
         val states = mutableListOf(harness.snapshot())
 
         // Каждая следующая команда строится по ТЕКУЩЕМУ геному, как в редакторе.
-        harness.execute(MutateCellCommand(Action(cellType = 7), cellAt(harness.stages, 3, 2), harness.stages, 3))
+        harness.execute(MutateCellCommand(Action(cellType = "sucker"), cellAt(harness.stages, 3, 2), harness.stages, 3))
         states += harness.snapshot()
 
         harness.execute(
             DivideCellCommand(
                 clickedCell = cellAt(harness.stages, 4, 5, x = 1f),
                 neighboursCells = listOf(cellAt(harness.stages, 4, 4)),
-                divide = Action(cellType = 1),
+                divide = Action(cellType = "fat"),
                 newId = 6,
                 newPoint = 1.5f to 0.5f,
                 stageInstruction = harness.stages,
@@ -53,7 +53,7 @@ class CommandStackTest {
         states += harness.snapshot()
 
         harness.execute(
-            ChangeDivideCommand(cellAt(harness.stages, 2, 4, isPhantom = true), Action(cellType = 3), harness.stages, 2)
+            ChangeDivideCommand(cellAt(harness.stages, 2, 4, isPhantom = true), Action(cellType = "tail"), harness.stages, 2)
         )
         states += harness.snapshot()
 
@@ -79,7 +79,7 @@ class CommandStackTest {
         val harness = EditorHarness(baseGenome())
         harness.execute(mutateCell0OnLastStage(1, harness))
         harness.undo()
-        harness.execute(MutateCellCommand(Action(cellType = 2), cellAt(harness.stages, 1, 0), harness.stages, 1))
+        harness.execute(MutateCellCommand(Action(cellType = "bone"), cellAt(harness.stages, 1, 0), harness.stages, 1))
 
         assertTrue(harness.stack.redoStack.isEmpty())
         val afterSecond = harness.snapshot()
@@ -90,7 +90,7 @@ class CommandStackTest {
         assertEquals(restarts, harness.restarts, "пустой повтор не перезапускает симуляцию")
 
         assertEquals(
-            baseGenome().withAction(1, 0, CellAction(divide = baseGenome()[1].cellActions.getValue(0).divide, mutate = Action(cellType = 2))),
+            baseGenome().withAction(1, 0, CellAction(divide = baseGenome()[1].cellActions.getValue(0).divide, mutate = Action(cellType = "bone"))),
             harness.stages
         )
     }
@@ -98,20 +98,20 @@ class CommandStackTest {
     @Test
     fun `история ограничена 32 командами, самые старые выпадают`() {
         val harness = EditorHarness(baseGenome())
-        for (cellType in 1..33) harness.execute(mutateCell0OnLastStage(cellType, harness))
+        for (n in 1..33) harness.execute(mutateCell0OnLastStage(n, harness))
         assertEquals(32, harness.stack.undoStack.size)
 
         repeat(32) { harness.undo() }
         // Первая команда выпала из истории — её результат откатить уже нельзя.
-        assertEquals(Action(cellType = 1), harness.stages[4].cellActions.getValue(0).mutate)
+        assertEquals(Action(cellType = "type1"), harness.stages[4].cellActions.getValue(0).mutate)
 
         val restarts = harness.restarts
         harness.undo()
-        assertEquals(Action(cellType = 1), harness.stages[4].cellActions.getValue(0).mutate)
+        assertEquals(Action(cellType = "type1"), harness.stages[4].cellActions.getValue(0).mutate)
         assertEquals(restarts, harness.restarts)
 
         repeat(32) { harness.redo() }
-        assertEquals(Action(cellType = 33), harness.stages[4].cellActions.getValue(0).mutate)
+        assertEquals(Action(cellType = "type33"), harness.stages[4].cellActions.getValue(0).mutate)
     }
 
     @Test
@@ -132,7 +132,7 @@ class CommandStackTest {
         this.stages.addAll(stages)
     }
 
-    private fun otherGenome() = listOf(stage(0 to CellAction(mutate = Action(cellType = 9))))
+    private fun otherGenome() = listOf(stage(0 to CellAction(mutate = Action(cellType = "excreta"))))
 
     @Test
     fun `отмена не перетирает геном, открытый мимо истории, а сбрасывает историю`() {
@@ -169,7 +169,7 @@ class CommandStackTest {
         harness.execute(mutateCell0OnLastStage(1, harness))
         // «Сохранить и протестировать», потом обратно в редактор: геном читается из файла —
         // объекты новые, содержимое то же.
-        harness.openGenome(baseGenome().withAction(4, 0, CellAction(mutate = Action(cellType = 1))))
+        harness.openGenome(baseGenome().withAction(4, 0, CellAction(mutate = Action(cellType = "type1"))))
 
         harness.undo()
 

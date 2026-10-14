@@ -18,7 +18,7 @@ import kotlin.reflect.KProperty0
  * ----------
  * ВСЁ состояние мира, причём тем же списком, что пишет сохранение мира: каждая сущность
  * сама перечисляет свои поля (Entity.persistFields) — частицы, клетки, связи, нейроны,
- * нейросвязи, феромоны, органы, глаза, хвосты, особые клетки, субстанции. Добавили поле
+ * нейросвязи, феромоны, органы, свои данные клеток (глаза, хвосты…), субстанции. Добавили поле
  * в сохранение — оно попало и в хэш, отдельно помнить не надо. Плюс то, что живёт вне
  * сущностей, но решает следующие тики:
  *  - SimulationData: номер тика, время, выбранный геном, выбранная клетка;
@@ -40,7 +40,12 @@ import kotlin.reflect.KProperty0
  */
 object StateHash {
 
-    const val VERSION = 2
+    /**
+     * 3 — в хэш вошли свои данные клеток (SpecialModDataEntity.specialModData).
+     * 4 — EyeEntity, TailEntity, ProducerEntity и PheromoneEmitterEntity влились в них:
+     *     частей хэша стало меньше.
+     */
+    const val VERSION = 4
 
     class Result(val hash: Long, val parts: LongArray)
 

@@ -3,7 +3,7 @@ package io.github.some_example_name.old.commands
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.cells.SpecialModData
+import io.github.some_example_name.old.cells.base.SpecialModData
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.SELF_REPRODUCTION_ENABLED
@@ -59,7 +59,15 @@ class WorldCommandsManager(
      */
     val workOrder = WorkOrder(diContext.threadCount)
 
-    var worldCommandSpecialModDataBuffer = Array(diContext.threadCount) { mutableListOf<SpecialModData>() }
+    /**
+     * Свои данные клетки к команде буфера [bufferIndex] (ADD_CELL, ADD_SPECIAL_MOD_DATA):
+     * объект кладётся в сам буфер (WorldCommandBuffer.pushObject), в команду — его номер.
+     */
+    fun pushSpecialModData(bufferIndex: Int, data: SpecialModData): Int =
+        worldCommandBuffer[bufferIndex].pushObject(data)
+
+    private fun specialModDataAt(bufferIndex: Int, index: Int): SpecialModData =
+        worldCommandBuffer[bufferIndex].objectAt(index) as SpecialModData
     var worldCommandBuffer = newBuffers(1000)
     var worldCommandSecondBuffer = newBuffers(100)
     val worldCommandLastBuffer = WorldCommandBuffer(100)
@@ -169,7 +177,7 @@ class WorldCommandsManager(
                         //
                         // Проверка стоит до морфогенеза: она заодно экономит collectParticles.
                         val parentCellIndex = ints[4]
-                        val parentGeneration = ints[9]
+                        val parentGeneration = ints[8]
                         if (parentCellIndex != -1 &&
                             !cellEntity.isAliveAndSameGen(parentCellIndex, parentGeneration)
                         ) {
@@ -208,7 +216,7 @@ class WorldCommandsManager(
                                 if (isEditor) 0 else -1
                             } else parentOrganIndex
 
-                            val specialModDataIndex = ints[8]
+                            val specialModDataIndex = ints[7]
 
                             val cellIndex = cellEntity.addCell(
                                 x = x,
@@ -223,15 +231,13 @@ class WorldCommandsManager(
                                 angleSin = floats[4],
                                 angleDiffCos = floats[5],
                                 angleDiffSin = floats[6],
-                                colorDifferentiation = ints[5],
-                                visibilityRange = floats[7],
-                                a = floats[8],
-                                b = floats[9],
-                                c = floats[10],
+                                a = floats[7],
+                                b = floats[8],
+                                c = floats[9],
                                 isSum = booleans[0],
-                                activationFuncType = ints[6].toByte(),
-                                pheromoneType = ints[7],
-                                specialModData = if (specialModDataIndex == -1) null else worldCommandSpecialModDataBuffer[threadId][specialModDataIndex]
+                                activationFuncType = ints[5].toByte(),
+                                pheromoneType = ints[6],
+                                specialModData = if (specialModDataIndex == -1) null else specialModDataAt(threadId, specialModDataIndex)
                             )
                             if (isEditor) {
                                 mapCellGenomeIdToIndex.put(cellGenomeId, cellIndex)
@@ -349,28 +355,6 @@ class WorldCommandsManager(
                             activationFuncType = ints[2].toByte()
                         )
                     }
-                    WorldCommandType.DELETE_EYE -> {
-                        specialEntity.deleteEye(cellIndex = ints[0], eyeGeneration = ints[1])
-                    }
-                    WorldCommandType.ADD_EYE -> {
-                        specialEntity.addEye(
-                            index = ints[0],
-                            colorDifferentiation = ints[1],
-                            visibilityRange = floats[0]
-                        )
-                    }
-                    WorldCommandType.DELETE_TAIL -> {
-                        specialEntity.deleteTail(cellIndex = ints[0], tailGeneration = ints[1])
-                    }
-                    WorldCommandType.ADD_TAIL -> {
-                        specialEntity.addTail(index = ints[0])
-                    }
-                    WorldCommandType.DELETE_PRODUCER -> {
-                        specialEntity.deleteProducer(cellIndex = ints[0], producerGeneration = ints[1])
-                    }
-                    WorldCommandType.ADD_PRODUCER -> {
-                        specialEntity.addProducer(index = ints[0])
-                    }
                     WorldCommandType.ADD_ORGAN -> {
                         worldCommandLastBuffer.push(
                             type = WorldCommandType.ADD_ORGAN,
@@ -404,12 +388,6 @@ class WorldCommandsManager(
                     WorldCommandType.DELETE_PHEROMONE -> {
                         pheromoneEntity.deletePheromone(pheromoneIndex = ints[0], pheromoneGeneration = ints[1])
                     }
-                    WorldCommandType.DELETE_PHEROMONE_EMITTER -> {
-                        specialEntity.deletePheromoneEmitter(cellIndex = ints[0], pheromoneEmitterGeneration = ints[1])
-                    }
-                    WorldCommandType.ADD_PHEROMONE_EMITTER -> {
-                        specialEntity.addPheromoneEmitter(index = ints[0])
-                    }
                     WorldCommandType.MUTATE_ON_START -> {
                         val index = ints[0]
                         val threadId = ints[1]
@@ -419,6 +397,22 @@ class WorldCommandsManager(
                         if (!cellEntity.isAlive[index]) return@consumeInOrder
                         val newCell = cellList[cellEntity.cellType[index].toInt()]
                         newCell.onStart(index, threadId, genomeIndex)
+                    }
+                    WorldCommandType.DELETE_SPECIAL_MOD_DATA -> {
+                        // Клетка могла умереть раньше в этом проходе — слот всё равно освобождается
+                        // (умерла она уже не клеткой с данными, и сама смерть его не тронула).
+                        // Но если её индекс успели отдать новой клетке, specialTypeIndexes уже
+                        // её — поколение клетки (растёт только при выдаче слота) это отличает.
+                        val cellIndex = ints[0]
+                        if (cellEntity.getGeneration(cellIndex) != ints[2]) return@consumeInOrder
+                        specialEntity.deleteSpecialModData(cellIndex = cellIndex, modDataGeneration = ints[1])
+                    }
+                    WorldCommandType.ADD_SPECIAL_MOD_DATA -> {
+                        // Как в ADD_NEURAL: клетку могли убить раньше в этом же проходе, а её
+                        // индекс — отдать новой клетке. Поколение отличает одну от другой.
+                        val cellIndex = ints[0]
+                        if (!cellEntity.isAliveAndSameGen(cellIndex, ints[2])) return@consumeInOrder
+                        specialEntity.addSpecialModData(cellIndex, specialModDataAt(threadId, ints[1]))
                     }
                     else -> {}
                 }
@@ -535,7 +529,7 @@ class WorldCommandsManager(
      * равных ключах (команды вне стадий в разных буферах) первым идёт меньший номер буфера.
      *
      * [processor] получает номер буфера: по нему живут per-buffer структуры применения
-     * (lastAddedCellIndexBuffer, worldCommandSpecialModDataBuffer).
+     * (lastAddedCellIndexBuffer, объекты команд в самом буфере).
      */
     private inline fun consumeInOrder(
         buffers: Array<WorldCommandBuffer>,

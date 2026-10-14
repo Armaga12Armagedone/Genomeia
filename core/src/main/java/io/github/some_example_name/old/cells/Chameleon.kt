@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.core.utils.whiteColors
 
 class Chameleon(cellTypeId: Int) : Cell(
+    key = "chameleon",
     defaultColor = whiteColors[0],
     cellTypeId = cellTypeId,
     textureName = "Chameleon.png",

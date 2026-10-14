@@ -4,6 +4,7 @@ import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.utils.yellowColors
 
 class Fat(cellTypeId: Int): Cell(
+    key = "fat",
     defaultColor = yellowColors.first(),
     cellTypeId = cellTypeId,
     textureName = "fat.png",

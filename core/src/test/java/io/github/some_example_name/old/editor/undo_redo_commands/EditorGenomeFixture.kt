@@ -40,7 +40,7 @@ fun stage(vararg actions: Pair<Int, CellAction>) = GenomeStage(cellActions = has
 fun divideOf(
     id: Int,
     angle: Float,
-    cellType: Int,
+    cellType: String,
     vararg links: Pair<Int, LinkData?>,
     color: Color = GREEN
 ) = Action(id = id, angle = angle, cellType = cellType, physicalLink = hashMapOf(*links), color = color)
@@ -61,21 +61,21 @@ fun len(dx: Float, dy: Float): Float = sqrt((dx * dx + dy * dy).toDouble()).toFl
  *   стадия 4: 5 мутирует в тип 4
  */
 fun baseGenome(): List<GenomeStage> = listOf(
-    stage(0 to CellAction(divide = divideOf(1, 0f, 0, 0 to link()))),
+    stage(0 to CellAction(divide = divideOf(1, 0f, "leaf", 0 to link()))),
     stage(
-        0 to CellAction(divide = divideOf(2, 1f, 0, 0 to link(), 1 to link())),
-        1 to CellAction(mutate = Action(cellType = 3, color = YELLOW))
+        0 to CellAction(divide = divideOf(2, 1f, "leaf", 0 to link(), 1 to link())),
+        1 to CellAction(mutate = Action(cellType = "tail", color = YELLOW))
     ),
     stage(
-        2 to CellAction(divide = divideOf(3, 0.5f, 1, 2 to link(), 0 to link())),
-        1 to CellAction(divide = divideOf(4, -0.5f, 2, 1 to link(), 3 to link()))
+        2 to CellAction(divide = divideOf(3, 0.5f, "fat", 2 to link(), 0 to link())),
+        1 to CellAction(divide = divideOf(4, -0.5f, "bone", 1 to link(), 3 to link()))
     ),
     stage(
         3 to CellAction(mutate = Action(physicalLink = hashMapOf(0 to neural(0)))),
-        4 to CellAction(divide = divideOf(5, 0f, 0, 4 to link())),
-        0 to CellAction(mutate = Action(cellType = 5))
+        4 to CellAction(divide = divideOf(5, 0f, "leaf", 4 to link())),
+        0 to CellAction(mutate = Action(cellType = "muscle"))
     ),
-    stage(5 to CellAction(mutate = Action(cellType = 4)))
+    stage(5 to CellAction(mutate = Action(cellType = "neuron")))
 )
 
 /** Предок каждой клетки baseGenome. */

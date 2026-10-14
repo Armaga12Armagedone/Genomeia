@@ -1,8 +1,8 @@
 package io.github.some_example_name.old.systems.render
 
+import io.github.some_example_name.old.cells.eyeData
 import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.core.DEBUG_CHECKS
-import io.github.some_example_name.old.cells.base.formulaType
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralLinkEntity
@@ -336,7 +336,7 @@ class RenderBufferManager(
         if (palette.isEye(cellType)) {
             palette.writeEyeRay(
                 overlayBack, cellType, x, y, angleCos, angleSin, radius,
-                range = specialEntity.getVisibilityRange(cellIndex),
+                range = specialEntity.eyeData(cellIndex).visibilityRange,
                 signal = signal
             )
         } else if (palette.hasArrow(cellType)) {
@@ -479,7 +479,7 @@ class RenderBufferManager(
                 val cellType = cellEntity.cellType[cellIndex].toInt()
                 cellName = cellList[cellType].name +
                     if (cellEntity.isNeural[cellIndex])
-                        " ${formulaType[cellEntity.getActivationFuncType(cellIndex)]} " +
+                        " ${cellEntity.formulas[cellEntity.getActivationFuncType(cellIndex)].label} " +
                             "${cellEntity.getA(cellIndex)} ${cellEntity.getB(cellIndex)} ${cellEntity.getC(cellIndex)}"
                     else ""
             } else {

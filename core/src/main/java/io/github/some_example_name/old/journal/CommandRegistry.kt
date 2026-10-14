@@ -46,7 +46,7 @@ import io.github.some_example_name.old.features.simulation.SimulationIntent
 import io.github.some_example_name.old.features.worldeditor.WorldEditorIntent
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.protobuf.ProtoBuf
+import io.github.some_example_name.old.systems.genomics.genome.GenomeProto
 import kotlinx.serialization.serializer
 import kotlin.reflect.KClass
 import io.github.some_example_name.old.editor.system.logic.SetRenderMode as EditorSetRenderMode
@@ -198,14 +198,14 @@ object CommandRegistry {
     fun encode(command: GameCommand): Pair<Int, ByteArray>? {
         @Suppress("UNCHECKED_CAST")
         val type = byClass[command::class] as Type<GameCommand>? ?: return null
-        return type.id to ProtoBuf.encodeToByteArray(type.serializer, command)
+        return type.id to GenomeProto.encodeToByteArray(type.serializer, command)
     }
 
     /** Команда по номеру типа и телу, или null — тип неизвестен или тело испорчено. */
     fun decode(typeId: Int, payload: ByteArray): GameCommand? {
         val type = byId[typeId] ?: return null
         return try {
-            ProtoBuf.decodeFromByteArray(type.serializer, payload)
+            GenomeProto.decodeFromByteArray(type.serializer, payload)
         } catch (e: Exception) {
             Gdx.app?.error(TAG, "не удалось прочитать команду типа $typeId", e)
             null

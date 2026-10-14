@@ -1,14 +1,18 @@
 package io.github.some_example_name.old.cells
 
 import io.github.some_example_name.old.core.utils.blueColors
+import io.github.some_example_name.old.features.editor.dialog.PheromoneSection
 
 class PheromoneSensor(cellTypeId: Int) : Cell(
+    key = "pheromone_sensor",
     defaultColor = blueColors[2],
     cellTypeId = cellTypeId,
     textureName = "PheromoneSensor.png",
     isNeural = true,
     isNeuronTransportable = false
 ) {
+
+    override fun editorSections() = super.editorSections() + PheromoneSection
 
     override fun doOnTick(cellIndex: Int, threadId: Int) = with(cellEntity) {
         if (simulationData.tickCounter % 4 == cellIndex % 4) {

@@ -1,7 +1,8 @@
 package io.github.some_example_name.old.systems.genomics
 
 import com.badlogic.gdx.graphics.Color
-import io.github.some_example_name.old.cells.Cell
+import io.github.some_example_name.old.cells.base.CellTypeList
+import io.github.some_example_name.old.cells.base.Formulas
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
@@ -18,7 +19,7 @@ class DivideManager(
     val particleEntity: ParticleEntity,
     val worldCommandsManager: WorldCommandsManager,
     val gridManager: GridManager,
-    val cellList: List<Cell>
+    val cellList: CellTypeList
 ) {
 
     fun divideCell(index: Int, threadId: Int) = with(cellEntity) {
@@ -76,52 +77,41 @@ class DivideManager(
             run {
                 val color: Int = (action.color ?: Color.WHITE).toIntBits()
                 val radius: Float = action.radius ?: PARTICLE_MAX_RADIUS
-                val cellType: Int = action.cellType ?: throw Exception("Forgot cellType")
+                val cellType: Int = cellList.requireIndex(action.cellType ?: throw Exception("Forgot cellType"))
                 val parentIndex: Int = index
                 val angleDiff: Float = action.angleDirected ?: 0f
                 val angleDiffCos: Float = cos(angleDiff)
                 val angleDiffSin: Float = sin(angleDiff)
 
-                val colorDifferentiation: Int = action.colorRecognition ?: 7
-                val visibilityRange: Float = action.lengthDirected ?: 4.25f
                 val a: Float = action.a ?: 1f
                 val b: Float = action.b ?: 0f
                 val c: Float = action.c ?: 0f
                 val isSum: Boolean = action.isSum ?: true
-                val activationFuncType: Int = action.funActivation ?: 0
+                val activationFuncType: Int = action.funActivation?.let(Formulas::requireIndex) ?: Formulas.defaultIndex
 
                 val isMorphogenesis = false
                 val pheromoneType = action.pheromoneType ?: -1
 
-//                val cell = cellList[cellType]
-//                val specialModDataIndex = when(cell) {
-//                    is NonWorkingCell1 -> {
-//                        if (action.specialData?.attachedKey != null) {
-//                            worldCommandsManager.worldCommandSpecialModDataBuffer[threadId].add(
-//                                ControllerData(action.specialData.attachedKey)
-//                            )
-//                            worldCommandsManager.worldCommandSpecialModDataBuffer[threadId].size - 1
-//                        } else -1
-//                    }
-//                    else -> -1
-//                }
-
+                // Свои данные клетки едут к применению объектом, в команде — его номер.
+                // Неизменяемые данные (клавиша контроллера) — общий с геномом объект, без
+                // аллокации; изменяемое состояние (хвост, продюсер) — новый объект на клетку.
+                val specialModDataIndex = cellList[cellType].createSpecialData(action)?.let { data ->
+                    worldCommandsManager.pushSpecialModData(threadId, data)
+                } ?: -1
 
                 worldCommandsManager.worldCommandBuffer[threadId].push(
                     type = WorldCommandType.ADD_CELL,
                     booleans = booleanArrayOf(isSum, isMorphogenesis),
-                    floats = floatArrayOf(x, y, radius, finalCos, finalSin, angleDiffCos, angleDiffSin, visibilityRange, a, b, c),
+                    floats = floatArrayOf(x, y, radius, finalCos, finalSin, angleDiffCos, angleDiffSin, a, b, c),
                     ints = intArrayOf(
                         color,
                         cellGenomeId,
                         cellType,
                         parentOrganIndex,
                         parentIndex,
-                        colorDifferentiation,
                         activationFuncType,
                         pheromoneType,
-                        -1,
-//                        specialModDataIndex
+                        specialModDataIndex,
                         // Поколение родителя на момент постановки команды. Между этим
                         // моментом и применением родитель может умереть, а его индекс —
                         // достаться новой клетке: тогда isAlive снова true, но это уже

@@ -122,7 +122,7 @@ class CommandRegistryTest {
     fun `команды редактора с действием генома, клеткой и симметрией`() {
         val action = Action(
             id = 4,
-            cellType = 2,
+            cellType = "bone",
             color = Color(0.5f, 0.25f, 1f, 1f),
             radius = 0.37f,
             physicalLink = mapOf(1 to LinkData(length = 0.9f, isNeuronal = true), 2 to null)

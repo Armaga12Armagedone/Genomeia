@@ -103,7 +103,7 @@ fun getEmptyGenome() = Genome(
                     divide = Action(
                         id = 1,
                         angle = 0f,
-                        cellType = 0,
+                        cellType = "leaf",
                         physicalLink = hashMapOf(0 to LinkData(length = 0.6f)),
                         color = Color(0.133f, 0.545f, 0.133f, 1f)
                     )

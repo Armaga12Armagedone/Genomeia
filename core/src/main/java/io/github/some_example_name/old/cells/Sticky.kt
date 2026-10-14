@@ -3,6 +3,7 @@ package io.github.some_example_name.old.cells
 import io.github.some_example_name.old.core.utils.pinkColors
 
 class Sticky(cellTypeId: Int) : Cell(
+    key = "sticky",
     defaultColor = pinkColors[3],
     cellTypeId = cellTypeId,
     textureName = "sticky.png",

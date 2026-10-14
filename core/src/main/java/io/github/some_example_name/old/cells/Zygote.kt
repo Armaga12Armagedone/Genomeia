@@ -6,6 +6,7 @@ import io.github.some_example_name.old.core.SELF_REPRODUCTION_ENABLED
 import io.github.some_example_name.old.core.utils.pinkColors
 
 class Zygote(cellTypeId: Int) : Cell(
+    key = "zygote",
     defaultColor = pinkColors[0],
     cellTypeId = cellTypeId,
     textureName = "zygote.png",
