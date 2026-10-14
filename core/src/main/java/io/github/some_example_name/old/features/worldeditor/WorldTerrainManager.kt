@@ -38,9 +38,9 @@ class WorldTerrainManager(
                     if (element1) {
                         if (scaleX < gridWidth && scaleY < gridHeight) {
                             particleEntity.addParticle(
-                                x = scaleX,
-                                y = scaleY,
-                                radius = 1f,
+                                x = scaleX + (random.nextFloat() - 0.5f) * 0.75f,
+                                y = scaleY + (random.nextFloat() - 0.5f) * 0.75f,
+                                radius = 1.0f,
                                 color = getColor(random),
                                 isCell = false,
                                 isSub = false,
