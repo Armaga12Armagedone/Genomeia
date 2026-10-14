@@ -3,14 +3,19 @@ package io.github.some_example_name.old.features.settings
 import io.github.some_example_name.old.commands.GameCommand
 import io.github.some_example_name.old.bug.ReplayTarget
 import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.scenes.scene2d.ui.Cell
 import com.badlogic.gdx.utils.Align
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.commands.GoBack
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.core.DISimulationContainer.renderSystem
+import io.github.some_example_name.old.core.ui.StyledSelectBox
 import io.github.some_example_name.old.core.ui.VisDslScreen
 import io.github.some_example_name.old.core.ui.dp
+import io.github.some_example_name.old.core.ui.renderModeSelectBox
+import io.github.some_example_name.old.core.ui.styledSelectBox
 import io.github.some_example_name.old.core.ui.visLabel
 import io.github.some_example_name.old.core.ui.visSelectBox
 import io.github.some_example_name.old.core.ui.visSlider
@@ -18,6 +23,8 @@ import io.github.some_example_name.old.core.ui.visTable
 import io.github.some_example_name.old.core.ui.visTextButton
 import io.github.some_example_name.old.core.ui.visToggleButton
 import io.github.some_example_name.old.core.ui.w
+import io.github.some_example_name.old.features.simulation.SimulationIntent
+import io.github.some_example_name.render.RenderMode
 
 class SettingsScreen : VisDslScreen(
     background = Color(0.04f, 0.04f, 0.06f, 1f),
@@ -145,8 +152,15 @@ class SettingsScreen : VisDslScreen(
     }
 
     fun VisTable.graphics() {
-        visLabel(bundle.get("settings.graphics.todo")) {
-            pad(16f)
+
+
+        visTable(cellInit = { expandX().fillX() }) {
+            visLabel("Default Render Mode: ", align = Align.left) {}
+            val selectBox = renderModeSelectBox(
+                selected = RenderMode.entries[GlobalSettings.RENDER_MODE],
+                onSelect = { viewModel.handle(SettingsIntent.SetRenderMode(RenderMode.entries.indexOf(it))) }
+            )
+            this.add(selectBox) as Cell<StyledSelectBox<String>>
         }
     }
 

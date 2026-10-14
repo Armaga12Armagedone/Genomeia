@@ -3,6 +3,9 @@ package io.github.some_example_name.old.features.settings
 import com.badlogic.gdx.Gdx
 import io.github.some_example_name.old.bug.BugReplay
 import io.github.some_example_name.old.core.DIGameGlobalContainer
+import io.github.some_example_name.old.core.DISimulationContainer.renderSystem
+import io.github.some_example_name.old.features.simulation.SimulationIntent
+import io.github.some_example_name.render.RenderMode
 import java.util.Locale
 
 /**
@@ -20,6 +23,7 @@ object UserPreferences {
     private const val MUSIC_VOLUME = "musicVolume"
     private const val SOUND_VOLUME = "soundVolume"
     private const val LANGUAGE = "language"
+    private const val RENDER_MODE = "render_mode"
 
     private val prefs by lazy { Gdx.app.getPreferences(NAME) }
 
@@ -29,6 +33,8 @@ object UserPreferences {
 
         GlobalSettings.MUSIC_VOLUME = prefs.getInteger(MUSIC_VOLUME, GlobalSettings.MUSIC_VOLUME).coerceIn(0, 100)
         GlobalSettings.SOUND_VOLUME = prefs.getInteger(SOUND_VOLUME, GlobalSettings.SOUND_VOLUME).coerceIn(0, 100)
+
+        GlobalSettings.RENDER_MODE = prefs.getInteger(RENDER_MODE, GlobalSettings.RENDER_MODE)
 
         val tag = prefs.getString(LANGUAGE, "")
         if (tag.isNotBlank()) {
@@ -44,6 +50,7 @@ object UserPreferences {
         prefs.putInteger(MUSIC_VOLUME, GlobalSettings.MUSIC_VOLUME)
         prefs.putInteger(SOUND_VOLUME, GlobalSettings.SOUND_VOLUME)
         prefs.putString(LANGUAGE, GlobalSettings.currentLanguageTag)
+        prefs.putInteger(RENDER_MODE, GlobalSettings.RENDER_MODE)
         prefs.flush()
     }
 }

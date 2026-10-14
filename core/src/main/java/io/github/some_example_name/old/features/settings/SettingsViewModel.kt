@@ -44,6 +44,12 @@ sealed interface SettingsIntent : GameCommand {
     }
 
     @Serializable
+    data class SetRenderMode(val renderMode: Int) : SettingsIntent {
+        override val name get() = "SetRenderMode"
+        override val detail get() = renderMode.toString()
+    }
+
+    @Serializable
     data object OpenGithub : SettingsIntent {
         override val name get() = "OpenGithub"
     }
@@ -86,6 +92,11 @@ class SettingsViewModel {
                 DIGameGlobalContainer.setLanguage(Locale.forLanguageTag(intent.languageTag))
                 UserPreferences.save()
                 onLanguageChanged?.invoke()
+            }
+
+            is SettingsIntent.SetRenderMode -> {
+                GlobalSettings.RENDER_MODE = intent.renderMode
+                UserPreferences.save()
             }
 
             // При повторе бага браузер разработчику ни к чему.
@@ -152,5 +163,6 @@ class SettingsViewModel {
 object GlobalSettings {
     var MUSIC_VOLUME = 0
     var SOUND_VOLUME = 50
+    var RENDER_MODE = 0
     var currentLanguageTag: String = Locale.getDefault().toLanguageTag()
 }

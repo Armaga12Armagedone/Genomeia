@@ -74,10 +74,10 @@ class MyGame(
         VisUI.load()  // Загружаем дефолтный VisUI
         // До контейнеров: журнал, лог, краш-хэндлер и, если есть .bug в bug-replay, песочница.
         BugSession.start()
-        DIGameGlobalContainer.fileProvider = multiPlatformFileProvider
-        DIGameGlobalContainer.game = this
         // Звук и язык игрока: до первого экрана и до музыки, чтобы они стартовали с сохранёнными.
         UserPreferences.load()
+        DIGameGlobalContainer.fileProvider = multiPlatformFileProvider
+        DIGameGlobalContainer.game = this
         DISimulationContainer
         DIGenomeEditorContainer
         // Перенос старых JSON и запекание старых .genome — до первого экрана: меню сразу
