@@ -223,8 +223,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         particleEntity = particleEntity,
         gridManager = gridManager,
         specialEntity = specialEntity,
-        organEntity = organEntity,
-        isEditor = true
+        organEntity = organEntity
     )
 
     val cellSystem = CellSystem(

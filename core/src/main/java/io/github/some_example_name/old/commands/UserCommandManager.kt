@@ -13,6 +13,7 @@ import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.simulation.SimulationData
+import io.github.some_example_name.old.systems.genomics.OrganismSpawner
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.CollisionManager.Companion.PARTICLE_MAX_RADIUS
 import io.github.some_example_name.old.systems.physics.GridManager
@@ -43,6 +44,9 @@ class UserCommandManager(
 ): Disposable {
 
     private val commandQueue = ConcurrentLinkedQueue<PlayerCommand>()
+
+    /** Посадка организма игроком — та же, что у потомков в мире (см. OrganismSpawner). */
+    private val organismSpawner = OrganismSpawner(organEntity, cellEntity, genomeManager, zygote)
 
     @Volatile var grabbedParticleIndex = -1
     @Volatile var tapX = 0f
@@ -197,45 +201,13 @@ class UserCommandManager(
                     if (cmd.isLeftButton) {
                         if (cmd.x > 0 && cmd.x < gridManager.gridWidth && cmd.y > 0 && cmd.y < gridManager.gridHeight) {
                             val genomeIndex = resolveGenomeIndex(cmd)
-                            val genome = genomeManager.genomes[genomeIndex]
-                            val organIndex = organEntity.addOrgan(
-                                genomeIndex = genomeIndex,
-                                genomeSize = genome.genomeStageInstruction.size,
-                                dividedTimes = genome.dividedTimes[0],
-                                mutatedTimes = genome.mutatedTimes[0]
-                            )
-                            // Строго до первой addCell: зигота уже должна брать слот
-                            // из арены, иначе тело начнётся вне своего диапазона.
-                            //
-                            // Размеры берутся из генома, снятые при запекании, а не из
-                            // констант: константа на все геномы сразу — это либо
-                            // перерасход на мелких телах, либо падение на крупных.
-                            // У незапечённого генома там нули, и тогда работают
-                            // прежние значения по умолчанию.
-                            if (genome.cellsAmount > 0) {
-                                organEntity.allocateArenas(
-                                    organIndex = organIndex,
-                                    layout = genome.sortedGraph,
-                                    maxCells = genome.cellsAmount,
-                                    maxLinks = genome.linksAmount
-                                )
-                            } else {
-                                organEntity.allocateArenas(
-                                    organIndex = organIndex,
-                                    layout = genome.sortedGraph,
-                                    maxCells = genome.cellsAmount,
-                                    maxLinks = genome.linksAmount
-                                )
-//                                    throw Exception("Пустой геном без клеток")
-                            }
                             val randomAngle = if (isEditor) 0f else 0f//MathUtils.random(0f, MathUtils.PI2)
-                            cellEntity.addCell(
+                            organismSpawner.spawn(
+                                genomeIndex = genomeIndex,
                                 x = cmd.x,
                                 y = cmd.y,
                                 color = zygote.defaultColor.toIntBits(),
                                 radius = PARTICLE_MAX_RADIUS,
-                                cellType = zygote.cellTypeId,
-                                organIndex = organIndex,
                                 angleCos = cos(randomAngle),
                                 angleSin = sin(randomAngle)
                             )
