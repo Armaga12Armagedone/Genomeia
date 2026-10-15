@@ -406,7 +406,7 @@ class SimulationSystem(
         dispose()
         simulationData.isRestart = false
         worldTerrainManager.initWorld(
-            gridWith = DISimulationContainer.gridWidth,
+            gridWidth = DISimulationContainer.gridWidth,
             gridHeight = DISimulationContainer.gridHeight
         )
         startSession()
@@ -515,7 +515,7 @@ class SimulationSystem(
 
     fun initMap() {
         worldTerrainManager.initWorld(
-            gridWith = DISimulationContainer.gridWidth,
+            gridWidth = DISimulationContainer.gridWidth,
             gridHeight = DISimulationContainer.gridHeight
         )
     }

@@ -109,6 +109,7 @@ object CommandRegistry {
         t<SettingsIntent.SetSoundVolume>(302),
         t<SettingsIntent.SetLanguage>(303),
         t<SettingsIntent.OpenGithub>(304),
+        t<SettingsIntent.SetRenderMode>(305),
 
         // --- Поддержка ---
         t<SupportIntent.CopyAddress>(400),

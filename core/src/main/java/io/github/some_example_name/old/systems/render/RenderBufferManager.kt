@@ -9,6 +9,7 @@ import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
 import io.github.some_example_name.old.entities.SpecialEntity
+import io.github.some_example_name.old.features.settings.GlobalSettings
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.render.RenderMode
 import io.github.some_example_name.render.pack.CellInstanceBuffer
@@ -43,7 +44,7 @@ class RenderBufferManager(
      * переключение никогда. Переключают руками раз в минуты, цена volatile-чтения ничто.
      */
     @Volatile
-    var mode: RenderMode = RenderMode.REALISTIC
+    var mode: RenderMode = RenderMode.entries[GlobalSettings.RENDER_MODE]
 
     // Двойные буферы
     private val cellBuffers = arrayOf(
