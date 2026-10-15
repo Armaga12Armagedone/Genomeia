@@ -4,6 +4,7 @@ import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.DEBUG_CHECKS
+import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.PlatformTuning
 import kotlin.math.PI
 import kotlin.math.cos
@@ -98,6 +99,9 @@ class SimulationSystem(
         if (simulationData.isRestart) {
             restartSim()
             return
+        }
+        if (simulationData.hasLua) {
+            DIGameGlobalContainer.luaEnv.tick()
         }
 
         simulationData.tickCounter++
@@ -358,5 +362,9 @@ class SimulationSystem(
 
         /** Сколько клеток за тик убивает / разгоняет отладочный стресс-тест. */
         private const val DEBUG_STRESS_CELLS_PER_TICK = 55
+    }
+
+    fun getStats(): WorldStats {
+        return worldStats //на время что бы  получить информацю для логики уровней, но мы ведь знаем что нет ничего постояннее чем временные решения :>
     }
 }

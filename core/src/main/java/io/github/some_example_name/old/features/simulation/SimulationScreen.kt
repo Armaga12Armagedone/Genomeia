@@ -726,4 +726,8 @@ class SimulationScreen(
             }
         })
     }
+
+    fun getStage(): Stage {
+        return stage
+    }
 }
