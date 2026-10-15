@@ -6,7 +6,6 @@ import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.cells.base.SpecialModData
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.core.DIContext
-import io.github.some_example_name.old.core.SELF_REPRODUCTION_ENABLED
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.WorldResizable
 import io.github.some_example_name.old.core.utils.OrderedIntPairMap
@@ -21,6 +20,7 @@ import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.genomics.OrganManager
+import io.github.some_example_name.old.systems.genomics.OrganismSpawner
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.GridManager
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
@@ -203,18 +203,28 @@ class WorldCommandsManager(
                                     }
                                 }
                         }
-                        if (isDivide) {
-                            val cellType = ints[2]
-                            val newCell = cellList[cellType]
+                        val cellType = ints[2]
+                        val newCell = cellList[cellType]
 
-                            val cellGenomeId = if (newCell is Zygote && !isEditor) {
-                                0
-                            } else ints[1]
+                        if (isDivide && newCell is Zygote && !isEditor) {
+                            // Зигота в мире (её родил продюсер или геном поделился в неё) —
+                            // корень НОВОГО организма с геномом родителя, как было до арен.
+                            // Сама клетка появится в последней фазе команд, уже в арене
+                            // своего организма (OrganismSpawner); связи, которые деление
+                            // проводит к ней следом (ADD_LINK с -1), — не к чему: это был бы
+                            // другой организм.
+                            worldCommandLastBuffer.push(
+                                type = WorldCommandType.SPAWN_ORGANISM,
+                                ints = intArrayOf(organEntity.genomeIndex[ints[3]], ints[0]),
+                                floats = floatArrayOf(x, y, radius, floats[3], floats[4], floats[5], floats[6])
+                            )
+                            lastAddedCellIndexBuffer[threadId] = -1
+                        } else if (isDivide) {
+                            val cellGenomeId = ints[1]
                             val parentOrganIndex = ints[3]
                             val parentIndex = ints[4]
-                            val organIndex = if (newCell is Zygote) {
-                                if (isEditor) 0 else -1
-                            } else parentOrganIndex
+                            // В редакторе организм один, и зигота — его часть.
+                            val organIndex = if (newCell is Zygote) 0 else parentOrganIndex
 
                             val specialModDataIndex = ints[7]
 
@@ -355,14 +365,6 @@ class WorldCommandsManager(
                             activationFuncType = ints[2].toByte()
                         )
                     }
-                    WorldCommandType.ADD_ORGAN -> {
-                        worldCommandLastBuffer.push(
-                            type = WorldCommandType.ADD_ORGAN,
-                            booleans = booleans,
-                            floats = floats,
-                            ints = ints
-                        )
-                    }
                     WorldCommandType.DELETE_ORGAN -> {
                         val organIndex = ints[0]
                         val organGeneration = ints[1]
@@ -469,36 +471,29 @@ class WorldCommandsManager(
         organIndexCellIdMapIndex.clear()
     }
 
+    /** Новые организмы от зигот, родившихся в мире (SPAWN_ORGANISM). */
+    private val organismSpawner = OrganismSpawner(
+        organEntity = organEntity,
+        cellEntity = cellEntity,
+        genomeManager = genomeManager,
+        zygote = cellList.filterIsInstance<Zygote>().single()
+    )
+
     fun executingLastCommandsFromTheWorld() {
         worldCommandLastBuffer.consume { type, ints, floats, booleans ->
             when (type) {
-                WorldCommandType.ADD_ORGAN -> {
-                    if (!isEditor) {
-                        // Сюда попадают только самозародившиеся организмы: ручной спавн
-                        // заводит организм напрямую в UserCommandManager, до первой клетки.
-                        //
-                        // Аренами этот путь пока не поддержан, и это осознанно: зигота
-                        // создаётся раньше своего организма, поэтому физически не может
-                        // оказаться в его арене (см. SELF_REPRODUCTION_ENABLED). Падаем
-                        // явно, а не заводим организм, у которого часть тела вне арены —
-                        // такое не упало бы вовсе, а просто выключило бы обход по диапазону.
-                        if (!SELF_REPRODUCTION_ENABLED) {
-                            throw IllegalStateException(
-                                "ADD_ORGAN при выключенном SELF_REPRODUCTION_ENABLED: " +
-                                    "кто-то создаёт организм в обход UserCommandManager"
-                            )
-                        }
-
-                        val organStartCellOrganIndex = ints[0]
-                        val newOrganIndex = organEntity.addOrgan(
-                            genomeIndex = ints[1],
-                            genomeSize = ints[2],
-                            dividedTimes = ints[3],
-                            mutatedTimes = ints[4]
-                        )
-                        cellEntity.organIndex[organStartCellOrganIndex] = newOrganIndex
-//                        organEntity.allocateArenas(organIndex = newOrganIndex)
-                    }
+                WorldCommandType.SPAWN_ORGANISM -> {
+                    organismSpawner.spawn(
+                        genomeIndex = ints[0],
+                        x = floats[0],
+                        y = floats[1],
+                        color = ints[1],
+                        radius = floats[2],
+                        angleCos = floats[3],
+                        angleSin = floats[4],
+                        angleDiffCos = floats[5],
+                        angleDiffSin = floats[6]
+                    )
                 }
 
                 else -> {}

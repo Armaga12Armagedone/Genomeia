@@ -190,8 +190,7 @@ class LinkEntity(
 
         // Слот из арены связей организма. Обе клетки заведомо принадлежат одному телу —
         // это уже обеспечено барьером по якорю выше, — поэтому организм берётся у любой.
-        // У зиготы, ещё не получившей ADD_ORGAN, organIndex равен -1: тогда арены нет и
-        // связь идёт общим путём.
+        // У клеток без арены (редактор, где арены выключены) связь идёт общим путём.
         val organIndex = cellEntity.organIndex[cellIndex]
         val arenaLinkSlot = if (organEntity.hasArena(organIndex)) {
             val slot = organEntity.takeLinkSlot(

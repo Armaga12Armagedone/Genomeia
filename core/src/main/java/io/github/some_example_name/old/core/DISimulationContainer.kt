@@ -259,8 +259,7 @@ object DISimulationContainer : DIContext, Disposable {
         particleEntity = particleEntity,
         gridManager = gridManager,
         specialEntity = specialEntity,
-        organEntity = organEntity,
-        isEditor = false
+        organEntity = organEntity
     )
 
     val cellSystem = CellSystem(

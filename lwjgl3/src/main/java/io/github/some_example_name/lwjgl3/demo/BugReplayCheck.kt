@@ -75,6 +75,7 @@ fun main(args: Array<String>) {
             // прошёл бы, даже не восстановив импорт из .bug.
             File("${GameFiles.GENOMES}/$IMPORT_NAME.genome").delete()
             File("${GameFiles.GENOMES}/$CONTROLLER_NAME.genome").delete()
+            File("${GameFiles.GENOMES}/$PRODUCER_NAME.genome").delete()
             listener = { game -> Recorder(game, pathFile) }
         }
         "replay" -> {
@@ -110,6 +111,44 @@ private const val IMPORT_NAME = "bugReplayCheck-import"
  * зажимает — контроллеры их слышат. Геном не запечён: импорт допечёт его сам.
  */
 private const val CONTROLLER_NAME = "bugReplayCheck-controller"
+
+/**
+ * Геном с продюсером, который рожает потомка, пока зажата W: контроллер (W) ведёт
+ * нейросвязью в продюсер, а сценарий держит W 120 тиков. Без него рождение нового
+ * организма в мире (OrganismSpawner, SPAWN_ORGANISM) в хэшах не проверялось бы: продюсеры
+ * встроенных геномов за время сценария не срабатывают. Окно клавиши ограничивает потомство:
+ * потомки за 120 тиков не вырастают и сами не рожают.
+ */
+private const val PRODUCER_NAME = "bugReplayCheck-producer"
+
+private fun producerGenome(): Genome {
+    val toZygote = mapOf(0 to LinkData(length = 0.6f))
+    return Genome(
+        version = 24,
+        name = PRODUCER_NAME,
+        stageInstruction = listOf(
+            GenomeStage(mapOf(
+                0 to CellAction(divide = Action(id = 1, angle = 1.57f, cellType = "leaf", physicalLink = toZygote, color = Color.GREEN))
+            )),
+            GenomeStage(mapOf(
+                0 to CellAction(divide = Action(
+                    id = 2, angle = 0f, cellType = "controller", physicalLink = toZygote, color = Color.PURPLE,
+                    funActivation = "linear", a = 1f, b = 0f, c = 0f, isSum = true, special = ControllerData("W")
+                ))
+            )),
+            GenomeStage(mapOf(
+                0 to CellAction(divide = Action(
+                    id = 3, angle = 3.14f, cellType = "producer", physicalLink = toZygote, color = Color.RED,
+                    funActivation = "linear", a = 1f, b = 0f, c = 0f, isSum = true
+                ))
+            )),
+            // Нейросвязь контроллер -> продюсер: сигнал идёт к клетке 3 (directedNeuronLink).
+            GenomeStage(mapOf(
+                3 to CellAction(mutate = Action(physicalLink = mapOf(2 to LinkData(isNeuronal = true, directedNeuronLink = 3))))
+            ))
+        )
+    )
+}
 
 private fun controllerGenome(): Genome {
     val link = mapOf(0 to LinkData(length = 0.6f))
@@ -183,11 +222,14 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 File(IMPORT_SOURCE).copyTo(dropped, overwrite = true)
                 val controllers = File(pathFile.parentFile, "$CONTROLLER_NAME.genome")
                 controllers.writeBytes(encodeGenome(controllerGenome()))
-                game.filesDropped(listOf(dropped.absolutePath, controllers.absolutePath))
+                val producers = File(pathFile.parentFile, "$PRODUCER_NAME.genome")
+                producers.writeBytes(encodeGenome(producerGenome()))
+                game.filesDropped(listOf(dropped.absolutePath, controllers.absolutePath, producers.absolutePath))
                 check(IMPORT_NAME in GenomeCatalog.playerNames()) {
                     "перетащенный $IMPORT_SOURCE не появился среди геномов"
                 }
                 check(CONTROLLER_NAME in GenomeCatalog.playerNames()) { "геном с контроллерами не импортировался" }
+                check(PRODUCER_NAME in GenomeCatalog.playerNames()) { "геном с продюсером не импортировался" }
                 pause(10)
             }
 
@@ -240,8 +282,10 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 check(imported >= 0 && genomes[imported].cellsAmount > 0) { "импортированный JSON не в мире или не запечён" }
                 val controllers = GenomeCatalog.all().indexOf(CONTROLLER_NAME)
                 check(controllers >= 0 && genomes[controllers].cellsAmount > 0) { "геном с контроллерами не в мире или не запечён" }
-                val baked = listOf(imported, controllers) +
-                    genomes.indices.filter { it != imported && it != controllers && genomes[it].cellsAmount > 0 }
+                val producers = GenomeCatalog.all().indexOf(PRODUCER_NAME)
+                check(producers >= 0 && genomes[producers].cellsAmount > 0) { "геном с продюсером не в мире или не запечён" }
+                val generated = listOf(imported, controllers, producers)
+                val baked = generated + genomes.indices.filter { it !in generated && genomes[it].cellsAmount > 0 }
                 screen(SimulationIntent.SelectGenome(GenomeCatalog.all()[baked.first()]))
                 // Все запечённые геномы по кругу: нейросвязи, феромоны, глаза — всё, что
                 // есть в папке, должно попасть в мир и в хэш состояния.
@@ -323,6 +367,7 @@ private class Recorder(private val game: MyGame, private val pathFile: File) : A
                 // Импортированный геном уже в .bug (приложения сессии) — из папки разработчика долой.
                 GameFiles.genomesDir().child("$IMPORT_NAME.genome").delete()
                 GameFiles.genomesDir().child("$CONTROLLER_NAME.genome").delete()
+                GameFiles.genomesDir().child("$PRODUCER_NAME.genome").delete()
                 exitCode = 0
                 Gdx.app.exit()
             }

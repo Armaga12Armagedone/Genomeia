@@ -28,8 +28,7 @@ class MutateManager(
     val worldCommandsManager: WorldCommandsManager,
     val gridManager: GridManager,
     val specialEntity: SpecialEntity,
-    val organEntity: OrganEntity,
-    val isEditor: Boolean
+    val organEntity: OrganEntity
 ): Disposable {
 
     fun mutateCell(index: Int, threadId: Int) = with(cellEntity) {
@@ -50,6 +49,13 @@ class MutateManager(
             val lastCell = cellList[lastCellType]
             val newCellType = action.cellType?.let(cellList::requireIndex)
             val newCell = newCellType?.let { cellList[it] } ?: lastCell
+
+            // Мутация в зиготу пока не делает ничего — ни типа, ни остальных полей. Зигота —
+            // корень нового организма, а клетка живёт в арене своего: перенести её в новую
+            // арену — отдельная работа (см. TODO.md). Раньше клетка оставалась в теле с
+            // cellGenomeId = 0 и начинала выполнять действия генома корня. Счётчик мутаций
+            // уменьшен выше, так что стадия организма не застрянет.
+            if (newCell is Zygote && lastCell !is Zygote) return
 
             newCellType?.let {
                 isFromMuscleToAnother = lastCell is Muscle && newCell !is Muscle
@@ -81,10 +87,6 @@ class MutateManager(
                 setIsCollidable(index, newCell.isCollidable)
                 setCellStiffness(index, cellsSettings[it].cellStiffness)
                 isNeural[index] = newCell.isNeural
-
-                if (newCell is Zygote && !isEditor) {
-                    cellGenomeId[index] = 0
-                }
 
                 val genomeIndex = organEntity.genomeIndex[organIndex[index]]
                 worldCommandsManager.worldCommandBuffer[threadId].push(

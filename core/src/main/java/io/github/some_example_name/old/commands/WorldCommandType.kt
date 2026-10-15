@@ -55,9 +55,10 @@ enum class WorldCommandType(
         floatParamsCount = 4,
         booleanParamsCount = 0
     ),
-    ADD_ORGAN(
-        intParamsCount = 5,
-        floatParamsCount = 0,
+    // Новый организм от зиготы, родившейся в мире (OrganismSpawner).
+    SPAWN_ORGANISM( // genomeIndex, color; x, y, radius, angleCos, angleSin, angleDiffCos, angleDiffSin
+        intParamsCount = 2,
+        floatParamsCount = 7,
         booleanParamsCount = 0
     ),
     DELETE_ORGAN(
