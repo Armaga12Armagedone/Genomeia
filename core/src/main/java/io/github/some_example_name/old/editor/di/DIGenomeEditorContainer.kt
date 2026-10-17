@@ -3,15 +3,16 @@ package io.github.some_example_name.old.editor.di
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.base.CellListBuilder
+import io.github.some_example_name.old.cells.base.CellPalette
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandsManager
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.editor.system.command.CommandEditorStackManager
 import io.github.some_example_name.old.editor.entities.CellReplay
-import io.github.some_example_name.old.editor.entities.EyeReplay
 import io.github.some_example_name.old.editor.entities.NeuralLinkReplay
 import io.github.some_example_name.old.editor.entities.NeuralReplay
+import io.github.some_example_name.old.editor.entities.SpecialModDataReplay
 import io.github.some_example_name.old.editor.system.CellSearchManager
 import io.github.some_example_name.old.editor.system.control.LeftRightClickManager
 import io.github.some_example_name.old.editor.system.logic.EditorLogicSystem
@@ -24,21 +25,18 @@ import io.github.some_example_name.old.editor.system.logic.ToEditorDataMapper
 import io.github.some_example_name.old.editor.system.logic.UiScreenCommands
 import io.github.some_example_name.old.editor.system.render.DrawingHelperElements
 import io.github.some_example_name.old.entities.CellEntity
-import io.github.some_example_name.old.entities.EyeEntity
 import io.github.some_example_name.old.editor.baking.BodyExport
+import io.github.some_example_name.old.editor.baking.GenomeBaker
 import io.github.some_example_name.old.editor.baking.RCMSort
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralEntity
 import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
-import io.github.some_example_name.old.entities.PheromoneEmitterEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
-import io.github.some_example_name.old.entities.ProducerEntity
 import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.entities.SpecialModDataEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
-import io.github.some_example_name.old.entities.TailEntity
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.DivideManager
 import io.github.some_example_name.old.systems.genomics.MutateManager
@@ -63,6 +61,8 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     override var isDruggingCamera = false
     override var isRightClick = false
     var showPhysicalLink = true
+    /** Режим нейросвязей: Ctrl на десктопе, кнопка на телефоне. Меняется командой SetNeuralLinking. */
+    var isNeuralLinking = false
     var previousCtrlClicked = -1
     var linkColor: Color = Color.CYAN
 
@@ -76,14 +76,23 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     private val cellListBuilder = CellListBuilder().apply {
         bindToDIContext(this@DIGenomeEditorContainer)
     }
-    val cellsTypeNames = cellListBuilder.instances.map { it.name }.toTypedArray()
     val cellList = cellListBuilder.instances
+
+    /**
+     * Что игрок может выбрать в диалоге клетки (см. CellPalette). Пока задаётся кодом; уровни
+     * будут выставлять её при старте — командой, чтобы повтор .bug видел те же списки.
+     */
+    var cellPalette: CellPalette = CellPalette.FULL
+        set(value) {
+            val unknown = value.unknownKeys(cellList)
+            check(unknown.isEmpty()) { "в палитре неизвестные клетки или формулы: $unknown" }
+            field = value
+        }
     val zygote = cellListBuilder.zygote
 
     val simulationData = SimulationData()
 
     override val genomeManager = GenomeManager(
-        genomeJsonReader = DIGameGlobalContainer.genomeJsonReader,
         simulationData = simulationData
     )
 
@@ -104,31 +113,13 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         neuralStartMaxAmount = 30,
         cellList = cellList
     )
-    private val eyeEntity = EyeEntity(
-        eyeStartMaxAmount = 15
-    )
-    private val producerEntity = ProducerEntity(
-        producerStartMaxAmount = 3
-    )
     val specialModDataEntity = SpecialModDataEntity(
         specialModDataStartMaxAmount = 100
     )
 
-    val tailEntity = TailEntity(
-        tailStartMaxAmount = 5
-    )
-
-    val pheromoneEmitterEntity = PheromoneEmitterEntity(
-        pheromoneEmitterStartMaxAmount = 1
-    )
-
     override val specialEntity = SpecialEntity(
         cellsStartMaxAmount = 10,
-        eyeEntity = eyeEntity,
-        tailEntity = tailEntity,
-        specialModDataEntity = specialModDataEntity,
-        producerEntity = producerEntity,
-        pheromoneEmitterEntity = pheromoneEmitterEntity
+        specialModDataEntity = specialModDataEntity
     )
 
     override val cellEntity = CellEntity(
@@ -232,8 +223,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         particleEntity = particleEntity,
         gridManager = gridManager,
         specialEntity = specialEntity,
-        organEntity = organEntity,
-        isEditor = true
+        organEntity = organEntity
     )
 
     val cellSystem = CellSystem(
@@ -259,39 +249,34 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         neuralLinkEntity = neuralLinkEntity
     )
 
-    val eyeReplay = EyeReplay(
-        startCapacity = 300,
-        specialEntity = specialEntity,
-        eyeEntity = eyeEntity
-    )
-
     val neuralReplay = NeuralReplay(
         startCapacity = 300,
         neuralEntity = neuralEntity
     )
 
+    val specialModDataReplay = SpecialModDataReplay(
+        startCapacity = 100,
+        specialModDataEntity = specialModDataEntity
+    )
+
     override val entityList = listOf(
-        tailEntity,
         organEntity,
         particleEntity,
         neuralEntity,
-        eyeEntity,
         specialModDataEntity,
         specialEntity,
         cellEntity,
         linkEntity,
         neuralLinkEntity,
         substancesEntity,
-        producerEntity,
-        pheromoneEntity,
-        pheromoneEmitterEntity
+        pheromoneEntity
     )
 
     private val replays = listOf(
         cellReplay,
         neuralLinkReplay,
-        eyeReplay,
-        neuralReplay
+        neuralReplay,
+        specialModDataReplay
     )
 
     val userCommandManager = UserCommandManager(
@@ -321,6 +306,18 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         userCommandManager = userCommandManager
     )
 
+    /**
+     * Запекание генома: и для кнопки «Сохранить», и для геномов не из редактора (импорт,
+     * перенос старых JSON) — те выращиваются в этом же мире.
+     */
+    val genomeBaker = GenomeBaker(
+        editorSimulationSystem = editorSimulationSystem,
+        rcmSort = rcmSort,
+        cellEntity = cellEntity,
+        linkEntity = linkEntity,
+        neuralLinkEntity = neuralLinkEntity
+    )
+
     val nextStageTick get() = (currentTick + 1).coerceIn(0, lastTick)
 
     val commandEditorStackManager = CommandEditorStackManager()
@@ -331,7 +328,7 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
         editorSimulationSystem = editorSimulationSystem,
         particleEntity = particleEntity,
         neuralReplay = neuralReplay,
-        eyeReplay = eyeReplay
+        specialModDataReplay = specialModDataReplay
     )
 
     val cellSearchManager = CellSearchManager(
@@ -407,9 +404,12 @@ object DIGenomeEditorContainer: DIContext, Disposable, EditorVariables {
     )
 
     val editorRenderSystem = EditorRenderSystem(
-        shaderManager = DIGameGlobalContainer.shaderManager,
+        worldRenderer = DIGameGlobalContainer.worldRenderer,
         cellReplay = cellReplay,
+        neuralLinkReplay = neuralLinkReplay,
         particleEntity = particleEntity,
+        cellEntity = cellEntity,
+        cellList = cellList,
         editorSimulationSystem = editorSimulationSystem,
         drawingHelperElements = drawingHelperElements
     )

@@ -4,6 +4,7 @@ import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Input
 import com.badlogic.gdx.Screen
+import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.Texture
@@ -11,53 +12,76 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
+import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
+import com.badlogic.gdx.scenes.scene2d.actions.Actions
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
+import com.badlogic.gdx.scenes.scene2d.utils.Layout
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.kotcrab.vis.ui.widget.VisDialog
+import com.kotcrab.vis.ui.widget.VisLabel
+import com.kotcrab.vis.ui.widget.VisTextButton
+import io.github.some_example_name.old.bug.ReplayTarget
+import io.github.some_example_name.old.commands.GameCommand
+import io.github.some_example_name.old.commands.GoGenomeEditor
+import io.github.some_example_name.old.commands.GoMenu
+import io.github.some_example_name.old.commands.GoReplace
 import io.github.some_example_name.old.commands.PlayerCommand
-import io.github.some_example_name.old.core.DEBUG_CHECKS
+import io.github.some_example_name.old.core.ui.KeyboardFocus
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.ui.CameraControl
 import io.github.some_example_name.old.core.ui.h
 import io.github.some_example_name.old.core.ui.makeStyledButton
+import io.github.some_example_name.old.core.ui.setupTitleSize
+import io.github.some_example_name.old.core.ui.renderModeSelectBox
 import io.github.some_example_name.old.core.ui.w
-import io.github.some_example_name.old.features.editor.GenomeEditorScreen
-import io.github.some_example_name.old.features.menu.MenuScreen
-import io.github.some_example_name.old.systems.render.doesUsePostProcess
+import io.github.some_example_name.old.features.worldeditor.WorldSpec
+import io.github.some_example_name.old.game.applyCustomFontMedium
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
+import io.github.some_example_name.old.systems.simulation.ControllerKeys
+import io.github.some_example_name.render.debug.RenderSceneDump
+import java.io.File
 
 class SimulationScreen(
-    val map: Array<BooleanArray>?,
-    val genomeName: String?
-) : Screen {
+    /** Рецепт мира из редактора. null — мир не из редактора (тест генома). */
+    val world: WorldSpec?,
+    val genomeName: String?,
+    /** Слот сохранённого мира: мир загружается из него, см. MapSave. */
+    val savedWorld: String? = null
+) : Screen, ReplayTarget {
 
-    private val simEntity = DISimulationContainer.simulationData
     private val simulationSystem = DISimulationContainer.simulationSystem
     private val renderSystem = DISimulationContainer.renderSystem
     private val userCommandManager = DISimulationContainer.userCommandManager
 
     private val camera = OrthographicCamera().apply { setToOrtho(false, w, h) }
 
+    /**
+     * Все кнопки экрана — через неё. Сам экран состояние не меняет: он собирает команду
+     * из нажатия и показывает результат, см. GameCommand.
+     */
+    private val viewModel = SimulationViewModel(
+        genomeName = genomeName,
+        world = world,
+        savedWorld = savedWorld,
+        camera = camera
+    )
+
     val cameraControl = CameraControl(
         camera = camera,
         zoom = 0.08f,
-        positionX = DISimulationContainer.gridWidth / 2f,
-        positionY = DISimulationContainer.gridHeight / 2f,
+        // Центр мира ставится в show(), когда размер сетки уже взят из мира.
         onTouchDown = { x, y, isLeft ->
-            if (isLeft) {
-                userCommandManager.push(PlayerCommand.TouchDown(x, y, isLeftButton = true))
-            } else {
-                userCommandManager.push(PlayerCommand.TouchDown(x, y, isLeftButton = false))
-            }
+            userCommandManager.push(PlayerCommand.TouchDown(x, y, isLeftButton = isLeft))
         },
         onTap = { x, y, isLeft ->
-            if (isLeft) {
-                userCommandManager.push(PlayerCommand.Tap(x, y, isLeftButton = putOrgs))
-            } else {
-                userCommandManager.push(PlayerCommand.Tap(x, y, isLeftButton = !putOrgs))
-            }
+            // «Поставить организм» меняет кнопки местами. Решается здесь, при создании
+            // команды: в запись сессии уходит уже итоговая кнопка.
+            val putOrganism = viewModel.putOrganism
+            userCommandManager.push(PlayerCommand.Tap(x, y, isLeftButton = if (isLeft) putOrganism else !putOrganism))
         },
         onFling = {
             userCommandManager.push(PlayerCommand.StopDrag)
@@ -68,8 +92,11 @@ class SimulationScreen(
                     PlayerCommand.Drag(x, y, dx, dy)
                 )
             } else {
-                renderSystem.moveCamera(dx, dy)
+                viewModel.handle(SimulationIntent.MoveCamera(dx, dy))
             }
+        },
+        onZoom = { zoom, x, y ->
+            viewModel.handle(SimulationIntent.ZoomCamera(zoom, x, y))
         }
     )
 
@@ -83,14 +110,22 @@ class SimulationScreen(
     private var currentScreenWidth = 0
     private var currentScreenHeight = 0
 
-    private lateinit var genomeNames: List<String>
-
-    private var putOrgs = true
     var onResize: (() -> Unit)? = null
     private val extraTextures = mutableListOf<Texture>()
 
+    /** Кнопки, которым экран меняет вид по эффектам ViewModel. Пересоздаются в rebuildMenu. */
+    private var pauseSimToggle: VisTextButton? = null
+    private var saveWorldButton: VisTextButton? = null
+
+    /**
+     * Последнее состояние клавиш контроллера НА КЛАВИАТУРЕ. Команда уходит только при
+     * смене состояния: опрос идёт каждый кадр, а журналу нужно нажатие, а не кадр.
+     */
+    private val keyboardKeys = BooleanArray(CONTROLLER_KEY_CODES.size)
+
     override fun show() {
-        DISimulationContainer.genomeManager.loadGenomes(genomeName)
+        viewModel.loadGenomes()
+        viewModel.onEffect = ::applyEffect
 
         spriteBatch = SpriteBatch()
         stage = Stage(ScreenViewport())
@@ -103,25 +138,10 @@ class SimulationScreen(
         // Масштабируем шрифт симуляционной информации под DPI (density)
         // Это обеспечивает корректный размер текста при любом разрешении/DPI
         font.data.setScale(Gdx.graphics.density)
-        DISimulationContainer.resizeWorld()
 
         root = Table()
         root.setFillParent(true)
         stage.addActor(root)
-
-        // Здесь именно имена ФАЙЛОВ, а не Genome.name.
-        //
-        // Индекс в этом списке используется как индекс в genomeManager.genomes, а тот
-        // наполняется в loadGenomes ровно обходом getGenomeFileNamesFromFolder. Внутреннее
-        // имя генома с именем файла совпадать не обязано: файл может быть переименован,
-        // а при импорте на Android имя файла вообще приходило с префиксом (см.
-        // AndroidFileProvider.sanitizeGenomeFileName). Диалог выбора отдаёт обратно именно
-        // имя файла, поэтому и искать индекс надо в списке имён файлов.
-        genomeNames = if (genomeName == null) {
-            DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder()
-        } else {
-            listOf(genomeName)
-        }
 
         rebuildMenu()
         currentScreenWidth = Gdx.graphics.width
@@ -135,70 +155,81 @@ class SimulationScreen(
             camera = camera
         )
 
-        DISimulationContainer.worldTerrainManager.map = map
-        simulationSystem.initMap()
-
-        // Поток симуляции стартует ТОЛЬКО после того, как мир создан.
-        //
-        // Раньше startThread() стоял выше по show(), а initMap() — здесь, и оба вызова
-        // идут с GL-потока. То есть initWorld создавал десятки тысяч частиц, пока поток
-        // симуляции уже крутил тики: addParticle мутирует aliveList/lastId/deadStack
-        // сущности и pending/pendingCount в GridManager, а тик в это же время читает их
-        // и в конце rebuild делает pendingCount = 0.
-        //
-        // Частица, зарегистрированная между захватом pendingSize в rebuild и обнулением
-        // счётчика, теряется безвозвратно: в particleIdx она не попала, а из pending её
-        // стёрло. Дальше она жива, имеет корректный gridId, рисуется из aliveList — но
-        // в сетке её нет, поэтому по ней не считаются столкновения и её не берёт курсор.
-        //
-        // На экране это горизонтальные полосы, потому что initWorld заполняет карту
-        // построчно, а rebuild случается раз в тик: каждый тик терялась очередная пачка
-        // подряд идущих строк. Шаг полос — сколько строк GL-поток успевал создать за один
-        // тик, и он лишь по случайности похож на высоту чанка.
-        //
-        // На десктопе заполнение карты укладывалось в пару тиков, поэтому эффект был почти
-        // невидим; на Android те же десятки тысяч addParticle идут в разы дольше, и окно
-        // гонки растягивалось на десятки тиков.
-        simulationSystem.startThread()
+        // Построение мира и запуск потока симуляции — в ViewModel, см. startWorld.
+        val started = viewModel.startWorld()
+        // Размер сетки известен только теперь: его задаёт рецепт или сохранение мира.
+        camera.position.set(DISimulationContainer.gridWidth / 2f, DISimulationContainer.gridHeight / 2f, 0f)
+        camera.update()
+        if (!started) showLoadError()
     }
 
-    val keyCodes = intArrayOf(
-        Input.Keys.NUM_0, Input.Keys.NUM_1, Input.Keys.NUM_2, Input.Keys.NUM_3,
-        Input.Keys.NUM_4, Input.Keys.NUM_5, Input.Keys.NUM_6, Input.Keys.NUM_7,
-        Input.Keys.NUM_8, Input.Keys.NUM_9,
-        Input.Keys.W, Input.Keys.A, Input.Keys.S, Input.Keys.D,
-        Input.Keys.SPACE,
-        Input.Keys.UP, Input.Keys.LEFT, Input.Keys.DOWN, Input.Keys.RIGHT
-    )
+    private fun showLoadError() {
+        val game = DIGameGlobalContainer.game
+        val bundle = DIGameGlobalContainer.bundle
+        VisDialog(bundle.get("dialog.worlds")).apply {
+            isModal = true
+            setupTitleSize(game)
+            val message = VisLabel(bundle.get("label.loadFailed"))
+            game.applyCustomFontMedium(message)
+            contentTable.add(message).pad(16f * Gdx.graphics.density)
+            closeOnEscape()
+            pack()
+            centerWindow()
+        }.show(stage)
+    }
+
+    override fun replay(command: GameCommand): Boolean {
+        if (command !is SimulationIntent) return false
+        viewModel.handle(command)
+        return true
+    }
+
+    override fun onReplayFinished() = applyEffect(SimulationEffect.PauseChanged)
+
+    /** Вёрстка того, что попросила ViewModel. */
+    private fun applyEffect(effect: SimulationEffect) {
+        when (effect) {
+            SimulationEffect.RebuildMenu -> rebuildMenu()
+
+            SimulationEffect.PauseChanged -> pauseSimToggle?.isChecked = viewModel.isPaused
+
+            is SimulationEffect.WorldSaved -> saveWorldButton?.let {
+                flashText(it, if (effect.success) "label.saved" else "label.saveFailed")
+            }
+        }
+    }
+
+    /** Ненадолго подменить надпись на кнопке — единственный отклик на сохранение. */
+    private fun flashText(button: VisTextButton, key: String) {
+        val original = button.text.toString()
+        button.setText(DIGameGlobalContainer.bundle.get(key))
+        button.clearActions()
+        button.addAction(Actions.delay(1.5f, Actions.run { button.setText(original) }))
+    }
 
     override fun render(delta: Float) {
+        // Пока игрок печатает (окно отчёта, поле ввода), клавиатура — его тексту, а не игре:
+        // иначе «в» в описании бага — это клавиша D, а «н» — Y. Нажатые клавиши при этом
+        // отпускаются, чтобы не залипли.
+        val typing = KeyboardFocus.isTyping(stage)
         if (Gdx.app.type == Application.ApplicationType.Desktop) {
-            for (i in 0 until 19) {
-                simulationSystem.simulationData.controllerKeyTouched[i] =
-                    Gdx.input.isKeyPressed(keyCodes[i])
+            for (i in CONTROLLER_KEY_CODES.indices) {
+                val pressed = !typing && Gdx.input.isKeyPressed(CONTROLLER_KEY_CODES[i])
+                if (pressed != keyboardKeys[i]) {
+                    keyboardKeys[i] = pressed
+                    viewModel.handle(SimulationIntent.SetControllerKey(i, pressed))
+                }
             }
         }
 
-        // Отладочный стресс-тест жизненного цикла клеток: A убивает случайные клетки,
-        // D разгоняет их до предела, чтобы они улетали и рвали свои связи. Пока клавиша
-        // зажата — каждый тик. Нужен, чтобы гонки и битые ссылки в связях воспроизводились
-        // сами, а не руками.
-        //
-        // A и D заняты управлением организмом (controllerKeyTouched), но в обычной сборке
-        // этот блок вырезается компилятором целиком, так что конфликт живёт только в
-        // отладочной.
-        if (DEBUG_CHECKS) {
-            simulationSystem.simulationData.debugKillCells =
-                Gdx.input.isKeyPressed(Input.Keys.A)
-            simulationSystem.simulationData.debugFlingCells =
-                Gdx.input.isKeyPressed(Input.Keys.D)
-        }
+        // Отладочный стресс-тест (A убивает клетки, D разгоняет их) берёт клавиши из снимка
+        // контроллера в потоке симуляции — см. SimulationSystem.latchControllerKeys.
 
-        if (doesUsePostProcess) {
-            Gdx.gl.glClearColor(0.0f, 0.0f, 0.0f, 1f)
-        } else {
-            Gdx.gl.glClearColor(1.0f * 0.7f, 0.969f * 0.7f, 0.855f * 0.7f, 1.0f)
-        }
+        // Фон здесь не важен ни в одном режиме: реалистичный закрывает экран постпроцессом,
+        // а отладочный и ностальгический рисуют свой фон сами — он часть их рисунка.
+        // Раньше под отладкой здесь заливался бежевый: тогда отладка рисовала клетки прямо
+        // поверх очищенного экрана.
+        Gdx.gl.glClearColor(0.0f, 0.0f, 0.0f, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
         shapeRenderer.projectionMatrix = camera.combined
@@ -208,14 +239,67 @@ class SimulationScreen(
         stage.act(Gdx.graphics.deltaTime)
         stage.draw()
 
-        if (Gdx.input.isKeyPressed(Input.Keys.Z)) {
-            root.clear()
-            renderSystem.isRenderUi = false
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.Z)) {
+            viewModel.handle(SimulationIntent.SetUiVisible(false))
         }
-        if (Gdx.input.isKeyPressed(Input.Keys.Y)) {
-            rebuildMenu()
-            renderSystem.isRenderUi = true
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.Y)) {
+            viewModel.handle(SimulationIntent.SetUiVisible(true))
         }
+
+        // ВРЕМЕННОЕ: F9 выгружает вход рендера в файл для стенда RenderLab.
+        //
+        // Именно после renderSystem.render(), а не до: пишется тот кадр, который только
+        // что ушёл на GPU. Открывается потом так:
+        //   gradlew :render:renderLab
+        // Удалять — вместе с dumpSceneToFile ниже.
+        if (Gdx.app.type == Application.ApplicationType.Desktop && !typing &&
+            Gdx.input.isKeyJustPressed(Input.Keys.F9)
+        ) {
+            dumpSceneToFile()
+        }
+    }
+
+    /**
+     * ВРЕМЕННОЕ: см. обработчик F9 выше.
+     *
+     * Пишется два файла: с меткой времени — чтобы прошлые снимки не затирались, и
+     * scene-last.scene — чтобы стенд можно было запускать вообще без аргументов.
+     */
+    private fun dumpSceneToFile() {
+        val stamp = System.currentTimeMillis()
+        try {
+            val directory = sceneDumpDirectory()
+            val file = directory.child("scene-$stamp.${RenderSceneDump.EXTENSION}")
+            renderSystem.dumpScene(file)
+            renderSystem.dumpScene(directory.child("scene-last.${RenderSceneDump.EXTENSION}"))
+            // Путь именно АБСОЛЮТНЫЙ: относительный ничего не говорит, пока не знаешь
+            // рабочий каталог, а он у игры разный — см. sceneDumpDirectory.
+            Gdx.app.log("SceneDump", "сцена выгружена: ${file.file().absolutePath}")
+        } catch (e: Exception) {
+            Gdx.app.error("SceneDump", "не удалось выгрузить сцену", e)
+        }
+    }
+
+    /**
+     * Куда складывать дампы.
+     *
+     * Рабочий каталог у игры РАЗНЫЙ: задача gradlew :lwjgl3:run запускает её из assets/
+     * (так надо шейдерам и текстурам), а из IDE она стартует в корне проекта. Поэтому
+     * жёсткий относительный путь верен ровно в одном из двух случаев — и промах тихий:
+     * файл пишется, лог рапортует об успехе, а в проекте ничего не появляется.
+     *
+     * Отсюда: пляшем от рабочего каталога, но если это assets — поднимаемся на уровень
+     * выше. Складывать дампы в assets нельзя ни при каком раскладе, их подхватит
+     * generateAssetList и они уедут в сборку игры.
+     *
+     * Переопределяется: -Dgenomeia.sceneDumpDir=C:\куда\надо
+     */
+    private fun sceneDumpDirectory(): FileHandle {
+        System.getProperty("genomeia.sceneDumpDir")?.let { return Gdx.files.absolute(it) }
+
+        val working = File("").absoluteFile
+        val root = if (working.name.equals("assets", ignoreCase = true)) working.parentFile else working
+        return Gdx.files.absolute(File(root, "scene-dumps").absolutePath)
     }
 
     override fun resize(width: Int, height: Int) {
@@ -245,24 +329,25 @@ class SimulationScreen(
     }
 
     override fun pause() {
-        simEntity.isPlay = false
-        // Приложение свёрнуто: воркерам разрешаем спать долго. Без этого каждый из них
-        // просыпается по таймауту парковки сотни раз в секунду всё время, что игра висит
-        // в фоне, — на телефоне это заметный расход батареи впустую.
-        DISimulationContainer.threadManager.executor.setBackground(true)
+        viewModel.handle(SimulationIntent.AppPaused)
     }
 
     override fun resume() {
-        simEntity.isPlay = true
-        DISimulationContainer.threadManager.executor.setBackground(false)
+        viewModel.handle(SimulationIntent.AppResumed)
     }
 
     override fun hide() { }
 
     override fun dispose() {
+        viewModel.stopWorld()
         renderSystem.dispose()
         simulationSystem.simulationData.isFinish = true
         simulationSystem.stopUpdateThread()
+        // isFinish обрабатывает тик, но цикл мог остановиться раньше, чем до него дошёл
+        // (на паузе — наверняка). Тогда флаг пережил бы экран, и первый тик следующего
+        // захода снёс бы только что построенный мир, а запись сессии осталась бы
+        // незакрытой. Поток уже остановлен, так что дочищаем отсюда.
+        if (simulationSystem.simulationData.isFinish) simulationSystem.dispose()
         // Пул воркеров живёт в синглтоне контейнера и раньше не останавливался никогда.
         // На десктопе это сходило с рук: потоки daemon, и они умирали вместе с JVM. На
         // Android процесс переживает Activity, поэтому после выхода в меню пул продолжал
@@ -280,75 +365,93 @@ class SimulationScreen(
         extraTextures.forEach { it.dispose() }
         extraTextures.clear()
         root.clear()
+        pauseSimToggle = null
+        saveWorldButton = null
+
+        // Интерфейс спрятан (клавиша Z) — только мир, без единой кнопки.
+        if (!viewModel.isUiVisible) return
 
         root.top().left()
 
+        val bundle = DIGameGlobalContainer.bundle
+        val game = DIGameGlobalContainer.game
+
         val menuButton = makeStyledButton(
-            if (genomeName == null) DIGameGlobalContainer.bundle.get("button.menu") else DIGameGlobalContainer.bundle.get(
-                "button.backToEditor"
-            ),
-            DIGameGlobalContainer.game, extraTextures
-        )
-        val putOrganismToggle =
-            makeStyledButton(
-                DIGameGlobalContainer.bundle.get("button.putOrganism"),
-                DIGameGlobalContainer.game,
-                extraTextures,
-                toggle = true
+            if (genomeName == null) bundle.get("button.menu") else bundle.get("button.backToEditor"),
+            game, extraTextures
+        ).onClick {
+            // Через менеджер, а не game.screen = ...: иначе переход не виден журналу,
+            // а стек остаётся от прошлого маршрута — «Назад» в меню уводило бы туда,
+            // откуда игрок уже вышел.
+            DIGameGlobalContainer.navigationCommandsManager.performCommand(
+                if (genomeName == null) {
+                    GoReplace(GoMenu)
+                } else {
+                    GoReplace(GoGenomeEditor(genomeName.replace(".json", "")))
+                }
             )
-        putOrganismToggle.isChecked = putOrgs
-        val selectGenomeButton =
-            makeStyledButton(
-                DIGameGlobalContainer.bundle.get("button.selectGenome"),
-                DIGameGlobalContainer.game,
-                extraTextures
-            )
-        val speedUpSimToggle   = makeStyledButton(
-            DIGameGlobalContainer.bundle.get("button.speedUp"),
-            DIGameGlobalContainer.game,
-            extraTextures
-        )
-        val pauseSimToggle     =
-            makeStyledButton(
-                DIGameGlobalContainer.bundle.get("button.pause"),
-                DIGameGlobalContainer.game,
-                extraTextures,
-                toggle = true
-            )
-        pauseSimToggle.isChecked = !simEntity.isPlay
-        val restartSimulationButton =
-            makeStyledButton(
-                DIGameGlobalContainer.bundle.get("button.restart"),
-                DIGameGlobalContainer.game,
-                extraTextures
-            )
-        val drawRaysToggle =
-            makeStyledButton(
-                DIGameGlobalContainer.bundle.get("button.drawRays"),
-                DIGameGlobalContainer.game,
-                extraTextures,
-                toggle = true
-            )
-        drawRaysToggle.isChecked = doesUsePostProcess
+        }
 
-        val controllerKeysToggle =
-            makeStyledButton(
-                "Controller Keys",
-                DIGameGlobalContainer.game,
-                extraTextures,
-                toggle = true
-            )
+        val putOrganismToggle = makeStyledButton(bundle.get("button.putOrganism"), game, extraTextures, toggle = true)
+        putOrganismToggle.isChecked = viewModel.putOrganism
+        putOrganismToggle.onClick {
+            viewModel.handle(SimulationIntent.SetPutOrganism(putOrganismToggle.isChecked))
+        }
+
+        val selectGenomeButton = makeStyledButton(bundle.get("button.selectGenome"), game, extraTextures).onClick {
+            showGenomeList()
+        }
+
+        val speedUpButton = makeStyledButton(bundle.get("button.speedUp"), game, extraTextures).onClick {
+            SpeedUpDialog(
+                game = game,
+                bundle = bundle,
+                onTargetUps = { viewModel.handle(SimulationIntent.SetTargetUps(it)) },
+                onMaxSpeed = { viewModel.handle(SimulationIntent.SetMaxSpeed(it)) }
+            ).show(stage)
+        }
+
+        val pauseToggle = makeStyledButton(bundle.get("button.pause"), game, extraTextures, toggle = true)
+        pauseToggle.isChecked = viewModel.isPaused
+        pauseToggle.onClick {
+            viewModel.handle(SimulationIntent.SetPaused(pauseToggle.isChecked))
+        }
+        pauseSimToggle = pauseToggle
+
+        val restartSimulationButton = makeStyledButton(bundle.get("button.restart"), game, extraTextures).onClick {
+            viewModel.handle(SimulationIntent.Restart)
+        }
+
+        // Режим — свой у симуляции: ни меню, ни редактор генома его не видят.
+        val renderModeSelect = renderModeSelectBox(
+            selected = renderSystem.mode,
+            onSelect = { viewModel.handle(SimulationIntent.SetRenderMode(it)) }
+        )
+
+        val controllerKeysToggle = makeStyledButton("Controller Keys", game, extraTextures, toggle = true)
         controllerKeysToggle.isChecked = simulationSystem.simulationData.showControllerKeys
+        controllerKeysToggle.onClick {
+            // Панель пересоберёт эффект RebuildMenu: клавиатуру надо показать или спрятать.
+            viewModel.handle(SimulationIntent.SetControllerKeysVisible(controllerKeysToggle.isChecked))
+        }
 
-        val buttons = if (genomeName == null) {
+        val saveButton = makeStyledButton(bundle.get("button.save"), game, extraTextures).onClick {
+            viewModel.handle(viewModel.saveWorldIntent())
+        }
+        saveWorldButton = saveButton
+
+        // Сохранение только у обычного мира: тест генома — временный мир, из которого
+        // возвращаются в редактор.
+        val buttons: List<Actor> = if (genomeName == null) {
             listOf(
-                menuButton, putOrganismToggle, selectGenomeButton, speedUpSimToggle,
-                pauseSimToggle, restartSimulationButton, drawRaysToggle, controllerKeysToggle
+                menuButton, putOrganismToggle, selectGenomeButton, speedUpButton,
+                pauseToggle, restartSimulationButton, renderModeSelect, controllerKeysToggle,
+                saveButton
             )
         } else {
             listOf(
-                menuButton, putOrganismToggle, speedUpSimToggle, pauseSimToggle,
-                restartSimulationButton, drawRaysToggle, controllerKeysToggle
+                menuButton, putOrganismToggle, speedUpButton, pauseToggle,
+                restartSimulationButton, renderModeSelect, controllerKeysToggle
             )
         }
 
@@ -360,7 +463,8 @@ class SimulationScreen(
         rowTable.defaults().pad(8f * Gdx.graphics.density).left()
 
         for (button in buttons) {
-            val prefWidth = button.prefWidth + 16f * Gdx.graphics.density
+            // Кнопки и список режима — разные виджеты, общее у них только Layout.
+            val prefWidth = (button as Layout).prefWidth + 16f * Gdx.graphics.density
             if (currentWidth + prefWidth > Gdx.graphics.width && currentWidth > 0f) {
                 controls.add(rowTable).growX().row()
                 rowTable = Table()
@@ -376,355 +480,153 @@ class SimulationScreen(
 
         root.add(controls).growX().top().left().row()
 
-        // === НОВАЯ КЛАВИАТУРА (3 строки) ===
         if (simulationSystem.simulationData.showControllerKeys) {
+            controllerKeyboard()
+        }
+    }
 
-            val density = Gdx.graphics.density
-            val screenW = minOf(Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat())
+    /**
+     * Экранная клавиатура контроллера: цифры сверху, WASD, пробел и стрелки снизу.
+     * Индексы клавиш — те же, что в [CONTROLLER_KEY_CODES].
+     */
+    private fun controllerKeyboard() {
+        val density = Gdx.graphics.density
+        val screenW = minOf(Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat())
 
-            // Размеры кнопок
-            val keySize = screenW * 0.075f          // ~8.5% ширины экрана
-            val spaceSize = screenW * 0.38f         // ~38% ширины экрана
+        // Размеры кнопок
+        val keySize = screenW * 0.075f          // ~8.5% ширины экрана
+        val spaceSize = screenW * 0.38f         // ~38% ширины экрана
 
-            // === 1. ЦИФРЫ (0-9) — полноширинная строка под верхними кнопками ===
-            val numbersTable = Table()
-            numbersTable.defaults().pad(3f * density).width(keySize).height(keySize)
+        // === 1. ЦИФРЫ (0-9) — полноширинная строка под верхними кнопками ===
+        val numbersTable = Table()
+        numbersTable.defaults().pad(3f * density).width(keySize).height(keySize)
+        for (num in 0..9) {
+            numbersTable.add(controllerKeyButton(num.toString(), index = num))
+        }
+        root.add(numbersTable).growX().top().left().padTop(8f * density).row()
 
-            for (num in 0..9) {
-                val btn =
-                    makeStyledButton(num.toString(), DIGameGlobalContainer.game, extraTextures)
+        // === Spacer, который выталкивает нижнюю клавиатуру вниз ===
+        root.add().growY().row()
 
-                // === Слушатель для цифр ===
-                val index = num          // 0..9
-                btn.addListener(object : ClickListener() {
-                    override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                        simulationSystem.simulationData.controllerKeyTouched[index] = true
-                        return true
-                    }
-                    override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                        simulationSystem.simulationData.controllerKeyTouched[index] = false
-                    }
-                })
-                numbersTable.add(btn)
-            }
-            root.add(numbersTable).growX().top().left().padTop(8f * density).row()
+        // === 2. НИЖНЯЯ КЛАВИАТУРА (WASD + Space + стрелки) ===
+        val bottomKeyboard = Table()
+        bottomKeyboard.defaults().pad(4f * density).left()
 
-            // === Spacer, который выталкивает нижнюю клавиатуру вниз ===
-            root.add().growY().row()
+        // Строка 2: W                    ↑   (W над S, ↑ над ↓)
+        val row2 = Table()
+        row2.defaults().height(keySize)
+        row2.add(controllerKeyButton("W=10", index = 10))
+            .padLeft(keySize + 8f * density)
+            .width(keySize)
+            .left()
+        // Пустое растягивающееся пространство
+        row2.add().growX()
+        row2.add(controllerKeyButton("^=15", index = 15))
+            .padRight(keySize + 8f * density)
+            .width(keySize)
+            .right()
+        bottomKeyboard.add(row2).growX().row()
 
-            // === 2. НИЖНЯЯ КЛАВИАТУРА (WASD + Space + стрелки) ===
-            val bottomKeyboard = Table()
-            bottomKeyboard.defaults().pad(4f * density).left()
+        // Строка 3: A S D   (SPACE)   ← ↓ →
+        val row3 = Table()
+        row3.defaults().pad(3f * density).height(keySize)
 
-            // Строка 2: W                    ↑   (W над S, ↑ над ↓)
-            val row2 = Table()
+        val leftGroup = Table()
+        leftGroup.defaults().pad(3f * density).width(keySize).height(keySize)
+        leftGroup.add(controllerKeyButton("A=11", index = 11))
+        leftGroup.add(controllerKeyButton("S=12", index = 12))
+        leftGroup.add(controllerKeyButton("D=13", index = 13))
 
-            // таблица занимает всю ширину
-            row2.defaults().height(keySize)
+        val rightGroup = Table()
+        rightGroup.defaults().pad(3f * density).width(keySize).height(keySize)
+        rightGroup.add(controllerKeyButton("<=16", index = 16))
+        rightGroup.add(controllerKeyButton("v=17", index = 17))
+        rightGroup.add(controllerKeyButton(">=18", index = 18))
 
-            // Левая кнопка
-            val wBtn = makeStyledButton("W=10", DIGameGlobalContainer.game, extraTextures)
-//            applyCustomFont(wBtn)
+        row3.add(leftGroup).left().expandX()
+        row3.add(controllerKeyButton("(SPACE)=14", index = 14))
+            .width(spaceSize)
+            .center()
+        row3.add(rightGroup).right().expandX()
 
-            wBtn.addListener(object : ClickListener() {
+        bottomKeyboard.add(row3).growX().row()
+
+        root.add(bottomKeyboard)
+            .growX()
+            .bottom()
+            .left()
+            .padBottom(30f * density)
+            .row()
+    }
+
+    /** Клавиша экранной клавиатуры: нажата, пока на ней палец. */
+    private fun controllerKeyButton(text: String, index: Int): VisTextButton =
+        makeStyledButton(text, DIGameGlobalContainer.game, extraTextures).apply {
+            addListener(object : ClickListener() {
                 override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                    simulationSystem.simulationData.controllerKeyTouched[10] = true
+                    viewModel.handle(SimulationIntent.SetControllerKey(index, pressed = true))
                     return true
                 }
 
                 override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                    simulationSystem.simulationData.controllerKeyTouched[10] = false
+                    viewModel.handle(SimulationIntent.SetControllerKey(index, pressed = false))
                 }
             })
-
-            // Правая кнопка
-            val upBtn = makeStyledButton("^=15", DIGameGlobalContainer.game, extraTextures)
-//            applyCustomFont(upBtn)
-
-            upBtn.addListener(object : ClickListener() {
-                override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                    simulationSystem.simulationData.controllerKeyTouched[15] = true
-                    return true
-                }
-
-                override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                    simulationSystem.simulationData.controllerKeyTouched[15] = false
-                }
-            })
-
-            // Левая кнопка
-            row2.add(wBtn)
-                .padLeft(keySize + 8f * density)
-                .width(keySize)
-                .left()
-
-            // Пустое растягивающееся пространство
-            row2.add()
-                .growX()
-
-            // Правая кнопка
-            row2.add(upBtn)
-                .padRight(keySize + 8f * density)
-                .width(keySize)
-                .right()
-
-            bottomKeyboard.add(row2)
-                .growX()
-                .row()
-
-            // Строка 3: A S D   (SPACE)   ← ↓ →
-            val row3 = Table()
-            row3.defaults().pad(3f * density).height(keySize)
-
-// Левая группа -------------------------------------------------------------
-
-            val leftGroup = Table()
-            leftGroup.defaults().pad(3f * density).width(keySize).height(keySize)
-
-// A (индекс 11)
-            val aBtn = makeStyledButton("A=11", DIGameGlobalContainer.game, extraTextures)
-//            applyCustomFont(aBtn)
-
-            aBtn.addListener(object : ClickListener() {
-                override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                    simulationSystem.simulationData.controllerKeyTouched[11] = true
-                    return true
-                }
-
-                override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                    simulationSystem.simulationData.controllerKeyTouched[11] = false
-                }
-            })
-
-            leftGroup.add(aBtn)
-
-// S (индекс 12)
-            val sBtn = makeStyledButton("S=12", DIGameGlobalContainer.game, extraTextures)
-//            applyCustomFont(sBtn)
-
-            sBtn.addListener(object : ClickListener() {
-                override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                    simulationSystem.simulationData.controllerKeyTouched[12] = true
-                    return true
-                }
-
-                override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                    simulationSystem.simulationData.controllerKeyTouched[12] = false
-                }
-            })
-
-            leftGroup.add(sBtn)
-
-// D (индекс 13)
-            val dBtn = makeStyledButton("D=13", DIGameGlobalContainer.game, extraTextures)
-//            applyCustomFont(dBtn)
-
-            dBtn.addListener(object : ClickListener() {
-                override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                    simulationSystem.simulationData.controllerKeyTouched[13] = true
-                    return true
-                }
-
-                override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                    simulationSystem.simulationData.controllerKeyTouched[13] = false
-                }
-            })
-
-            leftGroup.add(dBtn)
-
-
-// Центральная кнопка -------------------------------------------------------
-
-            val spaceBtn = makeStyledButton("(SPACE)=14", DIGameGlobalContainer.game, extraTextures)
-//            applyCustomFont(spaceBtn)
-
-            spaceBtn.addListener(object : ClickListener() {
-                override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                    simulationSystem.simulationData.controllerKeyTouched[14] = true
-                    return true
-                }
-
-                override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                    simulationSystem.simulationData.controllerKeyTouched[14] = false
-                }
-            })
-
-
-// Правая группа ------------------------------------------------------------
-
-            val rightGroup = Table()
-            rightGroup.defaults().pad(3f * density).width(keySize).height(keySize)
-
-// ← (индекс 16)
-            val leftBtn = makeStyledButton("<=16", DIGameGlobalContainer.game, extraTextures)
-//            applyCustomFont(leftBtn)
-
-            leftBtn.addListener(object : ClickListener() {
-                override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                    simulationSystem.simulationData.controllerKeyTouched[16] = true
-                    return true
-                }
-
-                override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                    simulationSystem.simulationData.controllerKeyTouched[16] = false
-                }
-            })
-
-            rightGroup.add(leftBtn)
-
-// ↓ (индекс 17)
-            val downBtn = makeStyledButton("v=17", DIGameGlobalContainer.game, extraTextures)
-//            applyCustomFont(downBtn)
-
-            downBtn.addListener(object : ClickListener() {
-                override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                    simulationSystem.simulationData.controllerKeyTouched[17] = true
-                    return true
-                }
-
-                override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                    simulationSystem.simulationData.controllerKeyTouched[17] = false
-                }
-            })
-
-            rightGroup.add(downBtn)
-
-// → (индекс 18)
-            val rightBtn = makeStyledButton(">=18", DIGameGlobalContainer.game, extraTextures)
-//            applyCustomFont(rightBtn)
-
-            rightBtn.addListener(object : ClickListener() {
-                override fun touchDown(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int): Boolean {
-                    simulationSystem.simulationData.controllerKeyTouched[18] = true
-                    return true
-                }
-
-                override fun touchUp(event: InputEvent?, x: Float, y: Float, pointer: Int, button: Int) {
-                    simulationSystem.simulationData.controllerKeyTouched[18] = false
-                }
-            })
-
-            rightGroup.add(rightBtn)
-
-
-// Компоновка ---------------------------------------------------------------
-
-            row3.add(leftGroup).left().expandX()
-
-            row3.add(spaceBtn)
-                .width(spaceSize)
-                .center()
-
-            row3.add(rightGroup).right().expandX()
-
-            bottomKeyboard.add(row3).growX().row()
-
-            root.add(bottomKeyboard)
-                .growX()
-                .bottom()
-                .left()
-                .padBottom(30f * density)
-                .row()
         }
 
-        // === Слушатели (Listeners) ===
+    /**
+     * Выбор генома для посадки: свои, а под чертой — встроенные, их можно сажать сразу.
+     * Список — тот же, что у ViewModel: номер в нём и есть номер генома в мире.
+     */
+    private fun showGenomeList() {
+        val bundle = DIGameGlobalContainer.bundle
+        val genomes = viewModel.genomeNames
+        GenomeListDialog(
+            genomesList = genomes,
+            selectedGenomeIndex = simulationSystem.simulationData.currentGenomeIndex,
+            title = bundle.get("button.selectGenome"),
+            new = bundle.get("button.new"),
+            select = bundle.get("button.select"),
+            import = bundle.get("button.import"),
+            onNew = {
+                DIGameGlobalContainer.navigationCommandsManager.performCommand(
+                    GoReplace(GoGenomeEditor(null))
+                )
+            },
+            onNext = { selectedFileName ->
+                viewModel.handle(SimulationIntent.SelectGenome(selectedFileName))
+            },
+            game = DIGameGlobalContainer.game,
+            onResize = { handler ->
+                onResize = if (handler == {}) null else handler
+            },
+            displayName = GenomeCatalog::displayName,
+            sectionStart = genomes.indexOfFirst(GenomeCatalog::isBundled),
+            sectionTitle = bundle.get("label.bundledGenomes")
+        ).show(stage)
+    }
 
-        controllerKeysToggle.addListener(object : ClickListener() {
-            override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                simulationSystem.simulationData.showControllerKeys = controllerKeysToggle.isChecked
-                rebuildMenu() // перестраиваем меню, чтобы показать/скрыть клавиатуру
-            }
+    /** Обработчик нажатия в одну строку: здесь их много, и все устроены одинаково. */
+    private fun VisTextButton.onClick(action: () -> Unit): VisTextButton = apply {
+        addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) = action()
         })
+    }
 
-        // ... остальные слушатели остаются без изменений ...
-        speedUpSimToggle.addListener(object : ClickListener() {
-            override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                SpeedUpDialog(DIGameGlobalContainer.game, DIGameGlobalContainer.bundle).show(stage)
-            }
-        })
-
-        drawRaysToggle.addListener(object : ClickListener() {
-            override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                doesUsePostProcess = drawRaysToggle.isChecked
-            }
-        })
-
-
-        pauseSimToggle.addListener(object : ClickListener() {
-            override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                simEntity.isPlay = !pauseSimToggle.isChecked
-            }
-        })
-
-        putOrganismToggle.addListener(object : ClickListener() {
-            override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                putOrgs = putOrganismToggle.isChecked
-            }
-        })
-
-        restartSimulationButton.addListener(object : ClickListener() {
-            override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                simulationSystem.simulationData.isRestart = true
-            }
-        })
-
-        menuButton.addListener(object : ClickListener() {
-            override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                DIGameGlobalContainer.game.screen.dispose()
-                if (genomeName == null)
-                    DIGameGlobalContainer.game.screen = MenuScreen()
-                else {
-                    DIGameGlobalContainer.game.screen =
-                        GenomeEditorScreen(genomeName.replace(".json", ""))
-                }
-            }
-        })
-
-
-        selectGenomeButton.addListener(object : ClickListener() {
-            override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                GenomeListDialog(
-                    genomesList = DIGameGlobalContainer.genomeJsonReader.getGenomeFileNamesFromFolder()/*genomeManager.genomes.map { it.name }*/,
-                    selectedGenomeIndex = simulationSystem.simulationData.currentGenomeIndex,
-                    title = DIGameGlobalContainer.bundle.get("button.selectGenome"),
-                    new = DIGameGlobalContainer.bundle.get("button.new"),
-                    select = DIGameGlobalContainer.bundle.get("button.select"),
-                    import = DIGameGlobalContainer.bundle.get("button.import"),
-                    onNew = {
-                        DIGameGlobalContainer.game.screen.dispose()
-                        DIGameGlobalContainer.game.screen = GenomeEditorScreen(genomeName = null)
-                    },
-                    onNext = { selectedFileName ->
-                        val index = genomeNames.indexOf(selectedFileName)
-                        if (index >= 0) {
-                            simulationSystem.simulationData.currentGenomeIndex = index
-                        } else {
-                            // Раньше -1 молча уезжал в currentGenomeIndex, а падало уже
-                            // потом и в другом месте — на genomes[-1] в момент постановки
-                            // клетки, то есть в потоке симуляции.
-                            Gdx.app.error(
-                                "Genome",
-                                "геном '$selectedFileName' не найден среди $genomeNames"
-                            )
-                        }
-                    },
-                    onRestart = {
-                        // Импортированный геном должен появиться и в genomeManager.genomes,
-                        // и в списке имён — иначе индексы разъедутся. Раньше сюда
-                        // подмешивались ещё и json-геномы из ассетов, которых в genomes нет
-                        // вообще, что сдвигало индексы всех остальных.
-                        DISimulationContainer.genomeManager.loadGenomes()
-                        genomeNames = DIGameGlobalContainer.genomeJsonReader
-                            .getGenomeFileNamesFromFolder()
-                    },
-                    game = DIGameGlobalContainer.game,
-                    onResize = { handler ->
-                        onResize = if (handler == {}) null else handler
-                    },
-                    isMenu = false
-                ).show(stage)
-            }
-        })
+    private companion object {
+        /**
+         * Клавиши контроллера на клавиатуре — по индексу в controllerKeyTouched:
+         * 0–9 цифры, 10–13 WASD, 14 пробел, 15–18 стрелки. Порядок — тот же, что у имён
+         * в ControllerKeys.NAMES: по имени клетка Controller находит номер клавиши.
+         */
+        val CONTROLLER_KEY_CODES = intArrayOf(
+            Input.Keys.NUM_0, Input.Keys.NUM_1, Input.Keys.NUM_2, Input.Keys.NUM_3,
+            Input.Keys.NUM_4, Input.Keys.NUM_5, Input.Keys.NUM_6, Input.Keys.NUM_7,
+            Input.Keys.NUM_8, Input.Keys.NUM_9,
+            Input.Keys.W, Input.Keys.A, Input.Keys.S, Input.Keys.D,
+            Input.Keys.SPACE,
+            Input.Keys.UP, Input.Keys.LEFT, Input.Keys.DOWN, Input.Keys.RIGHT
+        ).also { check(it.size == ControllerKeys.COUNT) { "клавиш контроллера ${it.size}, а имён ${ControllerKeys.COUNT}" } }
     }
 
     fun getStage(): Stage {

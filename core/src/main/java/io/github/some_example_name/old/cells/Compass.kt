@@ -4,6 +4,7 @@ import io.github.some_example_name.old.cells.base.activation
 import io.github.some_example_name.old.core.utils.blueColors
 
 class Compass(cellTypeId: Int) : Cell(
+    key = "compass",
     defaultColor = blueColors[6],
     cellTypeId = cellTypeId,
     textureName = "Compass.png",

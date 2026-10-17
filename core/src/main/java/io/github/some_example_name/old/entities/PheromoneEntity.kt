@@ -136,6 +136,39 @@ class PheromoneEntity(
         }*/
     }
 
+    override fun persistFields(state: EntityState) {
+        state.floats(::x)
+        state.floats(::y)
+        state.floats(::time)
+        state.floats(::radiusSquared)
+        state.ints(::emitterIndex)
+        state.ints(::color)
+        state.ints(::type)
+    }
+
+    /** Обе карты выводятся из самих феромонов — заполняются тем же путём, что в addPheromone. */
+    override fun restoreAfterLoad() {
+        pheromoneMapGrid.clear()
+        emitterMap.clear()
+        for (i in 0 until aliveList.size) {
+            val pheromoneIndex = aliveList.getInt(i)
+            val px = x[pheromoneIndex]
+            val py = y[pheromoneIndex]
+            val pType = type[pheromoneIndex]
+
+            val gridKey = pack(
+                px.toInt() / MAXIMUM_PHEROMONE_SPREAD_DIAMETER,
+                py.toInt() / MAXIMUM_PHEROMONE_SPREAD_DIAMETER
+            )
+            pheromoneMapGrid.computeIfAbsent(pType) { Int2ObjectOpenHashMap(8) }
+                .computeIfAbsent(gridKey) { IntOpenHashSet(8) }
+                .add(pheromoneIndex)
+
+            val emitter = emitterIndex[pheromoneIndex]
+            if (emitter != -1) addUnique(pType, pack(px.toInt(), py.toInt()), emitter)
+        }
+    }
+
     override fun onCopy() {
     }
 

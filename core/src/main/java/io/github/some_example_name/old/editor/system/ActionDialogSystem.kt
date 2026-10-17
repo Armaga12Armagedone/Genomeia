@@ -1,19 +1,21 @@
 package io.github.some_example_name.old.editor.system
 
 import com.badlogic.gdx.graphics.Color
-import io.github.some_example_name.old.cells.Eye
-import io.github.some_example_name.old.cells.PheromoneEmitter
-import io.github.some_example_name.old.cells.PheromoneSensor
-import io.github.some_example_name.old.cells.base.formulaType
+import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellList
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellsTypeNames
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.cellPalette
 import io.github.some_example_name.old.editor.entities.EditorCell
 import io.github.some_example_name.old.features.editor.dialog.ActionDialogType
-import io.github.some_example_name.old.features.editor.dialog.getColorFromBits
 import io.github.some_example_name.old.systems.genomics.genome.Action
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
+/**
+ * Состояние диалога клетки: черновик действия [action] и клетка, по которой кликнули.
+ *
+ * О конкретных типах клеток здесь ничего нет: что показать и какие поля сбросить при
+ * смене типа, решают секции клетки (Cell.editorSections, см. CellEditorSection).
+ */
 class ActionDialogSystem(
     actionDialogType: ActionDialogType,
     newDividedCellPosition: Pair<Float, Float>?,
@@ -21,7 +23,8 @@ class ActionDialogSystem(
 ) {
 
     var action = when(actionDialogType) {
-        ActionDialogType.DIVIDE -> Action(cellType = 0, color = getCellColor(0))
+        // Первая клетка палитры: обычно лист, но уровень может его и не разрешать.
+        ActionDialogType.DIVIDE -> newCellAction(cellPalette.cellChoices(cellList, current = null).first())
         ActionDialogType.MUTATION -> clickedCell.mutate?.copy() ?: Action()
         ActionDialogType.CHANGE_REMOVE -> clickedCell.divide?.copy() ?: throw Exception("clickedCell.divide is null")
     }
@@ -45,135 +48,72 @@ class ActionDialogSystem(
 
     val angleDirected get() = action.angleDirected ?: clickedCell.angleDirected ?: throw Exception("angleDirected is null")
 
-    val cellType get() = action.cellType ?: clickedCell.actual?.cellType ?: throw Exception("cellType is null")
+    /** Ключ типа клетки: выбранный в диалоге или текущий. */
+    val cellType: String get() = action.cellType ?: clickedCell.actual?.cellType ?: throw Exception("cellType is null")
 
-    /** Изменение дефолтных параметров в action при изменении типка клетки */
-    fun setUpDefaultActionData(fromCellType: Int, toCellType: Int) {
+    /** Тип клетки, выбранный в диалоге. */
+    val cell: Cell get() = cellList.byKey(cellType)
+
+    val isDirected: Boolean get() = cell.isDirected
+
+    fun getCellColor(): Color = cell.defaultColor.cpy()
+
+    /**
+     * Тип клетки сменили в диалоге: цвет — по умолчанию нового типа, поля секций, которых у
+     * нового типа нет, сбрасываются, а секции нового типа ставят свои значения по умолчанию.
+     * Секции, общие для обоих типов (нейрон -> глаз), свои поля сохраняют.
+     */
+    fun setUpDefaultActionData(fromCellType: String, toCellType: String) {
+        val from = cellList.byKey(fromCellType)
+        val to = cellList.byKey(toCellType)
+
         action = action.copy(
             cellType = toCellType,
-            color = getCellColor(toCellType)
+            color = to.defaultColor.cpy()
         )
 
-        when {
-            fromCellType.isDirected() && !isDirected() -> {
-                action = action.copy(angleDirected = null)
-            }
-            !fromCellType.isDirected() && isDirected() -> {
-                action = action.copy(angleDirected = 0f)
-            }
-        }
+        val fromSections = from.editorSections()
+        val toSections = to.editorSections()
+        for (section in fromSections) if (section !in toSections) action = section.clear(action)
+        for (section in toSections) if (section !in fromSections) action = section.applyDefaults(action)
 
-        when {
-            fromCellType.isNeural() && !isNeural() -> {
-                action = action.copy(
-                    funActivation = null,
-                    a = null,
-                    b = null,
-                    c = null,
-                    isSum = null
-                )
-            }
-            !fromCellType.isNeural() && isNeural() -> {
-                action = action.copy(
-                    funActivation = 0,
-                    a = 1f,
-                    b = 0f,
-                    c = 0f,
-                    isSum = true
-                )
-            }
-        }
-
-        when {
-            fromCellType.isEye() && !isEye() -> {
-                action = action.copy(
-                    colorRecognition = null,
-                    lengthDirected = null
-                )
-            }
-            !fromCellType.isEye() && isEye() -> {
-                action = action.copy(
-                    colorRecognition = 7,
-                    lengthDirected = 4.25f
-                )
-            }
-        }
-
-        when {
-            fromCellType.isPheromone() && !isPheromone() -> {
-                action = action.copy(
-                    pheromoneType = null
-                )
-            }
-            !fromCellType.isPheromone() && isPheromone() -> {
-                action = action.copy(
-                    pheromoneType = 0,
-                )
-            }
+        // Свои данные клетки в геноме (Action.special) — по их типу, а не по секциям: у
+        // клетки мода данные могут быть и без своей секции в диалоге.
+        if (from.defaultGenomeData?.javaClass != to.defaultGenomeData?.javaClass) {
+            action = action.copy(special = to.defaultGenomeData)
         }
     }
-
-    fun isEye() = cellList[cellType] is Eye
-    fun isDirected() = cellList[cellType].isDirected
-    fun isNeural() = cellList[cellType].isNeural
-    fun isPheromone() = cellList[cellType] is PheromoneEmitter || cellList[cellType] is PheromoneSensor
-    fun getCellColor(): Color = cellList[cellType].defaultColor.cpy()
-
 
     /** Формирование списка изменений при мутации*/
     fun makeMutateList(): String {
         val text = StringBuilder()
         val actual = clickedCell.actual ?: return ""
-        val cellType = action.cellType ?: 0
-        clickedCell.mutate?.apply {
+        val mutate = clickedCell.mutate ?: return ""
 
-            val actualCellType = actual.cellType
-            if (cellType != actualCellType && actualCellType != null) {
-                text.append("Cell type: ${cellsTypeNames[actualCellType]} -> ${cellsTypeNames[cellType]}\n")
-            }
-
-            if (funActivation != null && funActivation != actual.funActivation) {
-                val formula = if (actual.funActivation != null) formulaType[actual.funActivation] else null
-                text.append("Activation formula: $formula -> ${formulaType[funActivation]}\n")
-            }
-
-            if (a != null && a != actual.a) text.append("a: ${actual.a} -> $a\n")
-            if (b != null && b != actual.b) text.append("b: ${actual.b} -> $b\n")
-            if (c != null && c != actual.c) text.append("c: ${actual.c} -> $c\n")
-            if (isSum != null && isSum != actual.isSum) {
-                val fromText = when (actual.isSum) {
-                    true -> "Addition"
-                    false -> "Multiplication"
-                    null -> "null"
-                }
-                val toText = if (isSum) "Addition\n" else "Multiplication\n"
-                text.append("isSum: $fromText -> $toText")
-            }
-
-            if (colorRecognition != null && colorRecognition != actual.colorRecognition) {
-                val colorFrom = if (actual.colorRecognition != null) getColorFromBits(actual.colorRecognition) else null
-                val colorTo = getColorFromBits(colorRecognition)
-                val fromText = if (colorFrom != null) "(r:${if (colorFrom.r > 0) 1 else 0}, g:${if (colorFrom.g > 0) 1 else 0}, b${if (colorFrom.b > 0) 1 else 0})" else null
-                text.append("Eye color recognition: $fromText -> (r:${if (colorTo.r > 0) 1 else 0}, g:${if (colorTo.g > 0) 1 else 0}, b${if (colorTo.b > 0) 1 else 0})\n")
-            }
-
-            if (lengthDirected != null && lengthDirected != actual.lengthDirected) {
-                text.append("Eye distance: $lengthDirected -> ${actual.lengthDirected}\n")
-            }
-
-
-            if (pheromoneType != null && pheromoneType != actual.pheromoneType) {
-                text.append("Pheromone type: ${actual.pheromoneType} -> $pheromoneType\n")
-            }
-
+        // Мутация без смены типа хранит cellType = null — тип остаётся текущим.
+        val actualCellType = actual.cellType
+        val resultCellType = mutate.cellType ?: actualCellType
+        if (resultCellType != null && actualCellType != null && resultCellType != actualCellType) {
+            text.append("Cell type: ${displayName(actualCellType)} -> ${displayName(resultCellType)}\n")
         }
+
+        // Строки своих полей — у секций итогового типа: синапс подписывает a, b, c по-своему,
+        // а функция активации ему ни к чему.
+        val resultCell = resultCellType?.takeIf(cellList::containsKey)?.let(cellList::byKey) ?: return text.toString()
+        for (section in resultCell.editorSections()) section.describeMutation(actual, mutate, text)
 
         return text.toString()
     }
-}
 
-fun Int.isEye() = cellList[this] is Eye
-fun Int.isDirected() = cellList[this].isDirected
-fun Int.isNeural() = cellList[this].isNeural
-fun Int.isPheromone() = cellList[this] is PheromoneEmitter || cellList[this] is PheromoneSensor
-fun getCellColor(cellType: Int) = cellList[cellType].defaultColor.cpy()
+    /** Имя типа для людей; тип от мода, которого нет, — его ключ. */
+    private fun displayName(key: String) = if (cellList.containsKey(key)) cellList.byKey(key).name else key
+
+    companion object {
+        /** Действие деления в клетку [cell]: её цвет и значения по умолчанию всех её секций. */
+        fun newCellAction(cell: Cell): Action {
+            var action = Action(cellType = cell.key, color = cell.defaultColor.cpy(), special = cell.defaultGenomeData)
+            for (section in cell.editorSections()) action = section.applyDefaults(action)
+            return action
+        }
+    }
+}

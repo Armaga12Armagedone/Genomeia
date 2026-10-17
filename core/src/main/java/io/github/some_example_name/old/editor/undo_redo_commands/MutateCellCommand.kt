@@ -10,14 +10,13 @@ class MutateCellCommand(
     val clickedCell: EditorCell,
     stageInstruction: MutableList<GenomeStage>,
     currentTick: Int
-) : UndoRedoCommand(
+) : StageCommand(
     tick = currentTick,
     genomeStageInstruction = stageInstruction,
     doesNeedAddNewStage = stageInstruction.size <= currentTick
 ) {
 
-    override fun execute(): StageResult {
-        val stage = genomeStageInstruction[tick]
+    override fun executeOnStage(stage: GenomeStage): StageResult {
         val oldValue = stage.cellActions[clickedCell.id]
 
         val newValue = when {

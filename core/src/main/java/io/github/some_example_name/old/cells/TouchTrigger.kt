@@ -3,6 +3,7 @@ package io.github.some_example_name.old.cells
 import io.github.some_example_name.old.core.utils.genomeEditorColor
 
 class TouchTrigger(cellTypeId: Int): Cell(
+    key = "touch_trigger",
     defaultColor = genomeEditorColor[6],
     cellTypeId = cellTypeId,
     textureName = "TouchTrigger.png",

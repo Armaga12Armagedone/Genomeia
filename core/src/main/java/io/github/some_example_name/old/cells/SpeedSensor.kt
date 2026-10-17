@@ -4,6 +4,7 @@ import io.github.some_example_name.old.cells.base.activation
 import io.github.some_example_name.old.core.utils.blueColors
 
 class SpeedSensor(cellTypeId: Int) : Cell(
+    key = "speed_sensor",
     defaultColor = blueColors[6],
     cellTypeId = cellTypeId,
     isDirected = true,

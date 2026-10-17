@@ -5,6 +5,7 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSetti
 import io.github.some_example_name.old.core.utils.pinkColors
 
 class Neuron(cellTypeId: Int) : Cell(
+    key = "neuron",
     defaultColor = pinkColors.first(),
     cellTypeId = cellTypeId,
     textureName = "neuron.png",

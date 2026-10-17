@@ -9,7 +9,11 @@ import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.bug.ReplayTarget
+import io.github.some_example_name.old.commands.GameCommand
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
+import io.github.some_example_name.old.editor.system.logic.UiEditorCommands
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.editor.system.logic.CtrlY
 import io.github.some_example_name.old.editor.system.logic.CtrlZ
@@ -19,8 +23,12 @@ import io.github.some_example_name.old.editor.system.logic.PanScreen
 import io.github.some_example_name.old.editor.system.logic.TapScreen
 import io.github.some_example_name.old.editor.system.logic.TouchDown
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isNeuralLinking
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.isRightClick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.previousCtrlClicked
+import io.github.some_example_name.old.editor.system.logic.SetNeuralLinking
+import io.github.some_example_name.old.editor.system.logic.ZoomCamera
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.uiScreenCommands
 import io.github.some_example_name.old.editor.system.logic.ShowChangeRemoveDialog
 import io.github.some_example_name.old.editor.system.logic.ShowDivideDialog
@@ -28,6 +36,7 @@ import io.github.some_example_name.old.editor.system.logic.ShowMutateDialog
 import io.github.some_example_name.old.editor.system.logic.ShowMutateOrDivideDialog
 import io.github.some_example_name.old.editor.system.logic.UiScreenCommands
 import io.github.some_example_name.old.core.ui.CameraControl
+import io.github.some_example_name.old.core.ui.KeyboardFocus
 
 data class GenomeEditorData(
     var currentTick: Int,
@@ -36,7 +45,7 @@ data class GenomeEditorData(
 
 class GenomeEditorScreen(
     val genomeName: String?
-) : Screen {
+) : Screen, ReplayTarget {
 
     private val renderSystem = DIGenomeEditorContainer.editorRenderSystem
     private val editorLogicSystem = DIGenomeEditorContainer.editorLogicSystem
@@ -66,19 +75,31 @@ class GenomeEditorScreen(
             editorLogicSystem.putUiCommand(TouchDown(x, y))
         },
         onTap = { x, y, isLeft ->
-            editorLogicSystem.putUiCommand(TapScreen(x, y, isLeft, composeGenomeEditor.isCtrl))
+            // На телефоне кнопки мыши нет: «правым кликом» там считается нажатие в режиме
+            // «повторить последнее действие», а в режиме нейросвязей клик всегда левый.
+            // Решается здесь, а не в обработчике: команда не должна зависеть от платформы.
+            val isDesktop = Gdx.app.type == Application.ApplicationType.Desktop
+            val isLeftClick = if (isDesktop) isLeft else isNeuralLinking || !isRightClick
+            editorLogicSystem.putUiCommand(TapScreen(x, y, isLeftClick, isNeuralLinking))
         },
         onFling = {
             editorLogicSystem.putUiCommand(FlingScreen)
         },
         onPan = { x, y, dx, dy ->
             editorLogicSystem.putUiCommand(PanScreen(x, y, dx, dy))
+        },
+        onZoom = { zoom, x, y ->
+            editorLogicSystem.putUiCommand(ZoomCamera(zoom, x, y))
         }
     )
 
     override fun show() {
         editorSimulationSystem.reinitGenome(genomeName)
         currentTick = 0
+        // Редактор открывается с чистым режимом нейросвязей: состояние живёт в контейнере
+        // и иначе пережило бы прошлый заход.
+        isNeuralLinking = false
+        previousCtrlClicked = -1
         editorLogicSystem.restartSimulation()
 
         Gdx.input.inputProcessor = cameraControl.getInputMultiplexer(stage)
@@ -88,7 +109,8 @@ class GenomeEditorScreen(
         composeGenomeEditor.composeGenomeEditor(
             stage,
             editorSimulationSystem,
-            editorLogicSystem
+            editorLogicSystem,
+            renderSystem
         )
     }
 
@@ -129,27 +151,41 @@ class GenomeEditorScreen(
 
         isRestartSimulation = false
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Z) && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)) {
+        // Пока игрок печатает (имя генома, описание бага), клавиши — тексту, а не редактору:
+        // иначе пробел в имени генома перематывал бы таймлайн, а Ctrl+Z отменял правку генома.
+        val typing = KeyboardFocus.isTyping(stage)
+
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.Z) && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)) {
             editorLogicSystem.putUiCommand(CtrlZ)
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Y) && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)) {
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.Y) && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)) {
             editorLogicSystem.putUiCommand(CtrlY)
         }
 
+        // На десктопе режим нейросвязей — пока зажат Ctrl. Команда только на смену
+        // состояния: опрос каждый кадр, а журналу нужно нажатие, а не кадр.
         if (Gdx.app.type == Application.ApplicationType.Desktop) {
-            composeGenomeEditor.isCtrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
-            if (!composeGenomeEditor.isCtrl) previousCtrlClicked = -1
+            val ctrl = !typing && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
+            if (ctrl != isNeuralLinking) editorLogicSystem.putUiCommand(SetNeuralLinking(ctrl))
         }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+        if (!typing && Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             editorLogicSystem.putUiCommand(GoToEndOfTimeLine)
         }
 
-        actionDialog(uiScreenCommands)
+        // При повторе бага окна действий не открываются: что в них выбрали, придёт
+        // следующей командой из записи, а закрыть их было бы некому.
+        if (!BugReplay.isActive) actionDialog(uiScreenCommands)
         uiScreenCommands = null
 
         stage.act(delta)
         stage.draw()
+    }
+
+    override fun replay(command: GameCommand): Boolean {
+        if (command !is UiEditorCommands) return false
+        editorLogicSystem.putUiCommand(command)
+        return true
     }
 
     private fun actionDialog(uiScreenCommands: UiScreenCommands?) {
@@ -165,7 +201,8 @@ class GenomeEditorScreen(
             )
             is ShowMutateDialog -> stage.mutateActionDialog(
                 command = uiScreenCommands,
-                onMutate = { editorLogicSystem.putUiCommand(it) }
+                onMutate = { editorLogicSystem.putUiCommand(it) },
+                onCancelMutation = { editorLogicSystem.putUiCommand(it) }
             )
             is ShowMutateOrDivideDialog -> stage.mutateOrDivideDialog(
                 command = uiScreenCommands,

@@ -1,13 +1,15 @@
 package io.github.some_example_name.old.editor.system.logic
 
 import com.badlogic.gdx.graphics.Color
+import io.github.some_example_name.old.cells.EyeData
+import io.github.some_example_name.old.cells.base.Formulas
 import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.currentTick
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.lastTick
 import io.github.some_example_name.old.editor.entities.CellReplay
 import io.github.some_example_name.old.editor.entities.EditorCell
-import io.github.some_example_name.old.editor.entities.EyeReplay
 import io.github.some_example_name.old.editor.entities.NeuralReplay
+import io.github.some_example_name.old.editor.entities.SpecialModDataReplay
 import io.github.some_example_name.old.editor.system.simulation.EditorSimulationSystem
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.ParticleEntity
@@ -20,7 +22,7 @@ class ToEditorDataMapper(
     val editorSimulationSystem: EditorSimulationSystem,
     val particleEntity: ParticleEntity,
     val neuralReplay: NeuralReplay,
-    val eyeReplay: EyeReplay
+    val specialModDataReplay: SpecialModDataReplay
 ) {
 
     fun mapToEditorData(index: Int): EditorCell {
@@ -47,24 +49,30 @@ class ToEditorDataMapper(
 
         val actual = if (!isPhantom) {
             val neuralIndex = cellReplay.getNeuralIndexes(currentTick, index)
-            val eyeIndex = cellReplay.getSpecialTypeIndexes(currentTick, index)
+            val specialIndex = cellReplay.getSpecialTypeIndexes(currentTick, index)
             val colorOfCellFrom = Color().also {
                 val argb = cellReplay.getColor(currentTick, index)
                 val rgba = ((argb shr 16) and 0xFF) or (argb and 0xFF00) or ((argb shl 16) and 0xFF0000) or (argb and -0x1000000)
                 Color.argb8888ToColor(it, rgba)
             }
+            val cell = cellEntity.cellList[cellReplay.getCellType(currentTick, index).toInt()]
+            val special = specialModDataReplay.get(currentTick, specialIndex)
+            val eye = special as? EyeData
             Action(
                 color = colorOfCellFrom,
-                cellType = cellReplay.getCellType(currentTick, index).toInt(),
+                cellType = cell.key,
                 angleDirected = 0f,
-                funActivation = neuralReplay.getActivationFuncType(currentTick, neuralIndex)?.toInt(),
+                funActivation = neuralReplay.getActivationFuncType(currentTick, neuralIndex)?.let { Formulas.all()[it.toInt()].key },
                 a = neuralReplay.getA(currentTick, neuralIndex),
                 b = neuralReplay.getB(currentTick, neuralIndex),
                 c = neuralReplay.getC(currentTick, neuralIndex),
                 isSum = neuralReplay.getIsSum(currentTick, neuralIndex),
-                colorRecognition = eyeReplay.getColorDifferentiation(currentTick, eyeIndex)?.toInt(),
-                lengthDirected = eyeReplay.getVisibilityRange(currentTick, eyeIndex),
-                pheromoneType = cellReplay.getPheromone(currentTick, index)
+                colorRecognition = eye?.colorRecognition,
+                lengthDirected = eye?.visibilityRange,
+                pheromoneType = cellReplay.getPheromone(currentTick, index),
+                // В Action.special — только то, что игрок задаёт в геноме (клавиша контроллера);
+                // состояние хвоста или продюсера в геном не попадает.
+                special = if (cell.defaultGenomeData != null) special else null
             )
         } else {
             null

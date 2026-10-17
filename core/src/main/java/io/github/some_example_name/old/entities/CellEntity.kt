@@ -1,12 +1,17 @@
 package io.github.some_example_name.old.entities
 
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.cells.SpecialModData
+import io.github.some_example_name.old.cells.base.CellTypeList
+import io.github.some_example_name.old.cells.base.Formula
+import io.github.some_example_name.old.cells.base.Formulas
+import io.github.some_example_name.old.cells.base.SpecialModData
+import io.github.some_example_name.old.cells.base.UnknownCellTypeException
 import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DISimulationContainer.cellsSettings
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.utils.OrderedIntPairMap
 import io.github.some_example_name.old.systems.genomics.genome.CellAction
+import io.github.some_example_name.old.systems.genomics.genome.Genome
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
@@ -16,7 +21,7 @@ class CellEntity(
     private val particleEntity: ParticleEntity,
     val simulationData: SimulationData,
     val substrateSettings: SubstrateSettings,
-    val cellList: List<Cell>,
+    val cellList: CellTypeList,
     private val neuralEntity: NeuralEntity,
     val specialEntity: SpecialEntity,
     /**
@@ -28,6 +33,12 @@ class CellEntity(
      */
     val organEntity: OrganEntity
 ) : Entity(cellsStartMaxAmount) {
+    /**
+     * Формулы активации по номеру — копия ссылки в поле: activation читает её на каждый
+     * нейрон за тик, а Formulas.all() идёт через lazy (volatile-чтение на вызов).
+     */
+    val formulas: Array<Formula> = Formulas.all()
+
     //Particle entity
     var particleIndexes = IntArray(maxAmount) { -1 }
     fun getParticleIndex(index: Int) = particleIndexes[index]
@@ -334,14 +345,11 @@ class CellEntity(
         angleSin: Float = 0f,
         angleDiffCos: Float = 1f,
         angleDiffSin: Float = 0f,
-        colorDifferentiation: Int = 7,
-        visibilityRange: Float = 4.25f,
         a: Float = 1f,
         b: Float = 0f,
         c: Float = 0f,
         isSum: Boolean = true,
         activationFuncType: Byte = 7,
-        speed: Float = 0f,
         pheromoneType: Int = -1,
         specialModData: SpecialModData? = null
     ): Int {
@@ -469,24 +477,19 @@ class CellEntity(
             neuralIndexes[cellIndex] = -1
         }
 
-        specialEntity.addSpecial(
-            cellIndex = cellIndex,
-            cell = cell,
-            colorDifferentiation = colorDifferentiation,
-            visibilityRange = visibilityRange,
-            speed = speed,
-            specialModData = specialModData
-        )
+        // Свои данные клетки приходят с командой (деление, см. DivideManager). Кто создаёт
+        // клетку напрямую, без генома, — получает данные типа по умолчанию.
+        specialEntity.addSpecial(cellIndex, specialModData ?: cell.createSpecialData(Cell.NO_GENOME_ACTION))
 
         // Ключ (organIndex, cellGenomeId) обязан быть уникальным: по нему деление и мутация
         // находят «клетку-соседа по чертежу генома». Если запись перетирается, значит две
         // РАЗНЫЕ клетки претендуют на один ключ, и поиск начнёт возвращать чужую — вплоть до
         // клетки другого организма, а это уже связь между особями и гонка на vx/vy.
         //
-        // Главный подозреваемый — organIndex == -1. Зигота создаётся именно с ним и получает
-        // настоящий индекс организма позже, в ADD_ORGAN из последнего буфера команд. Пока
-        // она в этом состоянии, её клетки лежат в карте в ОБЩЕМ для всех безорганных клеток
-        // пространстве ключей, потому что ключ это (organIndex shl 32) or genomeId.
+        // Главный подозреваемый — organIndex == -1: такие клетки лежат в карте в ОБЩЕМ для
+        // всех безорганных клеток пространстве ключей, потому что ключ это
+        // (organIndex shl 32) or genomeId. Раньше так жила зигота-сирота от продюсера; теперь
+        // организм заводится до зиготы (OrganismSpawner), но проверка остаётся сторожем.
         //
         // Различаем два случая: перетирание записи ЖИВОЙ клетки (настоящий конфликт) и
         // мёртвой (просроченная запись, которую не убрал deleteCell) — лечатся они по-разному.
@@ -598,7 +601,19 @@ class CellEntity(
         isOnEdge[cellIndex] = onEdge
 
         val particleIndex = particleIndexes[cellIndex]
-        if (particleIndex != -1) particleEntity.isInGrid[particleIndex] = onEdge
+        if (particleIndex == -1) return
+        particleEntity.isInGrid[particleIndex] = onEdge
+
+        // Внутренней клетки в сетке не было, а перестройка (GridManager.rebuild) перебирает
+        // только прошлый состав сетки и зарегистрированных новичков. Без регистрации клетка,
+        // ставшая краевой, когда тело рвут, в сетку не попадала никогда: жива, рисуется, но
+        // не сталкивается и не берётся курсором. Так падала проверка целостности сетки под
+        // отладочным стресс-тестом «разогнать клетки» (клавиша D).
+        //
+        // Звать отсюда безопасно: addLink/deleteLink работают только при применении команд
+        // мира, в одном потоке. Уход внутрь регистрации не требует: перестройка пропускает
+        // частицы с isInGrid == false сама.
+        if (onEdge) particleEntity.gridManager.registerParticle(particleIndex)
     }
 
     fun deleteCell(cellIndex: Int) {
@@ -630,8 +645,6 @@ class CellEntity(
         energyNecessaryToMutate[cellIndex] = 1f
         isDividedInThisStage[cellIndex] = true
         isMutateInThisStage[cellIndex] = true
-        val cellType = cellType[cellIndex]
-        val cell = cellList[cellType.toInt()]
         this.cellType[cellIndex] = 0
         energy[cellIndex] = 0f
         maxEnergy[cellIndex] = 0f
@@ -647,7 +660,129 @@ class CellEntity(
 
         deleteNeural(cellIndex = cellIndex)
 
-        specialEntity.delete(cell = cell, cellIndex = cellIndex)
+        specialEntity.deleteSpecial(cellIndex)
+    }
+
+    override fun persistFields(state: EntityState) {
+        state.ints(::particleIndexes)
+        state.ints(::cellGenomeId)
+        state.ints(::organIndex)
+        state.ints(::parentIndex)
+        state.floats(::angleCos)
+        state.floats(::angleSin)
+        state.floats(::angleDirectedCos)
+        state.floats(::angleDirectedSin)
+        state.floats(::angleCompensationCos)
+        state.floats(::angleCompensationSin)
+        state.floats(::energyNecessaryToDivide)
+        state.floats(::energyNecessaryToMutate)
+        state.booleans(::isDividedInThisStage)
+        state.booleans(::isMutateInThisStage)
+        state.bytes(::cellType)
+        state.floats(::energy)
+        state.floats(::maxEnergy)
+        state.booleans(::isNeural)
+        state.floats(::neuronImpulseInput)
+        state.floats(::neuronImpulseOutput)
+        state.booleans(::isOnEdge)
+        state.floats(::degreeOfShortening)
+        state.ints(::pheromoneType)
+        state.ints(::linkAmount)
+        state.ints(::cellLinks, perSlot = MAX_LINKS_PER_CELL)
+        state.ints(::cellLinkIds, perSlot = MAX_LINKS_PER_CELL)
+        state.ints(::neuralIndexes)
+        orphanCellCount = state.int("orphanCellCount", orphanCellCount)
+
+        // Порядок внутри списка сохраняется: по нему, например, detachAllNeuralLinks снимает
+        // связи умирающей клетки. Клетки — по возрастанию: порядок обхода хеш-таблицы
+        // зависит от истории вставок, и без сортировки одинаковый мир давал бы разные файлы.
+        state.packed(
+            "neuralConnections",
+            write = {
+                val packed = IntArrayList()
+                for (cellIndex in neuralConnections.keys.toIntArray().sorted()) {
+                    val links = neuralConnections.get(cellIndex)
+                    packed.add(cellIndex)
+                    packed.add(links.size)
+                    packed.addAll(links)
+                }
+                packed.toIntArray()
+            },
+            read = { packed ->
+                var i = 0
+                while (i < packed.size) {
+                    val cellIndex = packed[i]
+                    val size = packed[i + 1]
+                    neuralConnections.put(cellIndex, IntArrayList(packed, i + 2, size))
+                    i += 2 + size
+                }
+            }
+        )
+        // cellActions — ссылки внутрь генома, их сохраняет MapSave, см. cellActionStages.
+    }
+
+    /**
+     * Действия клеток для сохранения мира: пары [клетка, стадия генома], из которой взято
+     * её действие.
+     *
+     * Действие — ссылка внутрь генома, а не данные, поэтому хранится адрес: стадия плюс
+     * cellGenomeId. Стадия ищется по ссылке, а не берётся текущая стадия организма: сразу
+     * после смены стадии (justChangedStage) у клеток ещё лежат действия предыдущей — их
+     * перезапишет только следующий тик.
+     */
+    /**
+     * После загрузки мира: номера типов клеток из реестра того запуска, что сохранял мир,
+     * в номера текущего. [newIndexByOld] — новый номер по старому (-1 — типа больше нет),
+     * [savedKeys] — ключи по старым номерам, для сообщения об ошибке. Только живые клетки:
+     * в мёртвых слотах тип никто не читает.
+     */
+    fun remapCellTypes(newIndexByOld: IntArray, savedKeys: List<String>) {
+        if (newIndexByOld.withIndex().all { (old, new) -> old == new }) return
+        for (i in 0 until aliveList.size) {
+            val cellIndex = aliveList.getInt(i)
+            val old = cellType[cellIndex].toInt()
+            val new = newIndexByOld.getOrElse(old) { -1 }
+            if (new == -1) throw UnknownCellTypeException(savedKeys.getOrElse(old) { "#$old" })
+            cellType[cellIndex] = new.toByte()
+        }
+    }
+
+    fun cellActionStages(genomes: List<Genome>): IntArray {
+        val packed = IntArrayList()
+        for (i in 0 until aliveList.size) {
+            val cellIndex = aliveList.getInt(i)
+            val action = cellActions[cellIndex] ?: continue
+            val organ = organIndex[cellIndex]
+            if (organ == -1) continue
+            val stages = genomes.getOrNull(organEntity.genomeIndex[organ])?.genomeStageInstruction ?: continue
+
+            // Почти всегда это текущая стадия или предыдущая, перебор всех — на всякий случай.
+            val current = organEntity.stage[organ]
+            val stage = (sequenceOf(current, current - 1) + stages.indices.asSequence())
+                .firstOrNull { it in stages.indices && stages[it].cellActions[cellGenomeId[cellIndex]] === action }
+                ?: continue
+            packed.add(cellIndex)
+            packed.add(stage)
+        }
+        return packed.toIntArray()
+    }
+
+    /** Обратное к [cellActionStages]. Геномы к этому моменту уже загружены и сопоставлены. */
+    fun restoreCellActions(actionStages: IntArray, genomes: List<Genome>) {
+        for (i in actionStages.indices step 2) {
+            val cellIndex = actionStages[i]
+            cellActions[cellIndex] = genomes[organEntity.genomeIndex[organIndex[cellIndex]]]
+                .genomeStageInstruction[actionStages[i + 1]]
+                .cellActions[cellGenomeId[cellIndex]]
+        }
+    }
+
+    override fun restoreAfterLoad() {
+        organToIdToIndex.clear()
+        for (i in 0 until aliveList.size) {
+            val cellIndex = aliveList.getInt(i)
+            organToIdToIndex.put(organIndex[cellIndex], cellGenomeId[cellIndex], cellIndex)
+        }
     }
 
     override fun onCopy() {
@@ -656,7 +791,6 @@ class CellEntity(
 
     override fun onPaste() {
 
-        //TODO map_save востанвить по данным - organToIdToIndex
     }
 
     override fun onClear(bound: Int) {

@@ -44,11 +44,14 @@ class BodyExport(
     private val linkEntity: LinkEntity,
 ) {
 
-    companion object {
-        /** Идентификаторы типов клеток из CellListBuilder.instances. */
-        private const val CELL_TYPE_BONE = 2
-        private const val CELL_TYPE_MUSCLE = 5
+    /**
+     * Номера типов кости и мышцы в реестре этого запуска — по ключу, а не константой:
+     * номер это место в реестре, и он меняется вместе с порядком клеток.
+     */
+    private val cellTypeBone = cellEntity.cellList.requireIndex("bone")
+    private val cellTypeMuscle = cellEntity.cellList.requireIndex("muscle")
 
+    companion object {
         private const val FILE_NAME = "body-export.txt"
     }
 
@@ -78,8 +81,8 @@ class BodyExport(
             if (genomeId == -1) continue
 
             val type = cellEntity.cellType[cellIndex].toInt()
-            val isBone = if (type == CELL_TYPE_BONE) 1 else 0
-            val isMuscle = if (type == CELL_TYPE_MUSCLE) 1 else 0
+            val isBone = if (type == cellTypeBone) 1 else 0
+            val isMuscle = if (type == cellTypeMuscle) 1 else 0
             bones += isBone
             muscles += isMuscle
             cells++

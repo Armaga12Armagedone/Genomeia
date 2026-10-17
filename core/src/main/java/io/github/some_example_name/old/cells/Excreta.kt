@@ -4,6 +4,7 @@ import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.utils.brownColors
 
 class Excreta(cellTypeId: Int): Cell(
+    key = "excreta",
     defaultColor = brownColors.first(),
     cellTypeId = cellTypeId,
     textureName = "excreta.png",

@@ -246,11 +246,16 @@ class StyledSelectBox<T> : VisSelectBox<T>(makeCleanSelectBoxStyle()) {
     }
 }
 
-fun <T> VisTable.visSelectBox(
+/**
+ * [StyledSelectBox] с пунктами и обработчиком — без привязки к таблице.
+ *
+ * Для мест, где раскладка собирается руками, а не DSL: например, верхняя панель экрана
+ * симуляции переносит свои кнопки по строкам сама. Внутри DSL — [visSelectBox].
+ */
+fun <T> styledSelectBox(
     items: Array<T>,
     selectedIndex: Int = 0,
-    onChange: ((T, Int) -> Unit)? = null,
-    cellInit: (Cell<StyledSelectBox<T>>.() -> Unit) = {}
+    onChange: ((T, Int) -> Unit)? = null
 ): StyledSelectBox<T> {
     val selectBox = StyledSelectBox<T>()
 
@@ -268,7 +273,16 @@ fun <T> VisTable.visSelectBox(
             }
         })
     }
+    return selectBox
+}
 
+fun <T> VisTable.visSelectBox(
+    items: Array<T>,
+    selectedIndex: Int = 0,
+    onChange: ((T, Int) -> Unit)? = null,
+    cellInit: (Cell<StyledSelectBox<T>>.() -> Unit) = {}
+): StyledSelectBox<T> {
+    val selectBox = styledSelectBox(items, selectedIndex, onChange)
     val cell = this.add(selectBox) as Cell<StyledSelectBox<T>>
     cellInit(cell)
     return selectBox
@@ -349,6 +363,8 @@ fun VisTable.visImage(
 fun VisTable.visScrollPane(
     cellInit: (Cell<VisScrollPane>.() -> Unit) = {},
     fadeScrollBars: Boolean = true,
+    scrollingDisabledX: Boolean = false,
+    scrollingDisabledY: Boolean = false,
     content: VisTable.() -> Unit
 ): VisScrollPane {
     val contentTable = VisTable(true)
@@ -356,7 +372,10 @@ fun VisTable.visScrollPane(
 
     val scrollPane = VisScrollPane(contentTable).apply {
         setFadeScrollBars(fadeScrollBars)           // ← теперь работает правильно
-        setScrollingDisabled(false, false)
+        // Отключённый скролл по оси означает ещё и то, что содержимое получает ширину
+        // (или высоту) панели, а не свою желаемую — только так вертикальная колонка
+        // настроек ужимается по ширине вместо того, чтобы уезжать за край.
+        setScrollingDisabled(scrollingDisabledX, scrollingDisabledY)
         setForceScroll(false, true)
         setFlickScroll(true)
         setOverscroll(false, false)

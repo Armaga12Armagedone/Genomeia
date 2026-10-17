@@ -3,6 +3,7 @@ package io.github.some_example_name.old.cells
 import io.github.some_example_name.old.core.utils.leafColors
 
 class Leaf(cellTypeId: Int): Cell(
+    key = "leaf",
     defaultColor = leafColors.first(),
     cellTypeId = cellTypeId,
     textureName = "leaf.png"

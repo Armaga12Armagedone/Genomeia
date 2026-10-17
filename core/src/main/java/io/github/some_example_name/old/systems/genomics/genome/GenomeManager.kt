@@ -2,11 +2,10 @@ package io.github.some_example_name.old.systems.genomics.genome
 
 import com.badlogic.gdx.graphics.Color
 import io.github.some_example_name.old.core.prettyPrint
-import io.github.some_example_name.old.systems.genomics.genome_deprecated.GenomeJsonReader
+import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
 import io.github.some_example_name.old.systems.simulation.SimulationData
 
 class GenomeManager(
-    val genomeJsonReader: GenomeJsonReader,
     val simulationData: SimulationData
 ) {
 
@@ -18,8 +17,9 @@ class GenomeManager(
         genomes.clear()
         simulationData.currentGenomeIndex = 0
         if (genomeName == null) {
-            val genomeNames = genomeJsonReader.getGenomeFileNamesFromFolder()
-            genomeNames.forEach {
+            // Свои и встроенные, в порядке GenomeCatalog.all(): номер в этом списке — номер
+            // генома в мире, и список выбора в симуляции показывает тот же порядок.
+            GenomeCatalog.all().forEach {
                 genomes.add(parseGenome(it))
             }
         } else {
@@ -27,16 +27,29 @@ class GenomeManager(
         }
     }
 
-    private fun parseGenome(name: String): Genome {
-        return loadGenome(name).apply {
-            genomeStageInstruction = addInvertedDivideLinks()
-            dividedTimes = IntArray(genomeStageInstruction.size)
-            mutatedTimes = IntArray(genomeStageInstruction.size)
-            genomeStageInstruction.forEachIndexed { index, stage ->
-                stage.cellActions.forEach { (_, action) ->
-                    if (action.divide != null) dividedTimes[index]++
-                    if (action.mutate != null) mutatedTimes[index]++
-                }
+    /**
+     * Добавить геном организма из сохранённого мира, вернуть его индекс.
+     *
+     * В конец, а не вместо загруженных из папки: индексы в genomes — это и номера в диалоге
+     * выбора генома, и OrganEntity.genomeIndex. Сохранённый мир переназначает индексы
+     * своих организмов на добавленные, а список из папки остаётся тем, что видит игрок.
+     */
+    fun addSavedGenome(genome: Genome): Int {
+        genomes.add(genome.prepare())
+        return genomes.size - 1
+    }
+
+    private fun parseGenome(name: String): Genome = GenomeCatalog.load(name).prepare()
+
+    /** Досчитывает @Transient-поля генома: и после чтения файла, и после загрузки мира. */
+    private fun Genome.prepare(): Genome = apply {
+        genomeStageInstruction = addInvertedDivideLinks()
+        dividedTimes = IntArray(genomeStageInstruction.size)
+        mutatedTimes = IntArray(genomeStageInstruction.size)
+        genomeStageInstruction.forEachIndexed { index, stage ->
+            stage.cellActions.forEach { (_, action) ->
+                if (action.divide != null) dividedTimes[index]++
+                if (action.mutate != null) mutatedTimes[index]++
             }
         }
     }
@@ -90,7 +103,7 @@ fun getEmptyGenome() = Genome(
                     divide = Action(
                         id = 1,
                         angle = 0f,
-                        cellType = 0,
+                        cellType = "leaf",
                         physicalLink = hashMapOf(0 to LinkData(length = 0.6f)),
                         color = Color(0.133f, 0.545f, 0.133f, 1f)
                     )

@@ -1,5 +1,7 @@
 package io.github.some_example_name.old.systems.simulation
 
+import io.github.some_example_name.old.commands.WorkOrder
+
 import io.github.some_example_name.old.core.DISimulationContainer.chunkSize
 import io.github.some_example_name.old.core.DISimulationContainer.gridSize
 import io.github.some_example_name.old.core.DISimulationContainer.threadCount
@@ -22,6 +24,12 @@ class ThreadManager(
         private set
 
     var isRunning = false
+
+    /**
+     * Ключи порядка отложенных команд мира (см. WorkOrder): стадия выставляет буферу ключ
+     * своей работы перед тем, как её считать. null — порядок не отслеживается.
+     */
+    var workOrder: WorkOrder? = null
 
     fun dispose() {
         isRunning = false
@@ -148,12 +156,17 @@ class ThreadManager(
         val first = if (isOdd) 1 else 0
         val slots = (totalChunks - first + 1) / 2
 
+        val order = workOrder
+        val stage = order?.beginStage() ?: 0L
         executor.runChunks(slots, stageId) { slot, _ ->
             val chunk = first + slot * 2
             val start = chunk * chunkSize
             val end = if (chunk == totalChunks - 1) gridSize else (chunk + 1) * chunkSize
+            // Буфер команд здесь — по слоту, а не по воркеру.
+            order?.enter(slot, stage, slot)
             job(start, end, slot)
         }
+        order?.endStage(stage)
     }
 
     /**
@@ -161,7 +174,13 @@ class ThreadManager(
      * Раздача тоже динамическая: слоты неравномерны по объёму работы ровно так же, как чанки.
      */
     inline fun runSlotStage(slotCount: Int, stageId: Int = -1, crossinline job: (slot: Int) -> Unit) {
-        executor.runChunks(slotCount, stageId) { slot, _ -> job(slot) }
+        val order = workOrder
+        val stage = order?.beginStage() ?: 0L
+        executor.runChunks(slotCount, stageId) { slot, _ ->
+            order?.enter(slot, stage, slot)
+            job(slot)
+        }
+        order?.endStage(stage)
     }
 
     /**
@@ -182,7 +201,15 @@ class ThreadManager(
         stageId: Int = -1,
         crossinline job: (work: Int, workerId: Int) -> Unit
     ) {
-        executor.runChunks(workCount, stageId) { work, workerId -> job(work, workerId) }
+        val order = workOrder
+        val stage = order?.beginStage() ?: 0L
+        executor.runChunks(workCount, stageId) { work, workerId ->
+            // Буфер команд — по воркеру, а ключ — по работе: кто бы её ни взял, её команды
+            // применятся на её месте (WorkOrder).
+            order?.enter(workerId, stage, work)
+            job(work, workerId)
+        }
+        order?.endStage(stage)
     }
 
     override fun resize() {

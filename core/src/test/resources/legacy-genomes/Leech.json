@@ -1,0 +1,2355 @@
+{
+"name": "Leech",
+"genomeStageInstruction": [
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"0": {
+				"divide": {
+					"id": "85",
+					"angle": 0,
+					"cellType": 0,
+					"physicalLink": {
+						"0": {
+							"length": 29.93042
+						}
+					},
+					"colorHsv": "218a21ff"
+				},
+				"mutate": {
+					"cellType": 0,
+					"physicalLink": {},
+					"colorHsv": "218a21ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"0": {
+				"divide": {
+					"id": "87",
+					"angle": 3.1415927,
+					"cellType": 0,
+					"physicalLink": {
+						"0": {
+							"length": 29.968567
+						}
+					},
+					"colorHsv": "218a21ff"
+				}
+			},
+			"85": {
+				"divide": {
+					"id": "86",
+					"angle": 0,
+					"cellType": 0,
+					"physicalLink": {
+						"85": {
+							"length": 29.986267
+						}
+					},
+					"colorHsv": "218a21ff"
+				},
+				"mutate": {
+					"cellType": 0,
+					"physicalLink": {},
+					"colorHsv": "218a21ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"86": {
+				"divide": {
+					"id": "88",
+					"angle": 0,
+					"cellType": 0,
+					"physicalLink": {
+						"86": {
+							"length": 29.928894
+						}
+					},
+					"colorHsv": "218a21ff"
+				}
+			},
+			"87": {
+				"divide": {
+					"id": "89",
+					"angle": 0,
+					"cellType": 0,
+					"physicalLink": {
+						"87": {
+							"length": 29.929657
+						}
+					},
+					"colorHsv": "218a21ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"0": {
+				"divide": {
+					"id": "100",
+					"angle": 1.5707964,
+					"cellType": 5,
+					"physicalLink": {
+						"0": {
+							"length": 23.999939
+						},
+						"99": {
+							"length": 23.999939
+						},
+						"101": {
+							"length": 23.999939
+						},
+						"85": {
+							"length": 38.3644
+						},
+						"87": {
+							"length": 38.39417
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"85": {
+				"divide": {
+					"id": "101",
+					"angle": 1.8130475,
+					"cellType": 5,
+					"physicalLink": {
+						"0": {
+							"length": 33.94104
+						},
+						"100": {
+							"length": 23.999939
+						},
+						"103": {
+							"length": 23.999939
+						},
+						"85": {
+							"length": 24.721806
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"86": {
+				"divide": {
+					"id": "103",
+					"angle": 2.0316682,
+					"cellType": 5,
+					"physicalLink": {
+						"101": {
+							"length": 23.999939
+						},
+						"104": {
+							"length": 24.000244
+						},
+						"85": {
+							"length": 30.041677
+						},
+						"86": {
+							"length": 26.795662
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"87": {
+				"divide": {
+					"id": "99",
+					"angle": -1.814545,
+					"cellType": 5,
+					"physicalLink": {
+						"0": {
+							"length": 33.94104
+						},
+						"100": {
+							"length": 23.999939
+						},
+						"87": {
+							"length": 24.730986
+						},
+						"98": {
+							"length": 24.000092
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"88": {
+				"divide": {
+					"id": "104",
+					"angle": 2.2101648,
+					"cellType": 5,
+					"physicalLink": {
+						"88": {
+							"length": 29.907482
+						},
+						"103": {
+							"length": 24.000244
+						},
+						"86": {
+							"length": 26.870176
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"89": {
+				"divide": {
+					"id": "98",
+					"angle": -2.0310457,
+					"cellType": 5,
+					"physicalLink": {
+						"99": {
+							"length": 24.000092
+						},
+						"89": {
+							"length": 26.787386
+						},
+						"87": {
+							"length": 30.01884
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"0": {
+				"divide": {
+					"id": "107",
+					"angle": -1.5707964,
+					"cellType": 5,
+					"physicalLink": {
+						"0": {
+							"length": 23.999939
+						},
+						"106": {
+							"length": 23.999939
+						},
+						"108": {
+							"length": 23.999939
+						},
+						"85": {
+							"length": 38.3644
+						},
+						"87": {
+							"length": 38.39417
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"85": {
+				"divide": {
+					"id": "108",
+					"angle": -1.8130475,
+					"cellType": 5,
+					"physicalLink": {
+						"0": {
+							"length": 33.94104
+						},
+						"107": {
+							"length": 23.999939
+						},
+						"109": {
+							"length": 23.999939
+						},
+						"85": {
+							"length": 24.721806
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"86": {
+				"divide": {
+					"id": "109",
+					"angle": -2.0316682,
+					"cellType": 5,
+					"physicalLink": {
+						"110": {
+							"length": 24.000244
+						},
+						"108": {
+							"length": 23.999939
+						},
+						"85": {
+							"length": 30.041677
+						},
+						"86": {
+							"length": 26.795662
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"87": {
+				"divide": {
+					"id": "106",
+					"angle": -4.4686403,
+					"cellType": 5,
+					"physicalLink": {
+						"0": {
+							"length": 33.94104
+						},
+						"105": {
+							"length": 24.000092
+						},
+						"107": {
+							"length": 23.999939
+						},
+						"87": {
+							"length": 24.730986
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"88": {
+				"divide": {
+					"id": "110",
+					"angle": -2.2101648,
+					"cellType": 5,
+					"physicalLink": {
+						"88": {
+							"length": 29.907482
+						},
+						"109": {
+							"length": 24.000244
+						},
+						"86": {
+							"length": 26.870176
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"89": {
+				"divide": {
+					"id": "105",
+					"angle": -4.25214,
+					"cellType": 5,
+					"physicalLink": {
+						"89": {
+							"length": 26.787386
+						},
+						"106": {
+							"length": 24.000092
+						},
+						"87": {
+							"length": 30.01884
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"88": {
+				"divide": {
+					"id": "111",
+					"angle": 1.3197682,
+					"cellType": 5,
+					"physicalLink": {
+						"88": {
+							"length": 24.776495
+						},
+						"104": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"89": {
+				"divide": {
+					"id": "112",
+					"angle": -1.1037619,
+					"cellType": 5,
+					"physicalLink": {
+						"89": {
+							"length": 26.878416
+						},
+						"98": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"88": {
+				"divide": {
+					"id": "113",
+					"angle": -1.3197682,
+					"cellType": 5,
+					"physicalLink": {
+						"88": {
+							"length": 24.776495
+						},
+						"110": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"89": {
+				"divide": {
+					"id": "114",
+					"angle": -5.1794233,
+					"cellType": 5,
+					"physicalLink": {
+						"89": {
+							"length": 26.878416
+						},
+						"105": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "cd0000ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"113": {
+				"divide": {
+					"id": "117",
+					"angle": 0.53436685,
+					"cellType": 7,
+					"physicalLink": {
+						"113": {
+							"length": 33.941147
+						}
+					},
+					"colorHsv": "ffa400ff"
+				}
+			},
+			"88": {
+				"divide": {
+					"id": "115",
+					"angle": 0,
+					"cellType": 7,
+					"physicalLink": {
+						"88": {
+							"length": 30.154419
+						},
+						"111": {
+							"length": 33.94104
+						},
+						"113": {
+							"length": 33.94104
+						}
+					},
+					"colorHsv": "ffa400ff"
+				}
+			},
+			"111": {
+				"divide": {
+					"id": "116",
+					"angle": -0.53437,
+					"cellType": 7,
+					"physicalLink": {
+						"111": {
+							"length": 33.94104
+						}
+					},
+					"colorHsv": "ffa400ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"115": {
+				"divide": {
+					"id": "118",
+					"angle": -1.5707964,
+					"cellType": 24,
+					"physicalLink": {
+						"88": {
+							"length": 38.53941
+						},
+						"113": {
+							"length": 23.999939
+						},
+						"115": {
+							"length": 23.999939
+						},
+						"117": {
+							"length": 24.000092
+						}
+					},
+					"colorHsv": "ff0000ff"
+				}
+			},
+			"116": {
+				"divide": {
+					"id": "119",
+					"angle": -2.3561945,
+					"cellType": 24,
+					"physicalLink": {
+						"88": {
+							"length": 38.53941
+						},
+						"111": {
+							"length": 23.999939
+						},
+						"115": {
+							"length": 23.999939
+						},
+						"116": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "ff0000ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap"
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"98": {
+				"mutate": {
+					"physicalLink": {
+						"99": {
+							"length": 10,
+							"directedNeuronLink": 98
+						},
+						"112": {
+							"length": 10,
+							"directedNeuronLink": 112
+						}
+					}
+				}
+			},
+			"99": {
+				"mutate": {
+					"physicalLink": {
+						"100": {
+							"length": 10,
+							"directedNeuronLink": 99
+						}
+					}
+				}
+			},
+			"101": {
+				"mutate": {
+					"physicalLink": {
+						"100": {
+							"length": 10,
+							"directedNeuronLink": 100
+						},
+						"103": {
+							"length": 10,
+							"directedNeuronLink": 101
+						}
+					}
+				}
+			},
+			"104": {
+				"mutate": {
+					"physicalLink": {
+						"111": {
+							"length": 10,
+							"directedNeuronLink": 104
+						},
+						"103": {
+							"length": 10,
+							"directedNeuronLink": 103
+						}
+					}
+				}
+			},
+			"105": {
+				"mutate": {
+					"physicalLink": {
+						"114": {
+							"length": 10,
+							"directedNeuronLink": 114
+						},
+						"106": {
+							"length": 10,
+							"directedNeuronLink": 105
+						}
+					}
+				}
+			},
+			"106": {
+				"mutate": {
+					"physicalLink": {
+						"107": {
+							"length": 10,
+							"directedNeuronLink": 106
+						}
+					}
+				}
+			},
+			"108": {
+				"mutate": {
+					"physicalLink": {
+						"107": {
+							"length": 10,
+							"directedNeuronLink": 107
+						},
+						"109": {
+							"length": 10,
+							"directedNeuronLink": 108
+						}
+					}
+				}
+			},
+			"110": {
+				"mutate": {
+					"physicalLink": {
+						"113": {
+							"length": 10,
+							"directedNeuronLink": 110
+						},
+						"109": {
+							"length": 10,
+							"directedNeuronLink": 109
+						}
+					}
+				}
+			},
+			"111": {
+				"mutate": {
+					"physicalLink": {}
+				}
+			},
+			"112": {
+				"mutate": {
+					"physicalLink": {},
+					"angleDirected": 0.8447394
+				}
+			},
+			"113": {
+				"mutate": {
+					"physicalLink": {}
+				}
+			},
+			"86": {
+				"mutate": {
+					"cellType": 4,
+					"physicalLink": {},
+					"colorHsv": "ffc0caff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"88": {
+				"mutate": {
+					"cellType": 4,
+					"physicalLink": {},
+					"colorHsv": "ffc0caff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"89": {
+				"mutate": {
+					"physicalLink": {},
+					"angleDirected": 0.8447394
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"0": {
+				"mutate": {
+					"cellType": 1,
+					"physicalLink": {},
+					"colorHsv": "ffd600ff"
+				}
+			},
+			"113": {
+				"mutate": {
+					"physicalLink": {}
+				}
+			},
+			"98": {
+				"mutate": {
+					"physicalLink": {
+						"99": {
+							"length": 10,
+							"directedNeuronLink": 98
+						},
+						"112": {
+							"length": 10,
+							"directedNeuronLink": 112
+						}
+					}
+				}
+			},
+			"99": {
+				"mutate": {
+					"physicalLink": {
+						"100": {
+							"length": 10,
+							"directedNeuronLink": 99
+						}
+					}
+				}
+			},
+			"85": {
+				"mutate": {
+					"cellType": 1,
+					"physicalLink": {},
+					"colorHsv": "ffd600ff"
+				}
+			},
+			"101": {
+				"mutate": {
+					"physicalLink": {
+						"100": {
+							"length": 10,
+							"directedNeuronLink": 100
+						},
+						"103": {
+							"length": 10,
+							"directedNeuronLink": 101
+						}
+					}
+				}
+			},
+			"104": {
+				"mutate": {
+					"physicalLink": {
+						"111": {
+							"length": 10,
+							"directedNeuronLink": 104
+						},
+						"103": {
+							"length": 10,
+							"directedNeuronLink": 103
+						}
+					}
+				}
+			},
+			"88": {
+				"mutate": {
+					"physicalLink": {
+						"111": {
+							"length": 10,
+							"directedNeuronLink": 111
+						},
+						"113": {
+							"length": 10,
+							"directedNeuronLink": 113
+						}
+					}
+				}
+			},
+			"110": {
+				"mutate": {
+					"physicalLink": {
+						"113": {
+							"length": 10,
+							"directedNeuronLink": 110
+						}
+					}
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"89": {
+				"divide": {
+					"id": "126",
+					"angle": 0,
+					"cellType": 3,
+					"physicalLink": {
+						"89": {
+							"length": 36.101837
+						},
+						"112": {
+							"length": 33.941147
+						},
+						"114": {
+							"length": 33.941147
+						}
+					},
+					"colorHsv": "0000ffff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"126": {
+				"divide": {
+					"id": "128",
+					"angle": 0,
+					"cellType": 3,
+					"physicalLink": {
+						"126": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "0000ffff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				},
+				"mutate": {
+					"physicalLink": {},
+					"a": -1
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"128": {
+				"divide": {
+					"id": "129",
+					"angle": 0,
+					"cellType": 3,
+					"physicalLink": {
+						"128": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "0000ffff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"129": {
+				"divide": {
+					"id": "130",
+					"angle": 0,
+					"cellType": 3,
+					"physicalLink": {
+						"129": {
+							"length": 24.000092
+						}
+					},
+					"colorHsv": "0000ffff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"130": {
+				"divide": {
+					"id": "131",
+					"angle": 0,
+					"cellType": 3,
+					"physicalLink": {
+						"130": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "0000ffff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"131": {
+				"divide": {
+					"id": "132",
+					"angle": 0,
+					"cellType": 3,
+					"physicalLink": {
+						"131": {
+							"length": 24.000092
+						}
+					},
+					"colorHsv": "0000ffff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"132": {
+				"divide": {
+					"id": "133",
+					"angle": 0,
+					"cellType": 3,
+					"physicalLink": {
+						"132": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "0000ffff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"116": {
+				"mutate": {
+					"cellType": 14,
+					"physicalLink": {},
+					"colorHsv": "acd7e6ff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true,
+					"colorRecognition": 7,
+					"lengthDirected": 170
+				}
+			},
+			"117": {
+				"mutate": {
+					"cellType": 14,
+					"physicalLink": {},
+					"colorHsv": "acd7e6ff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true,
+					"colorRecognition": 7,
+					"lengthDirected": 170
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"116": {
+				"mutate": {
+					"physicalLink": {},
+					"angleDirected": -1.3753195
+				}
+			},
+			"117": {
+				"mutate": {
+					"physicalLink": {},
+					"angleDirected": 1.1815878
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"113": {
+				"mutate": {
+					"physicalLink": {
+						"117": {
+							"length": 10,
+							"directedNeuronLink": 113
+						}
+					}
+				}
+			},
+			"111": {
+				"mutate": {
+					"physicalLink": {
+						"116": {
+							"length": 10,
+							"directedNeuronLink": 111
+						}
+					}
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"128": {
+				"divide": {
+					"id": "137",
+					"angle": -4.712389,
+					"cellType": 1,
+					"physicalLink": {
+						"136": {
+							"length": 23.999939
+						},
+						"126": {
+							"length": 33.94104
+						},
+						"128": {
+							"length": 23.999939
+						},
+						"129": {
+							"length": 33.94104
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.35
+				}
+			},
+			"112": {
+				"divide": {
+					"id": "135",
+					"angle": 1.1037619,
+					"cellType": 1,
+					"physicalLink": {
+						"112": {
+							"length": 24.000092
+						},
+						"126": {
+							"length": 23.999939
+						},
+						"128": {
+							"length": 33.94104
+						},
+						"139": {
+							"length": 23.999939
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.35
+				}
+			},
+			"129": {
+				"divide": {
+					"id": "139",
+					"angle": -2.3561945,
+					"cellType": 1,
+					"physicalLink": {
+						"135": {
+							"length": 23.999939
+						},
+						"126": {
+							"length": 33.94104
+						},
+						"128": {
+							"length": 23.999939
+						},
+						"129": {
+							"length": 33.94104
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.35
+				}
+			},
+			"114": {
+				"divide": {
+					"id": "136",
+					"angle": 5.1794233,
+					"cellType": 1,
+					"physicalLink": {
+						"114": {
+							"length": 24.000092
+						},
+						"126": {
+							"length": 23.999939
+						},
+						"137": {
+							"length": 23.999939
+						},
+						"128": {
+							"length": 33.94104
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.35
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"129": {
+				"divide": {
+					"id": "140",
+					"angle": -4.712389,
+					"cellType": 1,
+					"physicalLink": {
+						"137": {
+							"length": 23.999939
+						},
+						"128": {
+							"length": 33.94104
+						},
+						"129": {
+							"length": 23.999939
+						},
+						"130": {
+							"length": 33.941147
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.35
+				}
+			},
+			"139": {
+				"divide": {
+					"id": "141",
+					"angle": 2.3561945,
+					"cellType": 1,
+					"physicalLink": {
+						"128": {
+							"length": 33.94104
+						},
+						"139": {
+							"length": 23.999939
+						},
+						"129": {
+							"length": 23.999939
+						},
+						"130": {
+							"length": 33.941147
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.35
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"140": {
+				"divide": {
+					"id": "142",
+					"angle": 4.712389,
+					"cellType": 1,
+					"physicalLink": {
+						"129": {
+							"length": 33.941147
+						},
+						"140": {
+							"length": 24.000092
+						},
+						"130": {
+							"length": 23.999939
+						},
+						"131": {
+							"length": 33.94104
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.25
+				}
+			},
+			"141": {
+				"divide": {
+					"id": "143",
+					"angle": 0,
+					"cellType": 1,
+					"physicalLink": {
+						"129": {
+							"length": 33.941147
+						},
+						"130": {
+							"length": 23.999939
+						},
+						"141": {
+							"length": 24.000092
+						},
+						"131": {
+							"length": 33.94104
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.25
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"142": {
+				"divide": {
+					"id": "145",
+					"angle": -0.012540817,
+					"cellType": 1,
+					"physicalLink": {
+						"142": {
+							"length": 16.000557
+						},
+						"131": {
+							"length": 25.108091
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			},
+			"143": {
+				"divide": {
+					"id": "144",
+					"angle": -6.246672,
+					"cellType": 1,
+					"physicalLink": {
+						"143": {
+							"length": 16.41032
+						},
+						"131": {
+							"length": 24.60426
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"144": {
+				"divide": {
+					"id": "146",
+					"angle": 0.07117939,
+					"cellType": 1,
+					"physicalLink": {
+						"132": {
+							"length": 27.523443
+						},
+						"144": {
+							"length": 14.886197
+						},
+						"131": {
+							"length": 22.958834
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			},
+			"145": {
+				"divide": {
+					"id": "147",
+					"angle": -0.16505504,
+					"cellType": 1,
+					"physicalLink": {
+						"132": {
+							"length": 26.644985
+						},
+						"145": {
+							"length": 15.849264
+						},
+						"131": {
+							"length": 22.332048
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"146": {
+				"divide": {
+					"id": "148",
+					"angle": 0.10132837,
+					"cellType": 1,
+					"physicalLink": {
+						"132": {
+							"length": 19.339
+						},
+						"146": {
+							"length": 13.493772
+						},
+						"131": {
+							"length": 27.877789
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			},
+			"147": {
+				"divide": {
+					"id": "149",
+					"angle": -0.007754326,
+					"cellType": 1,
+					"physicalLink": {
+						"132": {
+							"length": 18.944557
+						},
+						"147": {
+							"length": 13.023205
+						},
+						"131": {
+							"length": 27.605625
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"148": {
+				"divide": {
+					"id": "151",
+					"angle": -0.10681176,
+					"cellType": 1,
+					"physicalLink": {
+						"132": {
+							"length": 21.137009
+						},
+						"133": {
+							"length": 21.1377
+						},
+						"148": {
+							"length": 15.681816
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			},
+			"149": {
+				"divide": {
+					"id": "150",
+					"angle": 0.18535018,
+					"cellType": 1,
+					"physicalLink": {
+						"132": {
+							"length": 21.116735
+						},
+						"133": {
+							"length": 23.27985
+						},
+						"149": {
+							"length": 13.5998535
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"150": {
+				"divide": {
+					"id": "152",
+					"angle": -6.1328173,
+					"cellType": 1,
+					"physicalLink": {
+						"133": {
+							"length": 20.614767
+						},
+						"150": {
+							"length": 13.350723
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			},
+			"151": {
+				"divide": {
+					"id": "153",
+					"angle": 5.965619,
+					"cellType": 1,
+					"physicalLink": {
+						"133": {
+							"length": 20.216618
+						},
+						"151": {
+							"length": 13.102656
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"152": {
+				"divide": {
+					"id": "154",
+					"angle": 6.1328173,
+					"cellType": 1,
+					"physicalLink": {
+						"133": {
+							"length": 25.364311
+						},
+						"152": {
+							"length": 15.599976
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			},
+			"153": {
+				"divide": {
+					"id": "155",
+					"angle": -5.9629483,
+					"cellType": 1,
+					"physicalLink": {
+						"133": {
+							"length": 24.534998
+						},
+						"153": {
+							"length": 15.283873
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"154": {
+				"divide": {
+					"id": "156",
+					"angle": -0.67940784,
+					"cellType": 1,
+					"physicalLink": {
+						"154": {
+							"length": 13.368664
+						},
+						"133": {
+							"length": 27.997019
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			},
+			"155": {
+				"divide": {
+					"id": "157",
+					"angle": 0.75024176,
+					"cellType": 1,
+					"physicalLink": {
+						"155": {
+							"length": 12.19165
+						},
+						"133": {
+							"length": 25.773966
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"157": {
+				"divide": {
+					"id": "158",
+					"angle": 0.38245845,
+					"cellType": 1,
+					"physicalLink": {
+						"133": {
+							"length": 27.61637
+						},
+						"156": {
+							"length": 11.453518
+						},
+						"157": {
+							"length": 11.005436
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"157": {
+				"divide": {
+					"id": "160",
+					"angle": -0.52303624,
+					"cellType": 1,
+					"physicalLink": {
+						"157": {
+							"length": 12.270115
+						},
+						"158": {
+							"length": 10.244924
+						},
+						"159": {
+							"length": 15.205154
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			},
+			"158": {
+				"divide": {
+					"id": "159",
+					"angle": -0.37913513,
+					"cellType": 1,
+					"physicalLink": {
+						"156": {
+							"length": 10.282651
+						},
+						"158": {
+							"length": 11.627555
+						},
+						"160": {
+							"length": 15.205154
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"160": {
+				"divide": {
+					"id": "161",
+					"angle": 0.36264968,
+					"cellType": 1,
+					"physicalLink": {
+						"159": {
+							"length": 12.322345
+						},
+						"160": {
+							"length": 12.496256
+						}
+					},
+					"colorHsv": "ffd600ff",
+					"radius": 0.2
+				}
+			},
+			"115": {
+				"divide": {
+					"id": "162",
+					"angle": 0.017863963,
+					"cellType": 7,
+					"physicalLink": {
+						"115": {
+							"length": 29.999903
+						},
+						"118": {
+							"length": 38.751953
+						},
+						"119": {
+							"length": 38.082394
+						}
+					},
+					"colorHsv": "ffa400ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"116": {
+				"divide": {
+					"id": "165",
+					"angle": 0.7932412,
+					"cellType": 14,
+					"physicalLink": {
+						"116": {
+							"length": 30.000008
+						}
+					},
+					"colorHsv": "acd7e6ff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true,
+					"colorRecognition": 7,
+					"lengthDirected": 170
+				},
+				"mutate": {
+					"cellType": 2,
+					"physicalLink": {},
+					"colorHsv": "ffffffff"
+				}
+			},
+			"117": {
+				"divide": {
+					"id": "164",
+					"angle": -0.785395,
+					"cellType": 14,
+					"physicalLink": {
+						"117": {
+							"length": 30
+						}
+					},
+					"colorHsv": "acd7e6ff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true,
+					"colorRecognition": 7,
+					"lengthDirected": 170
+				},
+				"mutate": {
+					"cellType": 2,
+					"physicalLink": {},
+					"colorHsv": "ffffffff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"164": {
+				"mutate": {
+					"physicalLink": {},
+					"angleDirected": 2.0071287
+				}
+			},
+			"116": {
+				"divide": {
+					"id": "167",
+					"angle": 2.1185725,
+					"cellType": 2,
+					"physicalLink": {
+						"165": {
+							"length": 34.781483
+						},
+						"111": {
+							"length": 30.24255
+						},
+						"104": {
+							"length": 37.600628
+						},
+						"116": {
+							"length": 26.34012
+						},
+						"119": {
+							"length": 39.590534
+						}
+					},
+					"colorHsv": "ffffffff"
+				},
+				"mutate": {
+					"physicalLink": {
+						"165": {
+							"length": 10,
+							"directedNeuronLink": 116
+						}
+					}
+				}
+			},
+			"165": {
+				"mutate": {
+					"physicalLink": {},
+					"angleDirected": -2.042035
+				}
+			},
+			"117": {
+				"divide": {
+					"id": "166",
+					"angle": -2.0633938,
+					"cellType": 2,
+					"physicalLink": {
+						"110": {
+							"length": 38.333607
+						},
+						"113": {
+							"length": 32.358482
+						},
+						"117": {
+							"length": 28.409098
+						},
+						"164": {
+							"length": 34.858154
+						}
+					},
+					"colorHsv": "ffffffff"
+				},
+				"mutate": {
+					"physicalLink": {
+						"164": {
+							"length": 10,
+							"directedNeuronLink": 117
+						}
+					}
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"164": {
+				"mutate": {
+					"physicalLink": {},
+					"lengthDirected": 760
+				}
+			},
+			"165": {
+				"mutate": {
+					"physicalLink": {},
+					"lengthDirected": 760
+				}
+			},
+			"166": {
+				"mutate": {
+					"physicalLink": {},
+					"lengthDirected": 760
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"166": {
+				"divide": {
+					"id": "168",
+					"angle": 1.7594552,
+					"cellType": 2,
+					"physicalLink": {
+						"166": {
+							"length": 21.167936
+						},
+						"117": {
+							"length": 32.08734
+						},
+						"164": {
+							"length": 17.66113
+						}
+					},
+					"colorHsv": "ffffffff"
+				},
+				"mutate": {
+					"physicalLink": {},
+					"lengthDirected": 760
+				}
+			},
+			"167": {
+				"divide": {
+					"id": "169",
+					"angle": -1.8495575,
+					"cellType": 2,
+					"physicalLink": {
+						"165": {
+							"length": 15.85878
+						},
+						"167": {
+							"length": 21.166573
+						},
+						"116": {
+							"length": 28.896374
+						}
+					},
+					"colorHsv": "ffffffff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"87": {
+				"mutate": {
+					"cellType": 22,
+					"physicalLink": {},
+					"colorHsv": "4169e0ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"89": {
+				"mutate": {
+					"cellType": 22,
+					"physicalLink": {},
+					"colorHsv": "4169e0ff",
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"118": {
+				"divide": {
+					"id": "171",
+					"angle": 1.2242649,
+					"cellType": 7,
+					"physicalLink": {
+						"115": {
+							"length": 38.441998
+						},
+						"117": {
+							"length": 27.000183
+						},
+						"118": {
+							"length": 22.965168
+						},
+						"162": {
+							"length": 33.407673
+						}
+					},
+					"colorHsv": "ffa400ff"
+				},
+				"mutate": {
+					"cellType": 24,
+					"physicalLink": {},
+					"colorHsv": "ff0000ff"
+				}
+			},
+			"119": {
+				"divide": {
+					"id": "170",
+					"angle": 2.0769415,
+					"cellType": 7,
+					"physicalLink": {
+						"116": {
+							"length": 24.361837
+						},
+						"119": {
+							"length": 24.000032
+						},
+						"162": {
+							"length": 36.23603
+						}
+					},
+					"colorHsv": "ffa400ff"
+				},
+				"mutate": {
+					"cellType": 24,
+					"physicalLink": {},
+					"colorHsv": "ff0000ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"118": {
+				"mutate": {
+					"cellType": 2,
+					"physicalLink": {},
+					"colorHsv": "ffffffff"
+				}
+			},
+			"119": {
+				"mutate": {
+					"cellType": 2,
+					"physicalLink": {},
+					"colorHsv": "ffffffff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"170": {
+				"divide": {
+					"id": "172",
+					"angle": -0.65793127,
+					"cellType": 24,
+					"physicalLink": {},
+					"colorHsv": "ff0000ff",
+					"radius": 0.2
+				},
+				"mutate": {
+					"cellType": 7,
+					"physicalLink": {},
+					"colorHsv": "ffa400ff"
+				}
+			},
+			"171": {
+				"divide": {
+					"id": "173",
+					"angle": 0.7086121,
+					"cellType": 24,
+					"physicalLink": {},
+					"colorHsv": "ff0000ff",
+					"radius": 0.2
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap"
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"162": {
+				"mutate": {
+					"cellType": 24,
+					"physicalLink": {},
+					"colorHsv": "ff0000ff"
+				}
+			},
+			"115": {
+				"mutate": {
+					"cellType": 2,
+					"physicalLink": {},
+					"colorHsv": "ffffffff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"87": {
+				"mutate": {
+					"cellType": 23,
+					"physicalLink": {},
+					"colorHsv": "00beffff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"100": {
+				"divide": {
+					"id": "177",
+					"angle": 0.534706,
+					"cellType": 3,
+					"physicalLink": {
+						"99": {
+							"length": 24.281063
+						},
+						"100": {
+							"length": 25.003021
+						}
+					},
+					"colorHsv": "0000ffff",
+					"radius": 0.35,
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"106": {
+				"divide": {
+					"id": "176",
+					"angle": 0.2798481,
+					"cellType": 3,
+					"physicalLink": {
+						"106": {
+							"length": 24.119957
+						},
+						"107": {
+							"length": 24.060213
+						}
+					},
+					"colorHsv": "0000ffff",
+					"radius": 0.35,
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 0,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"176": {
+				"mutate": {
+					"physicalLink": {},
+					"angleDirected": -1.2304571
+				}
+			},
+			"87": {
+				"mutate": {
+					"cellType": 1,
+					"physicalLink": {},
+					"colorHsv": "ffd600ff",
+					"angleDirected": -1.5707964
+				}
+			},
+			"89": {
+				"mutate": {
+					"cellType": 1,
+					"physicalLink": {},
+					"colorHsv": "ffd600ff",
+					"angleDirected": -1.5707964
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"100": {
+				"mutate": {
+					"physicalLink": {
+						"177": {
+							"length": 10,
+							"directedNeuronLink": 177
+						}
+					}
+				}
+			},
+			"107": {
+				"mutate": {
+					"physicalLink": {
+						"176": {
+							"length": 10,
+							"directedNeuronLink": 176
+						}
+					}
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"87": {
+				"mutate": {
+					"physicalLink": {},
+					"b": 1
+				}
+			},
+			"89": {
+				"mutate": {
+					"physicalLink": {},
+					"b": 1
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"87": {
+				"mutate": {
+					"cellType": 9,
+					"physicalLink": {},
+					"colorHsv": "a42a2aff",
+					"angleDirected": 0
+				}
+			},
+			"89": {
+				"mutate": {
+					"cellType": 9,
+					"physicalLink": {},
+					"colorHsv": "a42a2aff",
+					"angleDirected": 0
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"87": {
+				"mutate": {
+					"cellType": 1,
+					"physicalLink": {},
+					"colorHsv": "ffd600ff",
+					"angleDirected": -1.5707964
+				}
+			},
+			"89": {
+				"mutate": {
+					"cellType": 1,
+					"physicalLink": {},
+					"colorHsv": "ffd600ff",
+					"angleDirected": -1.5707964
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"87": {
+				"mutate": {
+					"cellType": 21,
+					"physicalLink": {},
+					"colorHsv": "f9ef78ff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			},
+			"89": {
+				"mutate": {
+					"cellType": 21,
+					"physicalLink": {},
+					"colorHsv": "f9ef78ff",
+					"angleDirected": 0,
+					"funActivation": 0,
+					"a": 1,
+					"b": 1,
+					"c": 0,
+					"isSum": true
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"87": {
+				"mutate": {
+					"cellType": 1,
+					"physicalLink": {},
+					"colorHsv": "ffd600ff"
+				}
+			},
+			"89": {
+				"mutate": {
+					"cellType": 1,
+					"physicalLink": {},
+					"colorHsv": "ffd600ff"
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"87": {
+				"mutate": {
+					"cellType": 19,
+					"physicalLink": {},
+					"colorHsv": "8a0000ff",
+					"angleDirected": 1.5707964,
+					"b": 1
+				}
+			},
+			"89": {
+				"mutate": {
+					"cellType": 19,
+					"physicalLink": {},
+					"colorHsv": "8a0000ff",
+					"angleDirected": 1.5707964,
+					"b": 1
+				}
+			}
+		}
+	},
+	{
+		"cellActions": {
+			"class": "java.util.LinkedHashMap",
+			"89": {
+				"mutate": {
+					"physicalLink": {},
+					"angleDirected": -1.5707964
+				}
+			}
+		}
+	}
+]
+}

@@ -4,14 +4,21 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.kotcrab.vis.ui.widget.color.ColorPickerAdapter
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
-import io.github.some_example_name.old.core.DIGameGlobalContainer.game
+import io.github.some_example_name.old.commands.GoMenu
+import io.github.some_example_name.old.commands.GoReplace
+import io.github.some_example_name.old.commands.GoSimulation
+import io.github.some_example_name.old.core.DIGameGlobalContainer.navigationCommandsManager
 import io.github.some_example_name.old.core.color_picker.ColorPicker
 import io.github.some_example_name.old.editor.system.logic.DivideDialog
+import io.github.some_example_name.old.editor.system.logic.EditorLogicSystem
+import io.github.some_example_name.old.editor.system.logic.ExportGenome
 import io.github.some_example_name.old.editor.system.logic.MutateDialog
+import io.github.some_example_name.old.editor.system.logic.SaveGenome
 import io.github.some_example_name.old.editor.system.logic.ShowChangeRemoveDialog
 import io.github.some_example_name.old.editor.system.logic.ShowDivideDialog
 import io.github.some_example_name.old.editor.system.logic.ShowMutateDialog
 import io.github.some_example_name.old.editor.system.logic.ShowMutateOrDivideDialog
+import io.github.some_example_name.old.editor.system.logic.TryToCancelMutation
 import io.github.some_example_name.old.editor.system.logic.TryToChange
 import io.github.some_example_name.old.editor.system.logic.TryToDivide
 import io.github.some_example_name.old.editor.system.logic.TryToMutate
@@ -19,10 +26,6 @@ import io.github.some_example_name.old.editor.system.logic.TryToRemove
 import io.github.some_example_name.old.features.editor.dialog.ActionDialog
 import io.github.some_example_name.old.features.editor.dialog.ActionDialogType
 import io.github.some_example_name.old.features.editor.dialog.MutateOrDivideDialog
-import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
-import io.github.some_example_name.old.systems.genomics.genome.Genome
-import io.github.some_example_name.old.features.menu.MenuScreen
-import io.github.some_example_name.old.features.simulation.SimulationScreen
 
 fun Stage.changeRemoveActionDialog(
     command: ShowChangeRemoveDialog,
@@ -75,7 +78,8 @@ fun Stage.mutateOrDivideDialog(
 
 fun Stage.mutateActionDialog(
     command: ShowMutateDialog,
-    onMutate: (TryToMutate) -> Unit
+    onMutate: (TryToMutate) -> Unit,
+    onCancelMutation: (TryToCancelMutation) -> Unit
 ) {
     val dialogDivide = ActionDialog(
         clickedCell = command.clickedCell,
@@ -87,6 +91,9 @@ fun Stage.mutateActionDialog(
                     mutate = action.copy()
                 )
             )
+        },
+        onCancelMutation = {
+            onCancelMutation.invoke(TryToCancelMutation(clickedCellIndex = command.clickedCell.index))
         }
     )
     dialogDivide.show(this)
@@ -139,40 +146,32 @@ fun Stage.colorPickerDialog(
 }
 
 
+/**
+ * Диалог сохранения генома. Каждая его кнопка — одна или две команды подряд: сохранение
+ * идёт командой редактора (SaveGenome), переходы — командами навигации.
+ */
 fun Stage.saveDialog(
     isGoToMenu: Boolean,
-    genome: Genome
+    genomeName: String,
+    editorLogicSystem: EditorLogicSystem
 ) {
     SaveGenomeDialog(
-        genome = genome,
-        bake = { toSave ->
-            // Тело в этот момент уже выращено в сущностях редактора, поэтому раскладка
-            // считается прямо по ним. Организм в редакторе всегда один, с organIndex = 0.
-            val layout = DIGenomeEditorContainer.rcmSort.bake()
-
-            // Выгрузка топологии для стенда физики. Здесь же, потому что момент тот
-            // самый: тело выращено целиком и отработало последний тик, значит координаты
-            // это реальная поза покоя. Путь к файлу уходит в лог.
-            DIGenomeEditorContainer.bodyExport.exportToFile()
-
-            val cellEntity = DIGenomeEditorContainer.cellEntity
-            toSave.copy(
-                cellsAmount = cellEntity.aliveList.size,
-                linksAmount = DIGenomeEditorContainer.linkEntity.aliveList.size,
-                neuralLinksAmount = DIGenomeEditorContainer.neuralLinkEntity.aliveList.size,
-                sortedGraph = layout
+        genomeName = genomeName,
+        onSave = { name -> editorLogicSystem.putUiCommand(SaveGenome(name)) },
+        // Оба перехода идут через менеджер, а не через game.screen = ...: только так они
+        // попадают в журнал действий, и только так чистится стек прошлого маршрута.
+        onSaveAndTest = { name ->
+            editorLogicSystem.putUiCommand(SaveGenome(name))
+            navigationCommandsManager.performCommand(
+                GoReplace(GoSimulation(world = null, genomeName = name))
             )
         },
-        onSaveAndTest = { genomeNameForTest ->
-            game.screen.dispose()
-            game.screen = SimulationScreen(
-                map = null,
-                genomeName = genomeNameForTest
-            )
+        onSaveAndExport = { name ->
+            editorLogicSystem.putUiCommand(SaveGenome(name))
+            editorLogicSystem.putUiCommand(ExportGenome(name))
         },
         onGoMenu = {
-            game.screen.dispose()
-            game.screen = MenuScreen()
+            navigationCommandsManager.performCommand(GoReplace(GoMenu))
         },
         isGoToMenu = isGoToMenu
     ).show(this)

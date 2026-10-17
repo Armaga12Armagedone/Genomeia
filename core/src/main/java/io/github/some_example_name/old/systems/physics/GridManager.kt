@@ -4,6 +4,7 @@ import io.github.some_example_name.old.core.DEBUG_CHECKS
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.PROFILE_LOG
 import io.github.some_example_name.old.core.WorldResizable
+import io.github.some_example_name.old.journal.Fnv
 
 /**
  * Пространственная сетка в формате CSR (compressed sparse row), которая перестраивается
@@ -167,6 +168,16 @@ class GridManager (
      * Сообщить сетке о новой частице. В сетке она появится при следующей перестройке
      * (то есть в конце этого же тика) — до тех пор её просто нет в particleIdx.
      */
+    /**
+     * Порядок частиц в сетке — для хэша мира (StateHash). Это не производное от позиций:
+     * перестройка идёт от прошлого порядка, а по нему перебираются пары столкновений.
+     */
+    fun hashOrder(hash: Long): Long {
+        var h = Fnv.word(hash, particleCount)
+        for (i in 0 until particleCount) h = Fnv.word(h, particleIdx[i])
+        return h
+    }
+
     fun registerParticle(particleIndex: Int) {
         if (particleIndex >= pendingFlag.size) {
             pendingFlag = pendingFlag.copyOf(particleIndex + (particleIndex shr 1) + 1)

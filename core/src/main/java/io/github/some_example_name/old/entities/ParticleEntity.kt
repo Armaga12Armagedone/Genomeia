@@ -216,6 +216,41 @@ class ParticleEntity(
         isInGrid[particleIndex] = true
     }
 
+    override fun persistFields(state: EntityState) {
+        state.ints(::gridId)
+        state.floats(::x)
+        state.floats(::y)
+        state.floats(::vx)
+        state.floats(::vy)
+        state.floats(::radius)
+        state.floats(::mass)
+        state.ints(::color)
+        state.floats(::dragCoefficient)
+        state.booleans(::effectOnContact)
+        state.booleans(::isCollidable)
+        state.floats(::cellStiffness)
+        state.booleans(::isCell)
+        state.booleans(::isSub)
+        state.ints(::holderEntityIndex)
+        state.booleans(::isPheromoneEmitter)
+        state.booleans(::isInGrid)
+        state.intList(::nonCellList)
+        state.ints(::positionInNonCellList)
+    }
+
+    /**
+     * Сетка не сохраняется — она целиком выводится из gridId и isInGrid. Частицы
+     * регистрируются заново и раскладываются одной перестройкой, тем же путём, каким
+     * в сетку попадает любая новая частица.
+     */
+    override fun restoreAfterLoad() {
+        gridManager.clearAll()
+        for (i in 0 until aliveList.size) {
+            gridManager.registerParticle(aliveList.getInt(i))
+        }
+        gridManager.rebuild(isAlive, gridId, isInGrid)
+    }
+
     override fun onCopy() {
 
     }

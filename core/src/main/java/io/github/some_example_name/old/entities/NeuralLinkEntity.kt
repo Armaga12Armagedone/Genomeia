@@ -101,6 +101,26 @@ class NeuralLinkEntity(
         return cellEntity.getGeneration(cellIndex) == expectedGeneration
     }
 
+    override fun persistFields(state: EntityState) {
+        state.ints(::links1)
+        state.ints(::links2)
+        state.ints(::linksGeneration1)
+        state.ints(::linksGeneration2)
+        state.booleans(::isLink1NeuralDirected)
+        state.ints(::color)
+    }
+
+    /** Карты по паре клеток выводятся из самих связей. Списки нейросвязей клеток сохраняет CellEntity. */
+    override fun restoreAfterLoad() {
+        linkIndexMap.clear()
+        linkEditorIndexMap.clear()
+        for (i in 0 until aliveList.size) {
+            val linkIndex = aliveList.getInt(i)
+            linkIndexMap.put(links1[linkIndex], links2[linkIndex], linkIndex)
+            linkEditorIndexMap.put(links1[linkIndex], links2[linkIndex], linkIndex)
+        }
+    }
+
     override fun onCopy() {
         // TODO
     }

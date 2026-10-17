@@ -4,6 +4,9 @@ gradle-app.setting
 /build/
 /android/build/
 /core/build/
+/render/build/
+/scene-dumps/
+/maps/
 /lwjgl2/build/
 /lwjgl3/build/
 /html/build/
@@ -68,6 +71,7 @@ www-test/
 .metadata/
 /android/bin/
 /core/bin/
+/render/bin/
 /lwjgl2/bin/
 /lwjgl3/bin/
 /html/bin/
@@ -105,6 +109,7 @@ www-test/
 /nbbuild/
 /android/nbbuild/
 /core/nbbuild/
+/render/nbbuild/
 /lwjgl2/nbbuild/
 /lwjgl3/nbbuild/
 /html/nbbuild/
@@ -168,3 +173,14 @@ ios-moe/xcode/native/
 ## You should delete or comment out the next line if you have configuration in a different resource-config.json .
 **/resource-config.json
 /sim_profile.csv
+
+# Журнал игрока: перезаписывается при каждом запуске демо, разбор — gradlew :lwjgl3:playerReplay
+/player-log.txt
+
+# Рабочие копии веток Claude Code (git worktree) — не часть проекта
+/.claude/worktrees/
+
+# Отчёты о багах: текущая сессия (журнал, лог), собранные .bug и папка повтора
+/session/
+/bugs/
+/bug-replay/

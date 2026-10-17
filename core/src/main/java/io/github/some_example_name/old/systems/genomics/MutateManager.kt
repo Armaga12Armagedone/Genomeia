@@ -2,11 +2,9 @@ package io.github.some_example_name.old.systems.genomics
 
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.utils.Disposable
-import io.github.some_example_name.old.cells.Eye
+import io.github.some_example_name.old.cells.Cell
+import io.github.some_example_name.old.cells.base.Formulas
 import io.github.some_example_name.old.cells.Muscle
-import io.github.some_example_name.old.cells.PheromoneEmitter
-import io.github.some_example_name.old.cells.Producer
-import io.github.some_example_name.old.cells.Tail
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.commands.WorldCommandsManager
@@ -17,6 +15,7 @@ import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.SpecialEntity
+import io.github.some_example_name.old.systems.genomics.genome.Action
 import io.github.some_example_name.old.systems.physics.GridManager
 import kotlin.math.cos
 import kotlin.math.sin
@@ -29,8 +28,7 @@ class MutateManager(
     val worldCommandsManager: WorldCommandsManager,
     val gridManager: GridManager,
     val specialEntity: SpecialEntity,
-    val organEntity: OrganEntity,
-    val isEditor: Boolean
+    val organEntity: OrganEntity
 ): Disposable {
 
     fun mutateCell(index: Int, threadId: Int) = with(cellEntity) {
@@ -49,9 +47,17 @@ class MutateManager(
 
             val lastCellType = cellType[index].toInt()
             val lastCell = cellList[lastCellType]
-            val newCell = action.cellType?.let { cellList[it] } ?: lastCell
+            val newCellType = action.cellType?.let(cellList::requireIndex)
+            val newCell = newCellType?.let { cellList[it] } ?: lastCell
 
-            action.cellType?.let {
+            // Мутация в зиготу пока не делает ничего — ни типа, ни остальных полей. Зигота —
+            // корень нового организма, а клетка живёт в арене своего: перенести её в новую
+            // арену — отдельная работа (см. TODO.md). Раньше клетка оставалась в теле с
+            // cellGenomeId = 0 и начинала выполнять действия генома корня. Счётчик мутаций
+            // уменьшен выше, так что стадия организма не застрянет.
+            if (newCell is Zygote && lastCell !is Zygote) return
+
+            newCellType?.let {
                 isFromMuscleToAnother = lastCell is Muscle && newCell !is Muscle
 
                 if (lastCell.isNeural && !newCell.isNeural) {
@@ -66,61 +72,12 @@ class MutateManager(
                     val b: Float = action.b ?: 0f
                     val c: Float = action.c ?: 0f
                     val isSum: Boolean = action.isSum ?: true
-                    val activationFuncType: Int = action.funActivation ?: 0
+                    val activationFuncType: Int = action.funActivation?.let(Formulas::requireIndex) ?: Formulas.defaultIndex
                     worldCommandsManager.worldCommandBuffer[threadId].push(
                         type = WorldCommandType.ADD_NEURAL,
                         ints = intArrayOf(index, cellType, activationFuncType),
                         floats = floatArrayOf(a, b, c),
                         booleans = booleanArrayOf(isSum)
-                    )
-                }
-                if (lastCell is Eye && newCell !is Eye) {
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.DELETE_EYE,
-                        ints = intArrayOf(index, specialEntity.getEyeGeneration(index))
-                    )
-                }
-                if (lastCell !is Eye && newCell is Eye) {
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.ADD_EYE,
-                        ints = intArrayOf(index, action.colorRecognition ?: 7),
-                        floats = floatArrayOf(action.lengthDirected ?: 4.25f)
-                    )
-                }
-                if (lastCell is Tail && newCell !is Tail) {
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.DELETE_TAIL,
-                        ints = intArrayOf(index, specialEntity.getTailGeneration(index))
-                    )
-                }
-                if (lastCell !is Tail && newCell is Tail) {
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.ADD_TAIL,
-                        ints = intArrayOf(index)
-                    )
-                }
-                if (lastCell is Producer && newCell !is Producer) {
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.DELETE_PRODUCER,
-                        ints = intArrayOf(index, specialEntity.getProducerGeneration(index))
-                    )
-                }
-                if (lastCell !is Producer && newCell is Producer) {
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.ADD_PRODUCER,
-                        ints = intArrayOf(index)
-                    )
-                }
-                if (lastCell is PheromoneEmitter && newCell !is PheromoneEmitter) {
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.DELETE_PHEROMONE_EMITTER,
-                        ints = intArrayOf(index, specialEntity.getPheromoneEmitterGeneration(index))
-                    )
-                }
-                if (lastCell !is PheromoneEmitter && newCell is PheromoneEmitter) {
-                    worldCommandsManager.worldCommandBuffer[threadId].push(
-                        type = WorldCommandType.ADD_PHEROMONE_EMITTER,
-                        ints = intArrayOf(index)
                     )
                 }
                 cellType[index] = it.toByte()
@@ -131,16 +88,14 @@ class MutateManager(
                 setCellStiffness(index, cellsSettings[it].cellStiffness)
                 isNeural[index] = newCell.isNeural
 
-                if (newCell is Zygote && !isEditor) {
-                    cellGenomeId[index] = 0
-                }
-
                 val genomeIndex = organEntity.genomeIndex[organIndex[index]]
                 worldCommandsManager.worldCommandBuffer[threadId].push(
                     type = WorldCommandType.MUTATE_ON_START,
                     ints = intArrayOf(index, threadId, genomeIndex)
                 )
             }
+
+            mutateSpecialData(index, threadId, action, typeChanged = newCellType != null && newCellType != lastCellType, newCell)
 
             if (isFromMuscleToAnother) {
                 degreeOfShortening[index] = 1f
@@ -151,7 +106,7 @@ class MutateManager(
             action.radius?.let { setRadius(index, it) }
 
             if (lastCell.isNeural && newCell.isNeural) {
-                action.funActivation?.let { setActivationFuncType(index, it.toByte()) }
+                action.funActivation?.let { setActivationFuncType(index, Formulas.requireIndex(it).toByte()) }
                 action.a?.let { setA(index, it) }
                 action.b?.let { setB(index, it) }
                 action.c?.let { setC(index, it) }
@@ -178,11 +133,6 @@ class MutateManager(
 
                 angleCos[index] = cosA2 * cosB2 - sinA2 * sinB2
                 angleSin[index] = sinA2 * cosB2 + cosA2 * sinB2
-            }
-
-            if (lastCell is Eye && newCell is Eye) {
-                action.colorRecognition?.let { specialEntity.setColorDifferentiation(index, it.toByte()) }
-                action.lengthDirected?.let { specialEntity.setVisibilityRange(index, it) }
             }
 
             action.pheromoneType?.let {
@@ -232,6 +182,35 @@ class MutateManager(
             }
 
             energy[index] -= energyNecessaryToMutate[index] - 0.7f
+        }
+    }
+
+    /**
+     * Свои данные клетки (SpecialModData: глаз, хвост, продюсер, контроллер…) при мутации.
+     *
+     * Тип сменился — старый слот удаляется, новый заводится командой: слоты выдаёт общий
+     * аллокатор SpecialModDataEntity, из параллельной фазы его трогать нельзя. Какого вида
+     * были данные, неважно — слот один на клетку. Тип тот же — клетка сама решает, что
+     * поменять (Cell.mutateSpecialData), и новое значение пишется в её собственный слот.
+     */
+    private fun mutateSpecialData(index: Int, threadId: Int, action: Action, typeChanged: Boolean, newCell: Cell) {
+        // -1 — своих данных нет или их команда ADD_SPECIAL_MOD_DATA ещё не применилась.
+        val slot = specialEntity.specialTypeIndexes[index]
+        if (typeChanged) {
+            if (slot != -1) {
+                worldCommandsManager.worldCommandBuffer[threadId].push(
+                    type = WorldCommandType.DELETE_SPECIAL_MOD_DATA,
+                    ints = intArrayOf(index, specialEntity.getSpecialModDataGeneration(index), cellEntity.getGeneration(index))
+                )
+            }
+            val data = newCell.createSpecialData(action) ?: return
+            worldCommandsManager.worldCommandBuffer[threadId].push(
+                type = WorldCommandType.ADD_SPECIAL_MOD_DATA,
+                ints = intArrayOf(index, worldCommandsManager.pushSpecialModData(threadId, data), cellEntity.getGeneration(index))
+            )
+        } else if (slot != -1) {
+            val current = specialEntity.getSpecialData(index) ?: return
+            newCell.mutateSpecialData(current, action)?.let { specialEntity.setSpecialData(index, it) }
         }
     }
 

@@ -5,9 +5,9 @@ enum class WorldCommandType(
     val floatParamsCount: Int,
     val booleanParamsCount: Int
 ) {
-    ADD_CELL( // ..., parentIndex(4), ..., specialModDataIndex(8), parentGeneration(9)
-        intParamsCount = 10,
-        floatParamsCount = 11,
+    ADD_CELL( // color, cellGenomeId, cellType, parentOrganIndex, parentIndex(4), activationFuncType, pheromoneType, specialModDataIndex(7), parentGeneration(8)
+        intParamsCount = 9,
+        floatParamsCount = 10,
         booleanParamsCount = 2
     ),
     ADD_LINK( // cellIndex, otherCellIndex, cellGeneration, otherCellGeneration
@@ -55,9 +55,10 @@ enum class WorldCommandType(
         floatParamsCount = 4,
         booleanParamsCount = 0
     ),
-    ADD_ORGAN(
-        intParamsCount = 5,
-        floatParamsCount = 0,
+    // Новый организм от зиготы, родившейся в мире (OrganismSpawner).
+    SPAWN_ORGANISM( // genomeIndex, color; x, y, radius, angleCos, angleSin, angleDiffCos, angleDiffSin
+        intParamsCount = 2,
+        floatParamsCount = 7,
         booleanParamsCount = 0
     ),
     DELETE_ORGAN(
@@ -114,36 +115,6 @@ enum class WorldCommandType(
         floatParamsCount = 3,
         booleanParamsCount = 1
     ),
-    DELETE_EYE(
-        intParamsCount = 2,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
-    ADD_EYE(
-        intParamsCount = 2,
-        floatParamsCount = 1,
-        booleanParamsCount = 0
-    ),
-    DELETE_TAIL(
-        intParamsCount = 2,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
-    ADD_TAIL(
-        intParamsCount = 1,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
-    DELETE_PRODUCER(
-        intParamsCount = 2,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
-    ADD_PRODUCER(
-        intParamsCount = 1,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
     ADD_PHEROMONE(
         intParamsCount = 2,
         floatParamsCount = 2,
@@ -154,17 +125,19 @@ enum class WorldCommandType(
         floatParamsCount = 0,
         booleanParamsCount = 0
     ),
-    DELETE_PHEROMONE_EMITTER(
-        intParamsCount = 2,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
-    ADD_PHEROMONE_EMITTER(
-        intParamsCount = 1,
-        floatParamsCount = 0,
-        booleanParamsCount = 0
-    ),
     MUTATE_ON_START(
+        intParamsCount = 3,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
+    ),
+    // Свои данные клетки (SpecialModData) при мутации в клетку с данными и обратно.
+    // Сам объект — в буфере команды (WorldCommandBuffer.pushObject).
+    DELETE_SPECIAL_MOD_DATA( // cellIndex, поколение слота данных, поколение клетки
+        intParamsCount = 3,
+        floatParamsCount = 0,
+        booleanParamsCount = 0
+    ),
+    ADD_SPECIAL_MOD_DATA( // cellIndex, номер объекта в буфере, поколение клетки
         intParamsCount = 3,
         floatParamsCount = 0,
         booleanParamsCount = 0
@@ -174,8 +147,8 @@ enum class WorldCommandType(
         // Максимум int на команду: задаёт шаг в intParams всех буферов, поэтому увеличение
         // стоит памяти во всех буферах сразу, а не только у самой длинной команды.
         // Держать равным максимальному intParamsCount среди всех типов (сейчас ADD_CELL).
-        const val MAX_INT_PARAMS = 10
-        const val MAX_FLOAT_PARAMS = 11 // Максимум float
+        const val MAX_INT_PARAMS = 9
+        const val MAX_FLOAT_PARAMS = 10 // Максимум float
         const val MAX_BOOLEAN_PARAMS = 3 // Максимум boolean
     }
 }

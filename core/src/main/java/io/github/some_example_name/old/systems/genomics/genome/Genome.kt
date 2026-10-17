@@ -1,16 +1,17 @@
 package io.github.some_example_name.old.systems.genomics.genome
 
+import io.github.some_example_name.old.cells.base.SpecialModData
+import io.github.some_example_name.old.cells.base.SpecialModDataTypes
+import io.github.some_example_name.old.core.GameFiles
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
-import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encodeToByteArray
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.protobuf.ProtoBuf
@@ -84,29 +85,122 @@ data class CellAction(
     @ProtoNumber(2) val mutate: Action? = null
 )
 
+/**
+ * Что сделать с клеткой на стадии: поделиться (divide) или измениться (mutate).
+ *
+ * У мутации null значит «не менять»; у деления — «по умолчанию».
+ *
+ * Тип клетки и формула — КЛЮЧИ (Cell.key, Formula.key), а не номера: номер — это место в
+ * реестре текущего запуска, и с модами или после перестановки он другой. В файл Action
+ * пишется через [ActionProto], там же перевод старых номеров в ключи.
+ */
+@Serializable(with = ActionSerializer::class)
+data class Action(
+    val id: Int = -1,
+    val angle: Float? = null,
+    /** Ключ типа клетки ("leaf", "mod:name"). У мутации null — тип не меняется. */
+    val cellType: String? = null,
+    val physicalLink: Map<Int, LinkData?> = emptyMap(),
+    val color: Color? = null,
+    val radius: Float? = null,
+    val angleDirected: Float? = null,
+    /** Ключ формулы активации нейрона ("linear", "sigmoid"…). */
+    val funActivation: String? = null,
+    val a: Float? = null,
+    val b: Float? = null,
+    val c: Float? = null,
+    val isSum: Boolean? = null,
+    val colorRecognition: Int? = null,
+    val lengthDirected: Float? = null,
+    val pheromoneType: Int? = null,
+    /** Свои данные клетки (клавиша контроллера и т.п.), см. SpecialModData. */
+    val special: SpecialModData? = null
+) {
+
+    /** Досчитывается GenomeManager.addInvertedDivideLinks; в файл не пишется. */
+    val physicalLinkMirroredForCell: MutableMap<Int, LinkData?> = physicalLink.toMutableMap()
+
+}
+
+/**
+ * Action, как он лежит в protobuf. Номера полей — формат файла (см. начало файла).
+ *
+ * Поля 3 и 8 — старые НОМЕРА типа клетки и формулы. Они только читаются: при чтении
+ * переводятся в ключи по замороженной таблице LegacyTypeIds, а пишутся всегда ключи
+ * (16, 17). Так любой путь чтения — файл .genome, мир, журнал .bug, встроенные геномы —
+ * переводит старые данные сам, без отдельного прохода.
+ */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class Action(
+private class ActionProto(
     @ProtoNumber(1) val id: Int = -1,
     @ProtoNumber(2) val angle: Float? = null,
-    @ProtoNumber(3) val cellType: Int? = null,
+    @ProtoNumber(3) val legacyCellType: Int? = null,
     @ProtoNumber(4) val physicalLink: Map<Int, LinkData?> = emptyMap(),
     @ProtoNumber(5) @Serializable(with = ColorSerializer::class) val color: Color? = null,
     @ProtoNumber(6) val radius: Float? = null,
     @ProtoNumber(7) val angleDirected: Float? = null,
-    @ProtoNumber(8) val funActivation: Int? = null,
+    @ProtoNumber(8) val legacyFunActivation: Int? = null,
     @ProtoNumber(9) val a: Float? = null,
     @ProtoNumber(10) val b: Float? = null,
     @ProtoNumber(11) val c: Float? = null,
     @ProtoNumber(12) val isSum: Boolean? = null,
     @ProtoNumber(13) val colorRecognition: Int? = null,
     @ProtoNumber(14) val lengthDirected: Float? = null,
-    @ProtoNumber(15) val pheromoneType: Int? = null
-) {
+    @ProtoNumber(15) val pheromoneType: Int? = null,
+    @ProtoNumber(16) val cellType: String? = null,
+    @ProtoNumber(17) val funActivation: String? = null,
+    @ProtoNumber(18) val special: SpecialModData? = null
+)
 
-    @Transient
-    val physicalLinkMirroredForCell: MutableMap<Int, LinkData?> = physicalLink.toMutableMap()
+object ActionSerializer : KSerializer<Action> {
+    private val proto = ActionProto.serializer()
 
+    override val descriptor: SerialDescriptor = proto.descriptor
+
+    override fun serialize(encoder: Encoder, value: Action) = encoder.encodeSerializableValue(
+        proto,
+        ActionProto(
+            id = value.id,
+            angle = value.angle,
+            physicalLink = value.physicalLink,
+            color = value.color,
+            radius = value.radius,
+            angleDirected = value.angleDirected,
+            a = value.a,
+            b = value.b,
+            c = value.c,
+            isSum = value.isSum,
+            colorRecognition = value.colorRecognition,
+            lengthDirected = value.lengthDirected,
+            pheromoneType = value.pheromoneType,
+            cellType = value.cellType,
+            funActivation = value.funActivation,
+            special = value.special
+        )
+    )
+
+    override fun deserialize(decoder: Decoder): Action {
+        val p = decoder.decodeSerializableValue(proto)
+        return Action(
+            id = p.id,
+            angle = p.angle,
+            cellType = p.cellType ?: p.legacyCellType?.let(LegacyTypeIds::cellType),
+            physicalLink = p.physicalLink,
+            color = p.color,
+            radius = p.radius,
+            angleDirected = p.angleDirected,
+            funActivation = p.funActivation ?: p.legacyFunActivation?.let(LegacyTypeIds::formula),
+            a = p.a,
+            b = p.b,
+            c = p.c,
+            isSum = p.isSum,
+            colorRecognition = p.colorRecognition,
+            lengthDirected = p.lengthDirected,
+            pheromoneType = p.pheromoneType,
+            special = p.special
+        )
+    }
 }
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -140,12 +234,33 @@ object ColorSerializer : KSerializer<Color> {
 
 
 private const val MAGIC = "genomeia"
-private const val CURRENT_FORMAT_VERSION = 1
+
+/**
+ * 2 — тип клетки и формула записаны ключами (Action.cellType / funActivation), есть данные
+ * клеток (Action.special). Игра версии 1 такой файл не поймёт и честно скажет, что он из
+ * более новой версии, вместо падения в симуляции на «Forgot cellType».
+ */
+private const val CURRENT_FORMAT_VERSION = 2
+
+/**
+ * ProtoBuf для всего, где может встретиться геном: файлы .genome, сохранения миров,
+ * журнал .bug. Обычный ProtoBuf не знает типов данных клеток (Action.special).
+ */
+val GenomeProto: ProtoBuf get() = SpecialModDataTypes.proto
 
 // ==================== СОХРАНЕНИЕ ====================
-@OptIn(ExperimentalSerializationApi::class)
 fun saveGenome(genome: Genome, fileName: String) {
-    val protobufBytes = ProtoBuf.encodeToByteArray(genome)
+    // Сохраняем файл с расширением .genome
+    GameFiles.genomesDir().child("$fileName.genome").writeBytes(encodeGenome(genome), false)
+}
+
+/**
+ * Файл .genome целиком, в памяти. Отдельно от [saveGenome]: импорт сравнивает байты с уже
+ * лежащим файлом, прежде чем что-то писать (см. GenomeImport).
+ */
+@OptIn(ExperimentalSerializationApi::class)
+fun encodeGenome(genome: Genome): ByteArray {
+    val protobufBytes = GenomeProto.encodeToByteArray(Genome.serializer(), genome)
 
     val byteArrayOutput = ByteArrayOutputStream()
     val dataOutput = DataOutputStream(byteArrayOutput)
@@ -160,9 +275,7 @@ fun saveGenome(genome: Genome, fileName: String) {
         // 3. Данные protobuf
         dataOutput.write(protobufBytes)
 
-        // Сохраняем файл с расширением .genome
-        val file = Gdx.files.local("genomes/$fileName.genome")
-        file.writeBytes(byteArrayOutput.toByteArray(), false)
+        return byteArrayOutput.toByteArray()
 
     } finally {
         dataOutput.close()
@@ -170,15 +283,25 @@ fun saveGenome(genome: Genome, fileName: String) {
 }
 
 // ==================== ЗАГРУЗКА ====================
-@OptIn(ExperimentalSerializationApi::class)
 fun loadGenome(fileName: String): Genome {
-    val file = Gdx.files.local("genomes/$fileName.genome")
+    val file = GameFiles.genomesDir().child("$fileName.genome")
 
     if (!file.exists()) {
         throw IllegalStateException("Файл генома не найден: $fileName.genome")
     }
 
-    val allBytes = file.readBytes()
+    return decodeGenome(file.readBytes())
+}
+
+/**
+ * Начинается ли содержимое с заголовка .genome. Импорт узнаёт формат по байтам, а не по
+ * расширению: на Android выбранный файл приходит временной копией, и имени верить нельзя.
+ */
+fun isGenomeFile(bytes: ByteArray): Boolean =
+    bytes.size >= MAGIC.length && String(bytes, 0, MAGIC.length, Charsets.UTF_8) == MAGIC
+
+@OptIn(ExperimentalSerializationApi::class)
+fun decodeGenome(allBytes: ByteArray): Genome {
     val byteArrayInput = ByteArrayInputStream(allBytes)
     val dataInput = DataInputStream(byteArrayInput)
 
@@ -204,7 +327,7 @@ fun loadGenome(fileName: String): Genome {
         val remainingBytes = ByteArray(dataInput.available())
         dataInput.readFully(remainingBytes)
 
-        return ProtoBuf.decodeFromByteArray(remainingBytes)
+        return GenomeProto.decodeFromByteArray(Genome.serializer(), remainingBytes)
 
     } finally {
         dataInput.close()

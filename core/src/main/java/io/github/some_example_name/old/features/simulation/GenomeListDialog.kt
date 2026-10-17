@@ -2,8 +2,10 @@ package io.github.some_example_name.old.features.simulation
 
 import com.badlogic.gdx.Application
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.scenes.scene2d.InputEvent
+import com.badlogic.gdx.scenes.scene2d.InputListener
 import com.badlogic.gdx.scenes.scene2d.actions.Actions
 import com.badlogic.gdx.scenes.scene2d.ui.ButtonGroup
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
@@ -11,10 +13,13 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.kotcrab.vis.ui.VisUI
 import com.kotcrab.vis.ui.widget.VisCheckBox
 import com.kotcrab.vis.ui.widget.VisDialog
+import com.kotcrab.vis.ui.widget.VisLabel
+import com.kotcrab.vis.ui.widget.Separator
 import com.kotcrab.vis.ui.widget.VisRadioButton
 import com.kotcrab.vis.ui.widget.VisTable
 import io.github.some_example_name.old.game.MyGame
 import io.github.some_example_name.old.game.applyCustomFont
+import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.core.ui.makeStyledButton
 import io.github.some_example_name.old.core.ui.setupTitleSize
 
@@ -25,14 +30,34 @@ class GenomeListDialog(
     val new: String,
     val select: String,
     val import: String,
-    val onNew: () -> Unit,
+    /** Кнопка «Новый». null — кнопки нет (список встроенных геномов). */
+    val onNew: (() -> Unit)?,
     val onNext: (String) -> Unit,
-    val onRestart: () -> Unit,
     val game: MyGame,
     val onResize: (() -> Unit) -> Unit,
-    val isMenu: Boolean
+    /**
+     * Импорт файлов генома. null — кнопки нет (платформа не умеет выбирать файлы). Сам
+     * импорт делает обработчик команды; что показать по его окончании — забота того, кто
+     * открыл диалог.
+     */
+    val onImport: (() -> Unit)? = null,
+    /** Подсказка под кнопками (на ПК — что файлы можно перетащить в окно). null — без неё. */
+    val hint: String? = null,
+    /** Что показать вместо имени из списка: у встроенных геномов — без приставки. */
+    val displayName: (String) -> String = { it },
+    /**
+     * С этого номера список идёт под чертой с подписью [sectionTitle] — так в симуляции
+     * встроенные геномы отделены от своих. -1 — одним списком.
+     */
+    val sectionStart: Int = -1,
+    val sectionTitle: String? = null,
+    /** Кнопка, открывающая список встроенных геномов (редактор). null — кнопки нет. */
+    val bundled: String? = null,
+    val onBundled: (() -> Unit)? = null,
+    /** Надпись вместо пустого списка. */
+    val emptyText: String? = null
 ) : VisDialog(title) {
-    var selectedIndex = selectedGenomeIndex ?: 0
+    var selectedIndex = if (genomesList.isEmpty()) -1 else selectedGenomeIndex ?: 0
     val scrollPane: ScrollPane
     private val textures = mutableListOf<Texture>()
 
@@ -51,6 +76,16 @@ class GenomeListDialog(
             setForceScroll(false, true)
             setFlickScroll(true)
             setOverscroll(false, true)
+            addListener(object : InputListener() {
+                override fun enter(event: InputEvent?, x: Float, y: Float, pointer: Int, fromActor: com.badlogic.gdx.scenes.scene2d.Actor?) {
+                    stage?.scrollFocus = this@apply
+                }
+
+                override fun mouseMoved(event: InputEvent?, x: Float, y: Float): Boolean {
+                    stage?.scrollFocus = this@apply
+                    return false
+                }
+            })
         }
 
         contentTable.add(scrollPane).grow().maxHeight(Gdx.graphics.height * 0.8f)
@@ -59,6 +94,7 @@ class GenomeListDialog(
         onResize.invoke { centerWindow() }
         pack()
         centerWindow()
+        addAction(Actions.run { stage?.scrollFocus = scrollPane })
     }
 
     private fun setupUI(scrollContentTable: VisTable) {
@@ -100,8 +136,15 @@ class GenomeListDialog(
 
         val content = VisTable(true)
 
+        if (genomesList.isEmpty() && emptyText != null) {
+            val emptyLabel = VisLabel(emptyText)
+            game.applyCustomFontMedium(emptyLabel)
+            content.add(emptyLabel).left().row()
+        }
+
         genomesList.forEachIndexed { index, string ->
-            val rb = VisRadioButton(string, radioStyle)
+            if (index == sectionStart) addSection(content, density)
+            val rb = VisRadioButton(displayName(string), radioStyle)
             game.applyCustomFont(rb)
             group.add(rb)
             content.add(rb).left().row()
@@ -127,30 +170,49 @@ class GenomeListDialog(
         val bottomButtonTable = VisTable()
         bottomButtonTable.defaults().padRight(8f * density)
 
-        makeStyledButton(new, game, textures).also {
-            it.addListener(object : ClickListener() {
-                override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                    onNew.invoke(); fadeOut()
-                }
-            })
-            bottomButtonTable.add(it).height(btnH)
+        if (onNew != null) {
+            makeStyledButton(new, game, textures).also {
+                it.addListener(object : ClickListener() {
+                    override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                        onNew.invoke(); fadeOut()
+                    }
+                })
+                bottomButtonTable.add(it).height(btnH)
+            }
         }
 
-        makeStyledButton(select, game, textures).also {
-            it.addListener(object : ClickListener() {
-                override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                    if (selectedIndex != -1) onNext.invoke(genomesList[selectedIndex])
-                    fadeOut()
-                }
-            })
-            bottomButtonTable.add(it).height(btnH)
+        // Пустой список — выбирать нечего.
+        if (genomesList.isNotEmpty()) {
+            makeStyledButton(select, game, textures).also {
+                it.addListener(object : ClickListener() {
+                    override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                        if (selectedIndex in genomesList.indices) onNext.invoke(genomesList[selectedIndex])
+                        fadeOut()
+                    }
+                })
+                bottomButtonTable.add(it).height(btnH)
+            }
         }
 
-        if (Gdx.app.type == Application.ApplicationType.Android && isMenu) {
+        // Встроенные и импорт — вторым рядом: четыре кнопки в ряд не влезают в телефон.
+        if (bundled != null && onBundled != null || onImport != null) bottomButtonTable.row().padTop(8f * density)
+
+        if (bundled != null && onBundled != null) {
+            makeStyledButton(bundled, game, textures).also {
+                it.addListener(object : ClickListener() {
+                    override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                        onBundled.invoke()
+                    }
+                })
+                bottomButtonTable.add(it).height(btnH)
+            }
+        }
+
+        if (onImport != null) {
             makeStyledButton(import, game, textures).also {
                 it.addListener(object : ClickListener() {
                     override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                        game.multiPlatformFileProvider.importGenome { _ -> onRestart.invoke(); fadeOut() }
+                        onImport.invoke()
                     }
                 })
                 bottomButtonTable.add(it).height(btnH)
@@ -158,9 +220,27 @@ class GenomeListDialog(
         }
 
         scrollContentTable.add(bottomButtonTable).center().padTop(8f * density)
+
+        if (hint != null) {
+            scrollContentTable.row()
+            val hintLabel = VisLabel(hint)
+            game.applyCustomFontMedium(hintLabel)
+            scrollContentTable.add(hintLabel).center().padTop(8f * density)
+        }
     }
 
-    override fun close() {
+    /** Черта и подпись раздела перед номером [sectionStart]. */
+    private fun addSection(content: VisTable, density: Float) {
+        content.add(Separator()).growX().padTop(8f * density).row()
+        if (sectionTitle != null) {
+            val label = VisLabel(sectionTitle, Color.LIGHT_GRAY)
+            game.applyCustomFontMedium(label)
+            content.add(label).left().row()
+        }
+    }
+
+    // Открыт наружу: меню закрывает список, когда после импорта открывает его заново.
+    public override fun close() {
         super.close()
         onResize.invoke {}
         addAction(Actions.sequence(

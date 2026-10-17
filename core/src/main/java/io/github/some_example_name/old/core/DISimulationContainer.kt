@@ -4,24 +4,19 @@ import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.base.CellListBuilder
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandsManager
-import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
-import io.github.some_example_name.old.core.DIGameGlobalContainer.shaderManager
+import io.github.some_example_name.old.core.DIGameGlobalContainer.worldRenderer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.entities.CellEntity
-import io.github.some_example_name.old.entities.EyeEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralEntity
 import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
-import io.github.some_example_name.old.entities.PheromoneEmitterEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
-import io.github.some_example_name.old.entities.ProducerEntity
 import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.entities.SpecialModDataEntity
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.entities.SubstancesEntity
-import io.github.some_example_name.old.entities.TailEntity
 import io.github.some_example_name.old.systems.pheromone.PheromonesManager
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.DivideManager
@@ -37,14 +32,21 @@ import io.github.some_example_name.old.systems.simulation.SimulationSystem
 import io.github.some_example_name.old.systems.simulation.ThreadManager
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.NeuralLinkManager
+import io.github.some_example_name.old.systems.maps.MapSave
 import io.github.some_example_name.old.systems.physics.CollisionManager
 import io.github.some_example_name.old.systems.physics.MovementManager
 import kotlin.getValue
 
 object DISimulationContainer : DIContext, Disposable {
 
-    override var gridWidth = 256
-    override var gridHeight = 256
+    /**
+     * Мир без рецепта (тест генома из редактора) — 256×256. Мир из редактора карты берёт
+     * размер из рецепта, сохранённый — из сохранения: см. [resizeWorld].
+     */
+    const val DEFAULT_GRID_SIZE = 256
+
+    override var gridWidth = DEFAULT_GRID_SIZE
+    override var gridHeight = DEFAULT_GRID_SIZE
     const val HALF_CHUNK_HEIGHT = 4 // Also max particle speed
     var chunkHeight = HALF_CHUNK_HEIGHT * 2
     var heightMultiplier = chunkHeight * 2
@@ -75,9 +77,6 @@ object DISimulationContainer : DIContext, Disposable {
     val cellList = cellListBuilder.instances
     val zygote = cellListBuilder.zygote
 
-    val tailEntity = TailEntity(
-        tailStartMaxAmount = 1_000
-    )
     override val organEntity = OrganEntity(
         organStartMaxAmount = 400
     )
@@ -90,26 +89,13 @@ object DISimulationContainer : DIContext, Disposable {
         neuralStartMaxAmount = 10_000,
         cellList = cellList
     )
-    private val eyeEntity = EyeEntity(
-        eyeStartMaxAmount = 3_000
-    )
-    private val producerEntity = ProducerEntity(
-        producerStartMaxAmount = 100
-    )
     val specialModDataEntity = SpecialModDataEntity(
-        specialModDataStartMaxAmount = 100
-    )
-    val pheromoneEmitterEntity = PheromoneEmitterEntity(
-        pheromoneEmitterStartMaxAmount = 100
+        specialModDataStartMaxAmount = 4_300
     )
 
     override val specialEntity = SpecialEntity(
         cellsStartMaxAmount = 10_000,
-        eyeEntity = eyeEntity,
-        tailEntity = tailEntity,
-        specialModDataEntity = specialModDataEntity,
-        producerEntity = producerEntity,
-        pheromoneEmitterEntity = pheromoneEmitterEntity
+        specialModDataEntity = specialModDataEntity
     )
     override val cellEntity = CellEntity(
         cellsStartMaxAmount = 10_000,
@@ -151,24 +137,19 @@ object DISimulationContainer : DIContext, Disposable {
     )
 
     override val entityList = listOf(
-        tailEntity,
         organEntity,
         particleEntity,
         neuralEntity,
-        eyeEntity,
         specialModDataEntity,
         specialEntity,
         cellEntity,
         linkEntity,
         neuralLinkEntity,
         pheromoneEntity,
-        substancesEntity,
-        producerEntity,
-        pheromoneEmitterEntity
+        substancesEntity
     )
 
     override val genomeManager = GenomeManager(
-        genomeJsonReader = genomeJsonReader,
         simulationData = simulationData
     )
 
@@ -190,12 +171,8 @@ object DISimulationContainer : DIContext, Disposable {
     )
 
     val renderSystem = RenderSystem(
-        cellEntity = cellEntity,
-        linkEntity = linkEntity,
-        shaderManager = shaderManager,
-        particleEntity = particleEntity,
-        renderBufferManager = renderBufferManager,
-        pheromoneEntity = pheromoneEntity
+        worldRenderer = worldRenderer,
+        renderBufferManager = renderBufferManager
     )
 
     val userCommandManager = UserCommandManager(
@@ -207,7 +184,8 @@ object DISimulationContainer : DIContext, Disposable {
         gridManager = gridManager,
         particleEntity = particleEntity,
         zygote = zygote,
-        isEditor = false
+        isEditor = false,
+        isJournaled = true
     )
 
     override val worldCommandsManager = WorldCommandsManager(
@@ -247,7 +225,7 @@ object DISimulationContainer : DIContext, Disposable {
         linkEntity = linkEntity,
         cellList = cellList,
         cellEntity = cellEntity,
-        substancesEntity = substancesEntity,
+        substancesEntity = substancesEntity
     )
 
     val particlePhysicsSystem = ParticlePhysicsSystem(
@@ -266,7 +244,10 @@ object DISimulationContainer : DIContext, Disposable {
 
     val threadManager = ThreadManager(
         simulationData = simulationData
-    )
+    ).apply {
+        // Порядок команд мира не зависит от того, какой воркер что посчитал (WorkOrder).
+        workOrder = worldCommandsManager.workOrder
+    }
 
     val divideManager = DivideManager(
         cellEntity = cellEntity,
@@ -284,8 +265,7 @@ object DISimulationContainer : DIContext, Disposable {
         particleEntity = particleEntity,
         gridManager = gridManager,
         specialEntity = specialEntity,
-        organEntity = organEntity,
-        isEditor = false
+        organEntity = organEntity
     )
 
     val cellSystem = CellSystem(
@@ -329,7 +309,6 @@ object DISimulationContainer : DIContext, Disposable {
         pheromonesManager = pheromonesManager
     )
 
-
     val simulationSystem by lazy {
         SimulationSystem(
             gridManager = gridManager,
@@ -358,11 +337,43 @@ object DISimulationContainer : DIContext, Disposable {
         )
     }
 
+    val mapSave by lazy {
+        MapSave(
+            // Имена — это имена файлов в сохранении, их нельзя менять и брать из имён
+            // классов: минификатор переименует классы, и старые сохранения перестанут читаться.
+            entities = listOf(
+                "organs" to organEntity,
+                "particles" to particleEntity,
+                "neurals" to neuralEntity,
+                "specialModData" to specialModDataEntity,
+                "specials" to specialEntity,
+                "cells" to cellEntity,
+                "links" to linkEntity,
+                "neuralLinks" to neuralLinkEntity,
+                "pheromones" to pheromoneEntity,
+                "substances" to substancesEntity
+            ),
+            cellEntity = cellEntity,
+            organEntity = organEntity,
+            genomeManager = genomeManager,
+            simulationData = simulationData,
+            simulationSystem = simulationSystem,
+            diContext = this,
+            resizeWorld = ::resizeWorld
+        )
+    }
+
     override fun dispose() {
         TODO("Not yet implemented")
     }
 
-    fun resizeWorld() {
+    /**
+     * Сетка под мир [width]×[height]. Звать только при остановленном потоке симуляции:
+     * массивы сетки, буферы команд и воркеры пересоздаются.
+     */
+    fun resizeWorld(width: Int, height: Int) {
+        gridWidth = width
+        gridHeight = height
         chunkHeight = HALF_CHUNK_HEIGHT * 2
         heightMultiplier = chunkHeight * 2
         gridSize = gridWidth * gridHeight

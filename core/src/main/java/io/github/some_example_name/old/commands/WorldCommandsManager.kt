@@ -3,10 +3,9 @@ package io.github.some_example_name.old.commands
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.Cell
-import io.github.some_example_name.old.cells.SpecialModData
+import io.github.some_example_name.old.cells.base.SpecialModData
 import io.github.some_example_name.old.cells.Zygote
 import io.github.some_example_name.old.core.DIContext
-import io.github.some_example_name.old.core.SELF_REPRODUCTION_ENABLED
 import io.github.some_example_name.old.core.SubstrateSettings
 import io.github.some_example_name.old.core.WorldResizable
 import io.github.some_example_name.old.core.utils.OrderedIntPairMap
@@ -21,6 +20,7 @@ import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.systems.simulation.SimulationData
 import io.github.some_example_name.old.entities.SubstancesEntity
 import io.github.some_example_name.old.systems.genomics.OrganManager
+import io.github.some_example_name.old.systems.genomics.OrganismSpawner
 import io.github.some_example_name.old.systems.genomics.genome.GenomeManager
 import io.github.some_example_name.old.systems.physics.GridManager
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
@@ -52,9 +52,24 @@ class WorldCommandsManager(
         defaultReturnValue(-1)
     }
 
-    var worldCommandSpecialModDataBuffer = Array(diContext.threadCount) { mutableListOf<SpecialModData>() }
-    var worldCommandBuffer = Array(diContext.threadCount) { WorldCommandBuffer() }
-    var worldCommandSecondBuffer = Array(diContext.threadCount) { WorldCommandBuffer(100) }
+    /**
+     * Ключи порядка для буферов: стадии симуляции выставляют их, буферы запоминают, а
+     * применение идёт слиянием по ним — см. WorkOrder. ThreadManager получает его из
+     * контейнера.
+     */
+    val workOrder = WorkOrder(diContext.threadCount)
+
+    /**
+     * Свои данные клетки к команде буфера [bufferIndex] (ADD_CELL, ADD_SPECIAL_MOD_DATA):
+     * объект кладётся в сам буфер (WorldCommandBuffer.pushObject), в команду — его номер.
+     */
+    fun pushSpecialModData(bufferIndex: Int, data: SpecialModData): Int =
+        worldCommandBuffer[bufferIndex].pushObject(data)
+
+    private fun specialModDataAt(bufferIndex: Int, index: Int): SpecialModData =
+        worldCommandBuffer[bufferIndex].objectAt(index) as SpecialModData
+    var worldCommandBuffer = newBuffers(1000)
+    var worldCommandSecondBuffer = newBuffers(100)
     val worldCommandLastBuffer = WorldCommandBuffer(100)
 
     private var lastAddedCellIndexBuffer = IntArray(diContext.threadCount) { -1 }
@@ -63,8 +78,7 @@ class WorldCommandsManager(
 
 
     fun executingCommandsFromTheWorld() {
-        worldCommandBuffer.forEachIndexed { threadId, worldCommandBuffer ->
-            worldCommandBuffer.consume { type, ints, floats, booleans ->
+        consumeInOrder(worldCommandBuffer) { threadId, type, ints, floats, booleans ->
                 when (type) {
                     WorldCommandType.DIVIDE_ALIVE_CELL_ACTION_COUNTER -> {
                         organEntity.divideCounterThisStage[ints[0]]++
@@ -93,7 +107,7 @@ class WorldCommandsManager(
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
 
-                        if (cellIndex == -1) return@consume
+                        if (cellIndex == -1) return@consumeInOrder
 
                         val linkIndex = linkEntity.addLink(
                             cellIndex = cellIndex,
@@ -116,7 +130,7 @@ class WorldCommandsManager(
                             lastAddedCellIndexBuffer[threadId]
                         } else ints[0]
 
-                        if (cellIndex == -1) return@consume
+                        if (cellIndex == -1) return@consumeInOrder
 
                         neuralLinkEntity.addNeuralLink(
                             cellIndex = cellIndex,
@@ -163,7 +177,7 @@ class WorldCommandsManager(
                         //
                         // Проверка стоит до морфогенеза: она заодно экономит collectParticles.
                         val parentCellIndex = ints[4]
-                        val parentGeneration = ints[9]
+                        val parentGeneration = ints[8]
                         if (parentCellIndex != -1 &&
                             !cellEntity.isAliveAndSameGen(parentCellIndex, parentGeneration)
                         ) {
@@ -189,20 +203,30 @@ class WorldCommandsManager(
                                     }
                                 }
                         }
-                        if (isDivide) {
-                            val cellType = ints[2]
-                            val newCell = cellList[cellType]
+                        val cellType = ints[2]
+                        val newCell = cellList[cellType]
 
-                            val cellGenomeId = if (newCell is Zygote && !isEditor) {
-                                0
-                            } else ints[1]
+                        if (isDivide && newCell is Zygote && !isEditor) {
+                            // Зигота в мире (её родил продюсер или геном поделился в неё) —
+                            // корень НОВОГО организма с геномом родителя, как было до арен.
+                            // Сама клетка появится в последней фазе команд, уже в арене
+                            // своего организма (OrganismSpawner); связи, которые деление
+                            // проводит к ней следом (ADD_LINK с -1), — не к чему: это был бы
+                            // другой организм.
+                            worldCommandLastBuffer.push(
+                                type = WorldCommandType.SPAWN_ORGANISM,
+                                ints = intArrayOf(organEntity.genomeIndex[ints[3]], ints[0]),
+                                floats = floatArrayOf(x, y, radius, floats[3], floats[4], floats[5], floats[6])
+                            )
+                            lastAddedCellIndexBuffer[threadId] = -1
+                        } else if (isDivide) {
+                            val cellGenomeId = ints[1]
                             val parentOrganIndex = ints[3]
                             val parentIndex = ints[4]
-                            val organIndex = if (newCell is Zygote) {
-                                if (isEditor) 0 else -1
-                            } else parentOrganIndex
+                            // В редакторе организм один, и зигота — его часть.
+                            val organIndex = if (newCell is Zygote) 0 else parentOrganIndex
 
-                            val specialModDataIndex = ints[8]
+                            val specialModDataIndex = ints[7]
 
                             val cellIndex = cellEntity.addCell(
                                 x = x,
@@ -217,15 +241,13 @@ class WorldCommandsManager(
                                 angleSin = floats[4],
                                 angleDiffCos = floats[5],
                                 angleDiffSin = floats[6],
-                                colorDifferentiation = ints[5],
-                                visibilityRange = floats[7],
-                                a = floats[8],
-                                b = floats[9],
-                                c = floats[10],
+                                a = floats[7],
+                                b = floats[8],
+                                c = floats[9],
                                 isSum = booleans[0],
-                                activationFuncType = ints[6].toByte(),
-                                pheromoneType = ints[7],
-                                specialModData = if (specialModDataIndex == -1) null else worldCommandSpecialModDataBuffer[threadId][specialModDataIndex]
+                                activationFuncType = ints[5].toByte(),
+                                pheromoneType = ints[6],
+                                specialModData = if (specialModDataIndex == -1) null else specialModDataAt(threadId, specialModDataIndex)
                             )
                             if (isEditor) {
                                 mapCellGenomeIdToIndex.put(cellGenomeId, cellIndex)
@@ -328,6 +350,11 @@ class WorldCommandsManager(
                         cellEntity.deleteNeural(cellIndex = ints[0], neuralGeneration = ints[1])
                     }
                     WorldCommandType.ADD_NEURAL -> {
+                        // Мутация ставит команду в параллельной фазе, а клетку к этому
+                        // моменту мог убить DELETE_CELL, применённый раньше в этом же
+                        // проходе. Нейро-слот мёртвой клетки уже никто не освободит —
+                        // он утёк бы навсегда.
+                        if (!cellEntity.isAlive[ints[0]]) return@consumeInOrder
                         cellEntity.addNeural(
                             index = ints[0],
                             cellType = ints[1],
@@ -336,36 +363,6 @@ class WorldCommandsManager(
                             c = floats[2],
                             isSum = booleans[0],
                             activationFuncType = ints[2].toByte()
-                        )
-                    }
-                    WorldCommandType.DELETE_EYE -> {
-                        specialEntity.deleteEye(cellIndex = ints[0], eyeGeneration = ints[1])
-                    }
-                    WorldCommandType.ADD_EYE -> {
-                        specialEntity.addEye(
-                            index = ints[0],
-                            colorDifferentiation = ints[1],
-                            visibilityRange = floats[0]
-                        )
-                    }
-                    WorldCommandType.DELETE_TAIL -> {
-                        specialEntity.deleteTail(cellIndex = ints[0], tailGeneration = ints[1])
-                    }
-                    WorldCommandType.ADD_TAIL -> {
-                        specialEntity.addTail(index = ints[0])
-                    }
-                    WorldCommandType.DELETE_PRODUCER -> {
-                        specialEntity.deleteProducer(cellIndex = ints[0], producerGeneration = ints[1])
-                    }
-                    WorldCommandType.ADD_PRODUCER -> {
-                        specialEntity.addProducer(index = ints[0])
-                    }
-                    WorldCommandType.ADD_ORGAN -> {
-                        worldCommandLastBuffer.push(
-                            type = WorldCommandType.ADD_ORGAN,
-                            booleans = booleans,
-                            floats = floats,
-                            ints = ints
                         )
                     }
                     WorldCommandType.DELETE_ORGAN -> {
@@ -393,26 +390,37 @@ class WorldCommandsManager(
                     WorldCommandType.DELETE_PHEROMONE -> {
                         pheromoneEntity.deletePheromone(pheromoneIndex = ints[0], pheromoneGeneration = ints[1])
                     }
-                    WorldCommandType.DELETE_PHEROMONE_EMITTER -> {
-                        specialEntity.deletePheromoneEmitter(cellIndex = ints[0], pheromoneEmitterGeneration = ints[1])
-                    }
-                    WorldCommandType.ADD_PHEROMONE_EMITTER -> {
-                        specialEntity.addPheromoneEmitter(index = ints[0])
-                    }
                     WorldCommandType.MUTATE_ON_START -> {
                         val index = ints[0]
                         val threadId = ints[1]
                         val genomeIndex = ints[2]
+                        // Клетку могли убить раньше в этом же проходе, как в ADD_NEURAL:
+                        // onStart мёртвой клетки работал бы с уже освобождёнными слотами.
+                        if (!cellEntity.isAlive[index]) return@consumeInOrder
                         val newCell = cellList[cellEntity.cellType[index].toInt()]
                         newCell.onStart(index, threadId, genomeIndex)
+                    }
+                    WorldCommandType.DELETE_SPECIAL_MOD_DATA -> {
+                        // Клетка могла умереть раньше в этом проходе — слот всё равно освобождается
+                        // (умерла она уже не клеткой с данными, и сама смерть его не тронула).
+                        // Но если её индекс успели отдать новой клетке, specialTypeIndexes уже
+                        // её — поколение клетки (растёт только при выдаче слота) это отличает.
+                        val cellIndex = ints[0]
+                        if (cellEntity.getGeneration(cellIndex) != ints[2]) return@consumeInOrder
+                        specialEntity.deleteSpecialModData(cellIndex = cellIndex, modDataGeneration = ints[1])
+                    }
+                    WorldCommandType.ADD_SPECIAL_MOD_DATA -> {
+                        // Как в ADD_NEURAL: клетку могли убить раньше в этом же проходе, а её
+                        // индекс — отдать новой клетке. Поколение отличает одну от другой.
+                        val cellIndex = ints[0]
+                        if (!cellEntity.isAliveAndSameGen(cellIndex, ints[2])) return@consumeInOrder
+                        specialEntity.addSpecialModData(cellIndex, specialModDataAt(threadId, ints[1]))
                     }
                     else -> {}
                 }
             }
-        }
 
-        worldCommandSecondBuffer.forEachIndexed { _, worldCommandBuffer ->
-            worldCommandBuffer.consume { type, ints, floats, booleans ->
+        consumeInOrder(worldCommandSecondBuffer) { _, type, ints, floats, booleans ->
                 when (type) {
                     WorldCommandType.ADD_LINK_BY_ID -> {
                         val cellId = ints[0]
@@ -459,41 +467,33 @@ class WorldCommandsManager(
                     else -> {}
                 }
             }
-        }
 
         organIndexCellIdMapIndex.clear()
     }
 
+    /** Новые организмы от зигот, родившихся в мире (SPAWN_ORGANISM). */
+    private val organismSpawner = OrganismSpawner(
+        organEntity = organEntity,
+        cellEntity = cellEntity,
+        genomeManager = genomeManager,
+        zygote = cellList.filterIsInstance<Zygote>().single()
+    )
+
     fun executingLastCommandsFromTheWorld() {
         worldCommandLastBuffer.consume { type, ints, floats, booleans ->
             when (type) {
-                WorldCommandType.ADD_ORGAN -> {
-                    if (!isEditor) {
-                        // Сюда попадают только самозародившиеся организмы: ручной спавн
-                        // заводит организм напрямую в UserCommandManager, до первой клетки.
-                        //
-                        // Аренами этот путь пока не поддержан, и это осознанно: зигота
-                        // создаётся раньше своего организма, поэтому физически не может
-                        // оказаться в его арене (см. SELF_REPRODUCTION_ENABLED). Падаем
-                        // явно, а не заводим организм, у которого часть тела вне арены —
-                        // такое не упало бы вовсе, а просто выключило бы обход по диапазону.
-                        if (!SELF_REPRODUCTION_ENABLED) {
-                            throw IllegalStateException(
-                                "ADD_ORGAN при выключенном SELF_REPRODUCTION_ENABLED: " +
-                                    "кто-то создаёт организм в обход UserCommandManager"
-                            )
-                        }
-
-                        val organStartCellOrganIndex = ints[0]
-                        val newOrganIndex = organEntity.addOrgan(
-                            genomeIndex = ints[1],
-                            genomeSize = ints[2],
-                            dividedTimes = ints[3],
-                            mutatedTimes = ints[4]
-                        )
-                        cellEntity.organIndex[organStartCellOrganIndex] = newOrganIndex
-//                        organEntity.allocateArenas(organIndex = newOrganIndex)
-                    }
+                WorldCommandType.SPAWN_ORGANISM -> {
+                    organismSpawner.spawn(
+                        genomeIndex = ints[0],
+                        x = floats[0],
+                        y = floats[1],
+                        color = ints[1],
+                        radius = floats[2],
+                        angleCos = floats[3],
+                        angleSin = floats[4],
+                        angleDiffCos = floats[5],
+                        angleDiffSin = floats[6]
+                    )
                 }
 
                 else -> {}
@@ -502,11 +502,60 @@ class WorldCommandsManager(
     }
 
     override fun resize() {
-        worldCommandBuffer = Array(diContext.threadCount) { WorldCommandBuffer() }
-        worldCommandSecondBuffer = Array(diContext.threadCount) { WorldCommandBuffer(100) }
+        workOrder.resize(diContext.threadCount)
+        worldCommandBuffer = newBuffers(1000)
+        worldCommandSecondBuffer = newBuffers(100)
         lastAddedCellIndexBuffer = IntArray(diContext.threadCount) { -1 }
     }
 
     override fun dispose() {
+    }
+
+    private fun newBuffers(capacity: Int) =
+        Array(diContext.threadCount) { index -> WorldCommandBuffer(capacity, bufferIndex = index, order = workOrder) }
+
+    /** Позиции слияния по буферам — поле, а не локальный массив: слияние идёт каждый тик. */
+    private var mergeCursors = IntArray(0)
+
+    /**
+     * Применить буферы в порядке ключей (WorkOrder): каждый буфер отсортирован, поэтому
+     * это слияние. Берётся целиком пачка одной работы — команды подряд с одним ключом, —
+     * так что выбор «чей ход» делается по разу на работу, а не на каждую команду. При
+     * равных ключах (команды вне стадий в разных буферах) первым идёт меньший номер буфера.
+     *
+     * [processor] получает номер буфера: по нему живут per-buffer структуры применения
+     * (lastAddedCellIndexBuffer, объекты команд в самом буфере).
+     */
+    private inline fun consumeInOrder(
+        buffers: Array<WorldCommandBuffer>,
+        processor: (threadId: Int, type: WorldCommandType, ints: IntArray, floats: FloatArray, booleans: BooleanArray) -> Unit
+    ) {
+        if (mergeCursors.size < buffers.size) mergeCursors = IntArray(buffers.size)
+        val cursors = mergeCursors
+        cursors.fill(0, 0, buffers.size)
+
+        while (true) {
+            var best = -1
+            var bestKey = Long.MAX_VALUE
+            for (b in buffers.indices) {
+                val cursor = cursors[b]
+                if (cursor < buffers[b].size) {
+                    val key = buffers[b].orderKeys[cursor]
+                    if (best == -1 || key < bestKey) {
+                        best = b
+                        bestKey = key
+                    }
+                }
+            }
+            if (best == -1) break
+
+            val buffer = buffers[best]
+            val from = cursors[best]
+            var to = from + 1
+            while (to < buffer.size && buffer.orderKeys[to] == bestKey) to++
+            cursors[best] = to
+            buffer.consumeRange(from, to) { type, ints, floats, booleans -> processor(best, type, ints, floats, booleans) }
+        }
+        buffers.forEach { it.clear() }
     }
 }

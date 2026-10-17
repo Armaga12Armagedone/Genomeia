@@ -1,11 +1,9 @@
 package io.github.some_example_name.android
 
-import android.app.AlertDialog
-import android.content.Context
 import android.content.Intent
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Rect
-import android.net.Uri
 import android.opengl.GLES32
 import android.os.Bundle
 import android.text.InputType
@@ -18,10 +16,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
-import androidx.core.content.FileProvider
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import games.spooky.gdx.nativefilechooser.android.AndroidFileChooser
@@ -29,10 +23,6 @@ import io.github.some_example_name.old.core.PlatformTuning
 import io.github.some_example_name.old.game.KeyBoardListener
 import io.github.some_example_name.old.game.MyGame
 import java.io.File
-import java.io.FileOutputStream
-import java.io.FileWriter
-import java.io.PrintWriter
-import java.io.StringWriter
 
 //class AndroidLauncher : AndroidApplication() {
 //    override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,6 +40,8 @@ import java.io.StringWriter
 
 class AndroidLauncher : AndroidApplication(), KeyBoardListener {
 
+    private lateinit var game: MyGame
+
     companion object {
         var inputCallback: ((Float) -> Unit)? = null
         lateinit var inputLayout: LinearLayout
@@ -57,9 +49,6 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Crash handler должен быть первым
-        Thread.setDefaultUncaughtExceptionHandler(CrashHandler(this))
-
         super.onCreate(savedInstanceState)
 
         configureSimulationThreads()
@@ -75,8 +64,9 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         GLES32.glGenBuffers(1, buf, 0)
 
         val fileProvider = AndroidFileProvider(this, AndroidFileChooser(this))
+        game = MyGame(fileProvider)
         val gameView = initializeForView(
-            MyGame(fileProvider),
+            game,
             config
         )
 
@@ -118,6 +108,7 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         ))
 
         setContentView(rootLayout)
+        openMapIntent(intent)
 
         // Смещение при открытии клавиатуры
         rootLayout.viewTreeObserver.addOnGlobalLayoutListener {
@@ -178,81 +169,34 @@ class AndroidLauncher : AndroidApplication(), KeyBoardListener {
         }
     }
 
-    private fun copyImportedFile(uri: Uri) {
-        val targetFile = File(filesDir, "gen3.bin")
-        try {
-            contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(targetFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            Toast.makeText(this, "Файл импортирован как gen3.bin", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Log.e("AndroidLauncher", "Import failed: ${e.message}")
-            Toast.makeText(this, "Ошибка импорта: ${e.message}", Toast.LENGTH_LONG).show()
-        }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openMapIntent(intent)
     }
 
-    // ====================== Crash Handler ======================
-    private class CrashHandler(private val context: AndroidLauncher) : Thread.UncaughtExceptionHandler {
-        override fun uncaughtException(thread: Thread, throwable: Throwable) {
-            val sw = StringWriter()
-            val pw = PrintWriter(sw)
-            throwable.printStackTrace(pw)
-            val stackTrace = sw.toString()
-
-            Log.e("CrashHandler", stackTrace)
-
-            val crashDir = context.getExternalFilesDir(null)
-            crashDir?.mkdirs()
-            val crashFile = File(crashDir, "crash_log_android.txt")
-
+    private fun openMapIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val uri = intent.data ?: return
+        // URI может быть content:// с непрозрачным именем: формат проверяет core.
+        // Копирование — вне GL-потока; временный файл удаляем после снимка для журнала.
+        Thread({
+            val temporary = File.createTempFile("opened-", ".map", cacheDir)
             try {
-                FileWriter(crashFile).use { it.write(stackTrace) }
-            } catch (e: Exception) {
-                Log.e("CrashHandler", "Failed to write crash log", e)
-            }
-
-            context.runOnUiThread {
-                val scrollView = ScrollView(context)
-                val textView = TextView(context).apply {
-                    text = stackTrace
-                    setTextIsSelectable(true)
-                    setBackgroundColor(Color.WHITE)
-                    setTextColor(Color.BLACK)
-                    setPadding(16, 16, 16, 16)
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw java.io.IOException("не удалось открыть $uri")
+                input.use { source -> temporary.outputStream().use { source.copyTo(it) } }
+                postRunnable {
+                    try {
+                        game.openFiles(listOf(temporary.absolutePath))
+                    } finally {
+                        temporary.delete()
+                    }
                 }
-                scrollView.addView(textView)
-
-                AlertDialog.Builder(context)
-                    .setTitle("Send the crash log to the community")
-                    .setView(scrollView)
-                    .setPositiveButton("Share") { dialog, _ ->
-                        try {
-                            val uri = FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.provider",
-                                crashFile
-                            )
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_STREAM, uri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Send the crash log"))
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Share failed: ${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                        dialog.dismiss()
-                    }
-                    .setNegativeButton("Close") { dialog, _ -> dialog.dismiss() }
-                    .setOnDismissListener {
-                        context.finish()
-                        android.os.Process.killProcess(android.os.Process.myPid())
-                    }
-                    .setCancelable(false)
-                    .show()
+            } catch (e: Exception) {
+                temporary.delete()
+                Log.e("MapImport", "не удалось прочитать $uri", e)
             }
-        }
+        }, "map-import").start()
     }
 }

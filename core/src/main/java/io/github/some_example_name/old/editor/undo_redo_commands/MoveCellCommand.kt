@@ -15,15 +15,13 @@ class MoveCellCommand(
     val newY: Float,
     currentTick: Int,
     val stageInstruction: MutableList<GenomeStage>
-) : UndoRedoCommand(
+) : StageCommand(
     tick = currentTick,
     genomeStageInstruction = stageInstruction,
     doesNeedAddNewStage = false
 ) {
 
-    override fun execute(): StageResult {
-        val stage = genomeStageInstruction[tick]
-
+    override fun executeOnStage(stage: GenomeStage): StageResult {
         // Обновляем divide action родителя перетаскиваеймой клетки
         val grabbedCellParentAction = stage.cellActions[parentEditorCell.id] ?: throw Exception("No moved cell")
         val grabbedParentDivide = grabbedCellParentAction.divide ?: throw Exception("No moved cell")

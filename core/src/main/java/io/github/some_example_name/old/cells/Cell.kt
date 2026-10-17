@@ -1,12 +1,35 @@
 package io.github.some_example_name.old.cells
 
 import com.badlogic.gdx.graphics.Color
+import io.github.some_example_name.old.cells.base.SpecialModData
+import io.github.some_example_name.old.cells.base.specialDataFor
 import io.github.some_example_name.old.core.CellSettings
 import io.github.some_example_name.old.core.DIContext
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
-import kotlin.reflect.KClass
+import io.github.some_example_name.old.features.editor.dialog.CellEditorSection
+import io.github.some_example_name.old.features.editor.dialog.DirectedSection
+import io.github.some_example_name.old.features.editor.dialog.NeuralSection
+import io.github.some_example_name.old.systems.genomics.genome.Action
 
-sealed class Cell(
+/**
+ * Тип клетки: её поведение в симуляции и то, как она выглядит в редакторе.
+ *
+ * Класс открытый (не sealed), чтобы мод мог добавить свою клетку: наследник регистрируется
+ * в [io.github.some_example_name.old.cells.base.CellTypes].
+ *
+ * КЛЮЧ И НОМЕР
+ * ------------
+ * [key] — постоянное имя типа. Им тип записан в геноме, в сохранённом мире и в журнале
+ * .bug, поэтому однажды выпущенный ключ не меняется и не переиспользуется: это формат
+ * файла. Встроенные клетки — коротко ("leaf"), клетки модов — с префиксом мода ("mod:name").
+ *
+ * [cellTypeId] — просто место типа в реестре, его считают при запуске. Им симуляция
+ * индексирует CellEntity.cellType, текстуры и палитры: байт по номеру дешевле строки в
+ * горячих циклах. Поэтому порядок в реестре можно менять, а клетки удалять — в файлах
+ * номеров нет.
+ */
+abstract class Cell(
+    val key: String,
     val defaultColor: Color,
     val cellTypeId: Int,
     val textureName: String = "not_cell.png",
@@ -17,7 +40,6 @@ sealed class Cell(
     val effectOnContact: Boolean = false,
     val isCollidable: Boolean = true,
     val descriptionBundle: String? = null,
-    val specialData: KClass<out SpecialModData> = Plug::class,
     val defaultCellSettings: CellSettings = CellSettings(
         maxEnergy = 5f,
         cellStiffness = 0.02f,
@@ -25,9 +47,60 @@ sealed class Cell(
         energyActionCost = 0.0005f,
     )
 ) {
-    val name: String = this::class.simpleName ?: "UnknownCell"
-    val description = descriptionBundle?.let { bundle.get(descriptionBundle) } ?: ""
-    val doesItHasSpecialModData = specialData != Plug::class
+    /**
+     * Имя типа для людей: список типов в редакторе и ключ в файле настроек клеток.
+     *
+     * Выводится из [key], а не из имени класса: на Android имена классов переименовывает
+     * минификатор, и там вместо "PheromoneEmitter" было бы "a". Для встроенных клеток
+     * совпадает с прежним именем класса ("pheromone_emitter" -> "PheromoneEmitter"),
+     * поэтому старые файлы настроек читаются как раньше.
+     */
+    val name: String = displayName(key)
+
+    /** Лениво: так клетку можно создать без Gdx (в тестах :core), бандл нужен только UI. */
+    val description: String by lazy { descriptionBundle?.let { bundle.get(it) } ?: "" }
+
+    /**
+     * Свои данные клетки, которые игрок настраивает в ГЕНОМЕ (Action.special), — значение по
+     * умолчанию; null — в геноме у клетки своих данных нет. Образец — клавиша Controller.
+     * Редактор ставит его в геном, когда клетке выбирают этот тип.
+     */
+    open val defaultGenomeData: SpecialModData? get() = null
+
+    /**
+     * Свои данные новой клетки этого типа (слот в SpecialModDataEntity) или null — их нет.
+     * [action] — действие генома, из которого клетка появилась: деление или мутация в этот
+     * тип (для клетки без генома — [NO_GENOME_ACTION]).
+     *
+     * По умолчанию — данные из генома ([defaultGenomeData], Action.special). Клетка, которой
+     * нужно своё состояние на время жизни (скорость хвоста, счётчик продюсера), возвращает
+     * НОВЫЙ объект: изменяемый объект, общий для нескольких клеток, — это гонка между
+     * воркерами. Вызывается из параллельной фазы, поэтому только из [action] и констант.
+     */
+    open fun createSpecialData(action: Action): SpecialModData? =
+        defaultGenomeData?.let { specialDataFor(action, it) }
+
+    /**
+     * Мутация клетки, которая этого типа и остаётся: новые данные или null — оставить как
+     * есть. [current] — данные клетки сейчас. Смену типа обрабатывает не это, а
+     * [createSpecialData] нового типа.
+     */
+    open fun mutateSpecialData(current: SpecialModData, action: Action): SpecialModData? =
+        defaultGenomeData?.let { default -> action.special?.takeIf { it.javaClass == default.javaClass } }
+
+    /**
+     * Из чего собран диалог клетки в редакторе генома, сверху вниз.
+     *
+     * Своя верстка клетки живёт рядом с её логикой (в файле клетки, см. Synapse) и
+     * подключается здесь. По этому же списку диалог сбрасывает поля генома при смене типа:
+     * секции, которых у нового типа нет, чистят свои поля, новые — ставят значения по
+     * умолчанию. Поэтому порядок и состав секций — это всё, что редактору надо знать о
+     * клетке; проверок вида `is Synapse` в нём нет.
+     */
+    open fun editorSections(): List<CellEditorSection> = buildList {
+        if (isNeural) add(NeuralSection)
+        if (isDirected) add(DirectedSection)
+    }
 
     lateinit var context: DIContext
 
@@ -84,8 +157,19 @@ sealed class Cell(
 
     }
 
+    companion object {
+        /**
+         * Действие «без генома» для [createSpecialData]: клетку создали напрямую (зигота игрока).
+         * Общий экземпляр, чтобы не создавать Action на каждую клетку; менять его нельзя.
+         */
+        val NO_GENOME_ACTION = Action()
+
+        /** "pheromone_emitter" -> "PheromoneEmitter", "mod:my_cell" -> "mod:MyCell". */
+        fun displayName(key: String): String {
+            val namespace = key.substringBefore(':', missingDelimiterValue = "")
+            val local = key.substringAfter(':')
+            val pascal = local.split('_').joinToString("") { part -> part.replaceFirstChar { it.uppercaseChar() } }
+            return if (namespace.isEmpty()) pascal else "$namespace:$pascal"
+        }
+    }
 }
-
-interface SpecialModData
-
-object Plug: SpecialModData

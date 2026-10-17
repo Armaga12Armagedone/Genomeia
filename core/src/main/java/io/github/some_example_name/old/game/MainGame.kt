@@ -23,12 +23,26 @@ import com.kotcrab.vis.ui.widget.VisTextButton
 import com.kotcrab.vis.ui.widget.VisTextButton.VisTextButtonStyle
 import com.kotcrab.vis.ui.widget.VisTextField
 import com.kotcrab.vis.ui.widget.VisValidatableTextField
+import io.github.some_example_name.old.bug.BugOverlay
+import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.bug.BugSession
+import io.github.some_example_name.old.bug.ReplayTarget
+import io.github.some_example_name.old.commands.GoMenu
+import io.github.some_example_name.old.commands.GoReplace
+import io.github.some_example_name.old.features.simulation.SimulationIntent
+import io.github.some_example_name.old.features.simulation.SimulationScreen
 import io.github.some_example_name.old.core.DIGameGlobalContainer
+import io.github.some_example_name.old.journal.SessionJournal
+import io.github.some_example_name.old.core.DevStartup
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.features.settings.GlobalSettings.MUSIC_VOLUME
+import io.github.some_example_name.old.features.settings.UserPreferences
+import io.github.some_example_name.old.core.FileDropTarget
 import io.github.some_example_name.old.core.FileProvider
 import io.github.some_example_name.old.features.menu.MenuScreen
+import io.github.some_example_name.old.journal.SessionAttachments
+import io.github.some_example_name.old.systems.genomics.library.GenomeLibrary
 import kotlin.math.max
 
 interface KeyBoardListener {
@@ -63,10 +77,21 @@ class MyGame(
 
     override fun create() {
         VisUI.load()  // Загружаем дефолтный VisUI
+        // До контейнеров: журнал, лог, краш-хэндлер и, если есть .bug в bug-replay, песочница.
+        BugSession.start()
+        // Звук и язык игрока: до первого экрана и до музыки, чтобы они стартовали с сохранёнными.
+        UserPreferences.load()
         DIGameGlobalContainer.fileProvider = multiPlatformFileProvider
         DIGameGlobalContainer.game = this
         DISimulationContainer
         DIGenomeEditorContainer
+        // Перенос старых JSON и запекание старых .genome — до первого экрана: меню сразу
+        // читает папку геномов. После контейнеров: запекание идёт в мире редактора.
+        // При повторе бага папка геномов — снимок из .bug, уже прошедший этот шаг у игрока.
+        if (!BugReplay.isActive) {
+            GenomeLibrary.prepare(DIGenomeEditorContainer.genomeBaker)
+            SessionAttachments.retakeGenomes()
+        }
 
         Gdx.input.setCatchKey(Input.Keys.BACK, true)
 
@@ -145,7 +170,9 @@ class MyGame(
         openKeyBoardListenerGlobal = openKeyBoardListener
         shuffleTracks()
         playNextTrack()
+        BugSession.afterContainers()
         setScreen(MenuScreen())
+        BugSession.afterFirstScreen()
 
         pikSounds = listOf<Sound>(
             Gdx.audio.newSound(Gdx.files.internal("sounds/pik1.mp3")),
@@ -154,6 +181,54 @@ class MyGame(
             Gdx.audio.newSound(Gdx.files.internal("sounds/pik4.mp3")),
             Gdx.audio.newSound(Gdx.files.internal("sounds/pik5.mp3"))
         )
+    }
+
+    override fun render() {
+        // Повтор бага подаёт команды до кадра экрана — как живой ввод, который тоже
+        // приходит до render().
+        BugReplay.update()
+        super.render()
+        BugOverlay.render()
+        DevStartup.afterRender()
+    }
+
+    override fun resize(width: Int, height: Int) {
+        super.resize(width, height)
+        BugOverlay.resize(width, height)
+    }
+
+    /**
+     * Файлы перетащили в окно игры (ПК; зовёт лаунчер в потоке игры). Принимает их текущий
+     * экран, если умеет ([FileDropTarget]). При повторе бага — нет: всё, что тогда сделал
+     * игрок, приходит из записи.
+     */
+    fun filesDropped(paths: List<String>) {
+        if (BugReplay.isActive) return
+        val target = screen as? FileDropTarget
+        if (target == null) {
+            Gdx.app.log("FileDrop", "экран ${screen?.let { it::class.simpleName }} не принимает файлы: $paths")
+            return
+        }
+        target.onFilesDropped(paths.map { Gdx.files.absolute(it) })
+    }
+
+    /** Лаунчер вызывает после create; переход в меню тоже записывается командой. */
+    fun openFiles(paths: List<String>) {
+        if (BugReplay.isActive || paths.isEmpty()) return
+        if (screen is SimulationScreen) {
+            (screen as ReplayTarget).replay(
+                SimulationIntent.SetPaused(true)
+            )
+            // Навигация запишется на последнем завершённом тике. Иначе до dispose мир
+            // успевал дописать хэши, до которых повтор с другим числом воркеров не доходил.
+            DISimulationContainer.simulationSystem.betweenTicks { }
+        }
+        if (screen !is MenuScreen) {
+            DIGameGlobalContainer.navigationCommandsManager.performCommand(
+                GoReplace(GoMenu)
+            )
+        }
+        filesDropped(paths)
     }
 
     private fun shuffleTracks() {
@@ -178,8 +253,15 @@ class MyGame(
     }
 
     override fun dispose() {
+        SessionJournal.flush()
+        BugOverlay.dispose()
         currentMusic.dispose()
         screen.dispose()
+        // Рендер один на всю игру и переживает смену экранов, поэтому освобождать его
+        // может только тот, кто им владеет, и только здесь. Раньше это не делал никто:
+        // RenderSystem.dispose() был пустым TODO именно потому, что дёрнуть общий
+        // ShaderManager из одного экрана значило бы оставить два других без шейдеров.
+        DIGameGlobalContainer.worldRenderer.dispose()
         titleFont.dispose()
         largeFont.dispose()
         buttonFont.dispose()

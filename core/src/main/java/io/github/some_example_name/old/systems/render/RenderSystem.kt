@@ -4,29 +4,43 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
+import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
-import io.github.some_example_name.old.core.utils.drawTriangleMiddle
-import io.github.some_example_name.old.entities.CellEntity
-import io.github.some_example_name.old.entities.LinkEntity
-import io.github.some_example_name.old.entities.ParticleEntity
-import io.github.some_example_name.old.entities.PheromoneEntity
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import kotlin.math.sqrt
+import io.github.some_example_name.old.systems.pheromone.PheromonesManager
+import io.github.some_example_name.render.RenderFrame
+import io.github.some_example_name.render.RenderMode
+import io.github.some_example_name.render.WorldRenderer
+import io.github.some_example_name.render.debug.RenderSceneDump
+import io.github.some_example_name.render.pack.CellInstanceBuffer
+import io.github.some_example_name.render.pack.OverlayInstanceBuffer
+import io.github.some_example_name.render.pack.PheromoneInstanceBuffer
 
+/**
+ * Сторона симуляции в отрисовке кадра: взять снимок мира и перевести его на язык,
+ * который понимает модуль рендера.
+ *
+ * Границу проводит просто: всё, что знает про клетки, связи и UPS, живёт здесь; всё,
+ * что говорит с GPU, живёт в :render. Поэтому здесь нет ни одного вызова Gdx.gl,
+ * кроме переключения состояний вокруг подсветки выбранной клетки, а там — ни одного
+ * упоминания клетки. Даже отладочные связи и стрелки уходят туда фигурами
+ * (OverlayInstanceBuffer), а не рисуются здесь.
+ */
 class RenderSystem(
-    val cellEntity: CellEntity,
-    val linkEntity: LinkEntity,
-    val particleEntity: ParticleEntity,
-    val shaderManager: ShaderManager,
-    val renderBufferManager: RenderBufferManager,
-    val pheromoneEntity: PheromoneEntity
+    val worldRenderer: WorldRenderer,
+    val renderBufferManager: RenderBufferManager
 ) {
 
     var isRenderUi = true
+
+    /** Режим рендера этого мира; хранится у [renderBufferManager], см. пояснение там. */
+    var mode: RenderMode
+        get() = renderBufferManager.mode
+        set(value) {
+            renderBufferManager.mode = value
+        }
 
     private lateinit var fontMatrix: Matrix4
     private lateinit var spriteBatch: SpriteBatch
@@ -39,6 +53,22 @@ class RenderSystem(
     private var cameraY = 0f
     private var blurLevel = 0f
 
+    /** Всё переиспользуется между кадрами: аллокаций на кадр быть не должно. */
+    private val cellBuffer = CellInstanceBuffer()
+    private val pheromoneBuffer = PheromoneInstanceBuffer()
+    private val overlayBuffer = OverlayInstanceBuffer()
+    private val frame = RenderFrame()
+
+    /**
+     * Часы анимации оверлея: по ним бегут импульсы нейросвязей. Идут, только пока идёт
+     * симуляция, — на паузе сигналы не передаются, и бегущие бусины врали бы.
+     */
+    private var animationTime = 0f
+
+    /** Ждёт ближайшего кадра, см. [requestPreview]. */
+    private var previewRequest: ((Pixmap) -> Unit)? = null
+    private var previewSize = 0
+
     fun create(
         fontMatrix: Matrix4,
         spriteBatch: SpriteBatch,
@@ -46,13 +76,22 @@ class RenderSystem(
         shapeRenderer: ShapeRenderer,
         camera: OrthographicCamera
     ) {
-        shaderManager.checkResize()
-//        pheromoneShaderManager.create()
+        worldRenderer.checkResize()
         this.fontMatrix = fontMatrix
         this.spriteBatch = spriteBatch
         this.font = font
         this.shapeRenderer = shapeRenderer
         this.camera = camera
+    }
+
+    /**
+     * Снять превью мира в следующем кадре и отдать его в [onReady] — там же, в потоке
+     * рендера. Отложенно: снять можно лишь кадр, который только что нарисован, а кнопки
+     * срабатывают уже после отрисовки мира. Pixmap освобождается после [onReady].
+     */
+    fun requestPreview(size: Int, onReady: (Pixmap) -> Unit) {
+        previewSize = size
+        previewRequest = onReady
     }
 
     fun moveCamera(dx: Float, dy: Float) {
@@ -61,26 +100,24 @@ class RenderSystem(
         camera.update()
     }
 
-    private var bufferCell = allocateBuffer(INITIAL_PARTICLE_CAPACITY)
-    private var bufferPheromone = allocateBuffer(INITIAL_PHEROMONE_CAPACITY)
-
     fun resize(width: Int, height: Int) {
-        shaderManager.resize(width, height)
+        worldRenderer.resize(width, height)
     }
 
     fun render() {
-        // Индекс кадра читается ОДИН раз, и оба буфера берутся по нему.
-        //
-        // Буфер связей хранит позиции внутри буфера клеток, поэтому они обязаны быть из
-        // одной сборки. Два отдельных геттера этого не гарантировали: симуляция успевала
-        // переключить буферы между вызовами, и связи рисовались по позициям от другого
-        // кадра — на экране это линии между чужими организмами и уходящие в ноль.
+        // Индекс кадра читается ОДИН раз, и оба буфера берутся по нему: оверлей рисуется
+        // по координатам клеток, и клетки с оверлеем обязаны быть из одной сборки. Почему
+        // это важно — в RenderBufferManager.frameFrontIndex.
         val frameIndex = renderBufferManager.frontFrameIndex()
         val cellBuf = renderBufferManager.cellBuffer(frameIndex)
-        val linkBuf = renderBufferManager.linkBuffer(frameIndex)
+        val overlayBuf = renderBufferManager.overlayBuffer(frameIndex)
 
         val pheromoneBuf = renderBufferManager.getCurrentPheromoneBuffer()
         val spec = renderBufferManager.getCurrentSpecificBufferData()
+
+        // Один раз на кадр: упаковка, рендер и отладка должны работать в одном режиме.
+        val mode = this.mode
+
         if (zoom != camera.zoom || cameraX != camera.position.x || cameraY != camera.position.y) {
             if (!spec.isCellSelected) {
                 blurLevel = 4.0f
@@ -90,20 +127,39 @@ class RenderSystem(
             }
         }
 
-        // Ёмкость считается по СНИМКУ, который сейчас будет записан, а не по живому
-        // aliveList: список принадлежит потоку симуляции и меняется прямо во время кадра.
-        // Если в снимке частиц больше, чем в списке на момент чтения (а так бывает при
-        // массовой гибели — снимок старше), putFloat уходил за границу буфера и кадр падал
-        // с BufferOverflowException.
-        ensureCellBufferCapacityForWrite(cellBuf.renderCellBufferSize)
-        drawCellShader(cellBuf)
+        packCells(cellBuf)
+        packPheromones(pheromoneBuf, mode.usesPostProcess)
+        packOverlay(overlayBuf, mode.drawsDebugOverlay)
 
-        ensurePheromoneBufferCapacityForWrite(pheromoneBuf.pheromoneBufferSize)
-        if (doesUsePostProcess) {
-            drawPheromoneShader(pheromoneBuf)
+        if (renderBufferManager.simulationData.isPlay) {
+            animationTime = RenderFrame.advanceTime(animationTime, Gdx.graphics.deltaTime)
         }
-        if (!doesUsePostProcess) {
-            drawDebug(cellBuf, linkBuf, pheromoneBuf)
+
+        frame.apply {
+            cameraProjection = camera.combined
+            cells = cellBuffer.end()
+            uploadCells = true
+            pheromones = pheromoneBuffer.end()
+            pheromoneK = PheromonesManager.K
+            pheromoneP = PheromonesManager.P
+            overlay = if (mode.drawsDebugOverlay) overlayBuffer.end() else null
+            time = animationTime
+            blurAmount = blurLevel
+            zoom = camera.zoom
+            vignetteEnabled = 1f
+            this.mode = mode
+        }
+        worldRenderer.render(frame)
+
+        // Сразу после конвейера: в кадре пока только мир, без подсветки и текста.
+        previewRequest?.let { onReady ->
+            previewRequest = null
+            val preview = worldRenderer.capturePreview(previewSize)
+            try {
+                onReady(preview)
+            } finally {
+                preview.dispose()
+            }
         }
 
         moveCameraAndDrawSelected(spec)
@@ -111,7 +167,6 @@ class RenderSystem(
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
         Gdx.gl.glDepthMask(false)
         Gdx.gl.glEnable(GL20.GL_BLEND)
-
 
         if (isRenderUi) {
             drawTextSimInfo(spec)
@@ -122,184 +177,97 @@ class RenderSystem(
         }
     }
 
-    private fun allocateBuffer(numParticles: Int): ByteBuffer {
-        return ByteBuffer
-            .allocateDirect(numParticles * PARTICLE_STRUCT_SIZE)
-            .order(ByteOrder.nativeOrder())
-    }
-
-    private fun ensureCellBufferCapacityForWrite(neededParticles: Int) {
-        val currentCapacity = bufferCell.capacity() / PARTICLE_STRUCT_SIZE
-        if (neededParticles <= currentCapacity) return
-
-        var newCapacity = currentCapacity.toDouble()
-        do { newCapacity *= 1.5 } while (newCapacity < neededParticles)
-
-        val finalCapacity = newCapacity.toInt().coerceAtLeast(neededParticles)
-        bufferCell = allocateBuffer(finalCapacity)
-    }
-
-
-    private fun ensurePheromoneBufferCapacityForWrite(neededPheromones: Int) {
-        val currentCapacity = bufferPheromone.capacity() / PHEROMONE_STRUCT_SIZE
-        if (neededPheromones <= currentCapacity) return
-
-        var newCapacity = currentCapacity.toDouble()
-        do { newCapacity *= 1.5 } while (newCapacity < neededPheromones)
-
-        val finalCapacity = newCapacity.toInt().coerceAtLeast(neededPheromones)
-        bufferPheromone = allocateBuffer(finalCapacity)
-    }
-
-    private fun drawPheromoneShader(pheromoneBuffer: PheromoneBufferData) {
-        (bufferPheromone as java.nio.Buffer).clear()
-        with(pheromoneBuffer) {
-            for (i in 0..<pheromoneBufferSize) {
-                bufferPheromone.putFloat(x[i])
-                bufferPheromone.putFloat(y[i])
-                bufferPheromone.putFloat(a[i])
-                bufferPheromone.putInt(color[i])
-            }
-        }
-        (bufferPheromone as java.nio.Buffer).flip()
-//        pheromoneShaderManager.renderPheromones(camera.combined, bufferPheromone)
-    }
-
-    private fun drawCellShader(cellBuf: RenderCellBufferData) {
-        (bufferCell as java.nio.Buffer).clear()
+    /**
+     * Ёмкость считается по СНИМКУ, который сейчас будет записан, а не по живому
+     * aliveList: список принадлежит потоку симуляции и меняется прямо во время кадра.
+     * Если в снимке частиц больше, чем в списке на момент чтения (а так бывает при
+     * массовой гибели — снимок старше), запись уходила за границу буфера и кадр падал
+     * с BufferOverflowException.
+     *
+     * shape/type уже посчитаны потоком симуляции — здесь только перекладывание
+     * байт, без арифметики. См. пояснение в CellInstanceBuffer.
+     */
+    private fun packCells(cellBuf: RenderCellBufferData) {
+        cellBuffer.begin(cellBuf.renderCellBufferSize)
         with(cellBuf) {
             for (i in 0..<renderCellBufferSize) {
-                bufferCell.putFloat(x[i])
-                bufferCell.putFloat(y[i])
-                bufferCell.putInt(color[i])
-                bufferCell.putInt(packed1[i])
-                bufferCell.putInt(packed2[i])
-                // Pad to 32 bytes = 2× RGBA32UI texels (GLES 3.0 data-texture path)
-                bufferCell.putInt(0)
-                bufferCell.putInt(0)
-                bufferCell.putInt(0)
-
-            }
-        }
-        (bufferCell as java.nio.Buffer).flip()
-
-        val worldX = camera.position.x
-        val worldY = camera.position.y
-        shaderManager.render(
-            currentRead = bufferCell,
-            cameraProjection = camera.combined,
-            isNewFrame = true,
-            isClear = false,
-            worldX = worldX,
-            worldY = worldY,
-            blurAmount = blurLevel,
-            zoom = camera.zoom,
-            vignetteEnabled = 1f,
-            pheromoneData = bufferPheromone
-        )
-    }
-
-    fun drawDebug(cellBuf: RenderCellBufferData, linkBuf: RenderLinkBufferData, pheromoneBuffer: PheromoneBufferData) {
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
-        Gdx.gl.glLineWidth(2f)
-        with(cellBuf) {
-            shapeRenderer.color = Color.WHITE
-            for (i in 0..<renderCellBufferSize) {
-                if (directedAngleCos[i] != 0f || directedAngleSin[i] != 0f) {
-                    shapeRenderer.line(
-                        x[i],
-                        y[i],
-                        x[i] + directedAngleCos[i],
-                        y[i] + directedAngleSin[i]
-                    )
-                }
-            }
-        }
-
-        shapeRenderer.color = Color.GREEN
-
-        with(linkBuf) {
-            for (linkId in 0..<renderLinkAmount) {
-
-                val cellAIndex = cellA[linkId]
-                val cellBIndex = cellB[linkId]
-                shapeRenderer.color = when (isNeuralDirected[linkId].toInt()) {
-                    0, 1 -> Color.CYAN
-                    -1 -> Color.GREEN
-                    3 -> Color.PURPLE
-                    else -> Color.RED
-                }
-
-                if ((isNeuralDirected[linkId].toInt() == 0)) {
-                    shapeRenderer.drawTriangleMiddle(
-                        cellBuf.x[cellAIndex],
-                        cellBuf.y[cellAIndex],
-                        cellBuf.x[cellBIndex],
-                        cellBuf.y[cellBIndex],
-                        arrowSize = 0.1f
-                    )
-                } else if ((isNeuralDirected[linkId].toInt() == 1)) {
-                    shapeRenderer.drawTriangleMiddle(
-                        cellBuf.x[cellBIndex],
-                        cellBuf.y[cellBIndex],
-                        cellBuf.x[cellAIndex],
-                        cellBuf.y[cellAIndex],
-                        arrowSize = 0.1f
-                    )
-                }
-
-                shapeRenderer.line(
-                    cellBuf.x[cellAIndex],
-                    cellBuf.y[cellAIndex],
-                    cellBuf.x[cellBIndex],
-                    cellBuf.y[cellBIndex],
+                cellBuffer.put(
+                    x = x[i],
+                    y = y[i],
+                    color = color[i],
+                    shape = shape[i],
+                    type = type[i]
                 )
             }
         }
+    }
 
-//      Дебаг отрисовка феромона
-        with(pheromoneBuffer) {
+    private fun packPheromones(pheromoneBuf: PheromoneBufferData, usePostProcess: Boolean) {
+        pheromoneBuffer.begin(pheromoneBuf.pheromoneBufferSize)
+        if (!usePostProcess) return
+        with(pheromoneBuf) {
             for (i in 0..<pheromoneBufferSize) {
-                shapeRenderer.circle(x[i], y[i], sqrt(radiusSquared[i]), 64)
+                pheromoneBuffer.put(
+                    x = x[i],
+                    y = y[i],
+                    a = a[i],
+                    color = color[i]
+                )
             }
         }
+    }
+
+    /**
+     * Фигуры оверлея уже упакованы потоком симуляции (RenderBufferManager): здесь только
+     * перекладывание, как и в [packCells]. Кадр без отладки оверлей не получает вовсе.
+     */
+    private fun packOverlay(overlayBuf: RenderOverlayBufferData, drawsOverlay: Boolean) {
+        overlayBuffer.begin(overlayBuf.size)
+        if (!drawsOverlay) return
+        with(overlayBuf) {
+            for (i in 0..<size) {
+                overlayBuffer.put(
+                    x0 = x0[i],
+                    y0 = y0[i],
+                    x1 = x1[i],
+                    y1 = y1[i],
+                    color = color[i],
+                    params = params[i]
+                )
+            }
+        }
+    }
+
+    private fun moveCameraAndDrawSelected(spec: RenderSpecificBufferData) {
+        if (!spec.isCellSelected) return
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
+
+        shapeRenderer.color = Color.GOLD
+        Gdx.gl.glLineWidth(5f)
+
+        shapeRenderer.circle(
+            spec.grabbedCellX ?: 0f,
+            spec.grabbedCellY ?: 0f,
+            0.55f,
+            64
+        )
+
         shapeRenderer.end()
+
+        val targetX = spec.grabbedCellX ?: return
+        val targetY = spec.grabbedCellY ?: return
+
+        val lerpSpeed = 1f
+        val delta = Gdx.graphics.deltaTime
+
+        camera.position.x += (targetX - camera.position.x) * lerpSpeed * delta
+        camera.position.y += (targetY - camera.position.y) * lerpSpeed * delta
+
+        camera.update()
     }
 
-    private fun moveCameraAndDrawSelected(spec: RenderSpecificBufferData) = with(renderBufferManager) {
-        if (spec.isCellSelected) {
-            shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
-
-            shapeRenderer.color = Color.GOLD
-            Gdx.gl.glLineWidth(5f)
-
-            with(renderBufferManager) {
-                if (spec.isCellSelected) {
-                    shapeRenderer.circle(
-                        spec.grabbedCellX ?: 0f,
-                        spec.grabbedCellY ?: 0f,
-                        0.55f,
-                        64
-                    )
-                }
-            }
-
-            shapeRenderer.end()
-
-            val targetX = spec.grabbedCellX ?: return
-            val targetY = spec.grabbedCellY ?: return
-
-            val lerpSpeed = 1f
-            val delta = Gdx.graphics.deltaTime
-
-            camera.position.x += (targetX - camera.position.x) * lerpSpeed * delta
-            camera.position.y += (targetY - camera.position.y) * lerpSpeed * delta
-
-            camera.update()
-        }
-    }
-
-    private fun drawTextSimInfo(spec: RenderSpecificBufferData) = with(renderBufferManager) {
+    private fun drawTextSimInfo(spec: RenderSpecificBufferData) {
         spriteBatch.begin()
         font.draw(
             spriteBatch,
@@ -324,16 +292,35 @@ ${spec.detailedPerformance}
         spriteBatch.end()
     }
 
-    fun dispose() {
-        //TODO
+    /**
+     * Выгрузить последний отрисованный кадр в файл — вход рендера, а не картинку.
+     *
+     * Звать только ПОСЛЕ [render] в том же кадре: пишется тот самый [frame], который
+     * только что ушёл в GPU, поэтому дамп и живой кадр совпадают побайтово.
+     *
+     * Дальше этот файл открывается стендом RenderLab, и шейдеры можно крутить, пересобирая
+     * один только :render — без симуляции, потоков и загрузки геномов.
+     */
+    fun dumpScene(file: com.badlogic.gdx.files.FileHandle) {
+        RenderSceneDump.write(
+            file = file,
+            frame = frame,
+            viewportWidth = camera.viewportWidth.toInt(),
+            viewportHeight = camera.viewportHeight.toInt(),
+            cameraX = camera.position.x,
+            cameraY = camera.position.y,
+            zoom = camera.zoom,
+            texturePaths = worldRenderer.texturePaths
+        )
     }
 
-    companion object {
-        const val INITIAL_PARTICLE_CAPACITY = 30_000
-        const val INITIAL_PHEROMONE_CAPACITY = 1_000
-        /** 32 bytes = 2× RGBA32UI texels (x,y,color,packed1 | packed2,pad,pad,pad). */
-        const val PARTICLE_STRUCT_SIZE = 32
-
-        const val PHEROMONE_STRUCT_SIZE = 16
+    /**
+     * GL-ресурсы принадлежат [worldRenderer], а он один на всю игру и переживает смену
+     * экранов — поэтому здесь его НЕ трогаем. Диспозить его должен тот, кто им владеет
+     * (DIGameGlobalContainer), при завершении игры.
+     *
+     * Собственных GL-ресурсов у этого класса нет: буферы инстансов — обычная память.
+     */
+    fun dispose() {
     }
 }

@@ -59,6 +59,36 @@ class NeuralEntity(
         weight[neuralIndex] = 0.5f
     }
 
+    /**
+     * После загрузки мира: номера формул из реестра того запуска, что сохранял мир, в номера
+     * текущего (см. CellEntity.remapCellTypes). [newIndexByOld] — новый номер по старому
+     * (-1 — формулы больше нет), [savedKeys] — ключи по старым номерам, для сообщения.
+     */
+    fun remapFormulas(newIndexByOld: IntArray, savedKeys: List<String>) {
+        if (newIndexByOld.withIndex().all { (old, new) -> old == new }) return
+        for (i in 0 until aliveList.size) {
+            val neuralIndex = aliveList.getInt(i)
+            val old = activationFuncType[neuralIndex].toInt()
+            val new = newIndexByOld.getOrElse(old) { -1 }
+            check(new != -1) { "неизвестная формула '${savedKeys.getOrElse(old) { "#$old" }}': мир от мода, которого нет" }
+            activationFuncType[neuralIndex] = new.toByte()
+        }
+    }
+
+    override fun persistFields(state: EntityState) {
+        state.booleans(::isNeuronTransportable)
+        state.bytes(::activationFuncType)
+        state.floats(::a)
+        state.floats(::b)
+        state.floats(::c)
+        state.floats(::dTime)
+        state.floats(::remember)
+        state.booleans(::isSum)
+        state.ints(::tickPain)
+        state.ints(::tickRed)
+        state.floats(::weight)
+    }
+
     override fun onCopy() {
 
     }

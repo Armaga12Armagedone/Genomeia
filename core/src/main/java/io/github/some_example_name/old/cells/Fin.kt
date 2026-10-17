@@ -4,6 +4,7 @@ import io.github.some_example_name.old.core.utils.skyBlueColors
 import kotlin.math.abs
 
 class Fin(cellTypeId: Int): Cell(
+    key = "fin",
     defaultColor = skyBlueColors[1],
     cellTypeId = cellTypeId,
     textureName = "tail.png",

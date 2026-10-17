@@ -1,0 +1,59 @@
+# GENOMEIA PLAYER LOG v1
+# разбор: gradlew :lwjgl3:playerReplay
+# начат 2026-10-12T22:19:52.549602800
+HDR body C:\Users\dendo\StudioProjects\Genomeia\body-export.txt
+HDR bodyCrc 531fc9c2
+HDR copies 2
+HDR free 6
+HDR killFraction 0.0
+HDR killSeed 0
+HDR killOnDeep 0
+HDR ups 30
+HDR substeps 16
+0 M -
+30 H 5abfec945b5ce6cc
+60 H f7f0969658ae82af
+86 O
+90 H 2797ef750e95fe90
+111 O
+120 H 96c77c53af97db50
+150 H 7494731c4c3e0e0
+180 H 39b01d7d3038288d
+210 H 9e85e2b19118d8d7
+240 H 7f0ac5ec2d4dd0c8
+270 H ea927911fc4d2da2
+300 H 3a28bd0b7e0c13ce
+330 H bf89a759a5a903ac
+360 H e40aa19d8e1a2f37
+390 H f1bd85a1b1d03645
+420 H 40cfe9c10d65143b
+450 H 526add74db911c0f
+474 O
+480 H 4c749f59fb176ebc
+504 O
+510 H 846bb4717ac20693
+514 M 2:1.0
+516 M 3:1.0
+517 M -
+518 M 5:1.0
+519 M 4:1.0
+521 M 0:1.0
+530 O
+531 M 1:1.0
+533 M -
+535 M 1:1.0
+539 M -
+540 H 39dfccc8be7b745a
+540 M 1:1.0
+548 M -
+549 O
+549 M 1:1.0
+551 M -
+568 O
+570 H 9365ca4f61ff4e12
+589 O
+600 H 76a10198ec573d5c
+630 H 36c20c569b9e9757
+660 H 3009a3edff335311
+690 H fd066c900b8d96b
+692 END

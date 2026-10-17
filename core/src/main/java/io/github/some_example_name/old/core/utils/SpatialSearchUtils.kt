@@ -1,5 +1,7 @@
 package io.github.some_example_name.old.core.utils
 
+import io.github.some_example_name.old.entities.CellEntity
+import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.systems.physics.GridManager
 import it.unimi.dsi.fastutil.ints.IntArrayList
 
@@ -26,6 +28,68 @@ inline fun GridManager.forEachParticle(
     for (dy in -radius..radius) {
         forEachParticleInRowSegment(gridY + dy, gridX - radius, gridX + radius, action)
     }
+}
+
+/**
+ * Частица под курсором: из тех, в чей радиус попадает точка (x, y), — ближайшая по
+ * центру. Если таких нет — -1.
+ *
+ * ПОЧЕМУ НЕ ТОЛЬКО СЕТКА
+ * ----------------------
+ * Внутренних клеток организма в сетке нет (ParticleEntity.isInGrid): для столкновений
+ * они не нужны, и это порядковая экономия на каждом тике. Но курсор обязан попадать и
+ * по ним, иначе тело «прозрачно» для мыши везде, кроме кромки.
+ *
+ * Поэтому поиск двухступенчатый: сначала сетка (кромка тел, субстанции, всё прочее),
+ * затем линейный проход по живым клеткам, отобранный ровно по !isInGrid — то есть
+ * ровно по тем, кого в сетке нет. Проход — O(число клеток), но он случается только на
+ * клик игрока, а не на тик: несколько тысяч сравнений — это десятки микросекунд раз в
+ * человеческую реакцию. Держать ради этого вторую сетку и перестраивать её каждый тик
+ * было бы дороже на порядки.
+ *
+ * Вызывать там же, где читается сетка, — между перестройками (в потоке симуляции).
+ */
+fun GridManager.pickParticle(
+    x: Float,
+    y: Float,
+    particleEntity: ParticleEntity,
+    cellEntity: CellEntity
+): Int {
+    var best = -1
+    var bestDistSq = Float.MAX_VALUE
+
+    val px = particleEntity.x
+    val py = particleEntity.y
+    val radius = particleEntity.radius
+
+    forEachParticle(x.toInt(), y.toInt(), radius = 1) { p ->
+        val dx = px[p] - x
+        val dy = py[p] - y
+        val distSq = dx * dx + dy * dy
+        val r = radius[p]
+        if (distSq < r * r && distSq < bestDistSq) {
+            bestDistSq = distSq
+            best = p
+        }
+    }
+
+    val inGrid = particleEntity.isInGrid
+    val particleIndexes = cellEntity.particleIndexes
+    val cells = cellEntity.aliveList
+    for (i in 0 until cells.size) {
+        val p = particleIndexes[cells.getInt(i)]
+        if (p == -1 || inGrid[p]) continue
+        val dx = px[p] - x
+        val dy = py[p] - y
+        val distSq = dx * dx + dy * dy
+        val r = radius[p]
+        if (distSq < r * r && distSq < bestDistSq) {
+            bestDistSq = distSq
+            best = p
+        }
+    }
+
+    return best
 }
 
 /**

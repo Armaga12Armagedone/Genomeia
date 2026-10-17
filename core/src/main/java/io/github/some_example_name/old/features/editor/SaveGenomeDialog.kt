@@ -12,8 +12,6 @@ import com.kotcrab.vis.ui.widget.VisTextField
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.ui.setupTitleSize
-import io.github.some_example_name.old.systems.genomics.genome.Genome
-import io.github.some_example_name.old.systems.genomics.genome.saveGenome
 import io.github.some_example_name.old.core.ui.dp
 import io.github.some_example_name.old.core.ui.globalVisTable
 import io.github.some_example_name.old.core.ui.visLabel
@@ -21,20 +19,18 @@ import io.github.some_example_name.old.core.ui.visTable
 import io.github.some_example_name.old.core.ui.visTextButton
 import io.github.some_example_name.old.core.ui.visTextField
 
+/**
+ * Сохранение генома. Только вёрстка: сама запись в файл (с запеканием раскладки) — команда
+ * редактора, её отдают колбэки. Имя в поле — черновик, в команду уходит то, что в поле
+ * на момент нажатия.
+ */
 //TODO перейти на compose стиль
 class SaveGenomeDialog(
-    val genome: Genome,
-    /**
-     * Запекание раскладки перед записью в файл: размеры тела и порядок укладки клеток,
-     * связей и нейросвязей в арены (см. RCMSort и BakedLayout).
-     *
-     * Именно здесь, а не при открытии диалога: считать надо по выращенному телу, а оно
-     * к моменту сохранения уже готово, и лишний раз гонять RCM при каждом показе окна
-     * незачем. По умолчанию — тождество, чтобы диалог оставался пригоден там, где
-     * запекать нечем.
-     */
-    val bake: (Genome) -> Genome = { it },
-    val onSaveAndTest: (String) -> Unit,
+    val genomeName: String,
+    val onSave: (name: String) -> Unit,
+    val onSaveAndTest: (name: String) -> Unit,
+    /** Android: сохранить и отдать файл системе. */
+    val onSaveAndExport: (name: String) -> Unit,
     val onGoMenu: () -> Unit,
     val isGoToMenu: Boolean
 ) : VisDialog(bundle.get("button.saveGenome")) {
@@ -52,7 +48,7 @@ class SaveGenomeDialog(
                 pad(8.dp())
             }
 
-            genomeNameField = visTextField(text = genome.name, onTextChange = { text ->
+            genomeNameField = visTextField(text = genomeName, onTextChange = { text ->
                 val isDisabled = text.isEmpty()
                 saveToFileButton?.isDisabled = isDisabled
                 saveToFileAndTestButton?.isDisabled = isDisabled
@@ -66,11 +62,7 @@ class SaveGenomeDialog(
         visTable ( {growX().expandX()}) {
             saveToFileAndTestButton = visTextButton(bundle.get("button.saveAndTest"), onClick = {
                 val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
-                saveGenome(
-                    bake(genome.copy(name = name)),
-                    name
-                )
-                onSaveAndTest.invoke("${genomeNameField.text}")
+                onSaveAndTest.invoke(name)
                 fadeOut()
             })
         }
@@ -79,10 +71,7 @@ class SaveGenomeDialog(
         visTable {
             saveToFileButton = visTextButton(bundle.get("button.saveToFile"), onClick = {
                 val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
-                saveGenome(
-                    bake(genome.copy(name = name)),
-                    name
-                )
+                onSave.invoke(name)
             })
             if (isGoToMenu) {
                 visTextButton(bundle.get("button.menu"), onClick = {
@@ -96,20 +85,14 @@ class SaveGenomeDialog(
             if (Gdx.app.type == Application.ApplicationType.Android) {
                 exportButton = visTextButton(bundle.get("button.saveAndExport"), onClick = {
                     val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
-                    saveGenome(
-                        bake(genome.copy(name = name)),
-                        name
-                    )
-                    game.multiPlatformFileProvider.exportGenome("genomes/$name.genome")
+                    onSaveAndExport.invoke(name)
                 }) { center() }
             }
 
             visTextButton("Share with everyone", onClick = {
                 val name = genomeNameField?.text ?: throw Exception("genomeNameField is null")
-                saveGenome(
-                    bake(genome.copy(name = name)),
-                    name
-                )
+                // Пока выгрузки на сервер нет, кнопка только сохраняет.
+                onSave.invoke(name)
 
 //                // Загружаем на сервер
 //                val genomeFile = Gdx.files.local("genomes/$name.genome")

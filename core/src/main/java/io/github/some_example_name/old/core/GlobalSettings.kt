@@ -1,13 +1,9 @@
 package io.github.some_example_name.old.core
 
-import com.badlogic.gdx.Application
-import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.utils.Json
 import com.badlogic.gdx.utils.JsonWriter
 import io.github.some_example_name.old.core.DIGameGlobalContainer.defaultCellSettingsMap
-import io.github.some_example_name.old.systems.genomics.genome_deprecated.GenomeJsonReader
-import java.io.File
 
 data class GlobalSimulationSettings(
     var amountOfSolarEnergy: Float = 0.06f,
@@ -35,12 +31,21 @@ data class CellSettings(
 class SubstrateSettings {
 
     var data = readSettings()
-    var cellsSettings: List<CellSettings> = data.cellsSettings.values.toList()
+
+    /**
+     * Настройки по номеру типа клетки. Собираются по реестру клеток (порядок
+     * defaultCellSettingsMap), а не по порядку в файле игрока: в файле может не быть новой
+     * клетки или порядок может быть другим, и тогда номер типа указывал бы на чужие настройки.
+     */
+    var cellsSettings: List<CellSettings> = byCellType(data)
 
     fun update() {
         data = readSettings()
-        cellsSettings = data.cellsSettings.values.toList()
+        cellsSettings = byCellType(data)
     }
+
+    private fun byCellType(data: GlobalSimulationSettings): List<CellSettings> =
+        defaultCellSettingsMap.map { (name, default) -> data.cellsSettings[name] ?: default }
 
     private fun readSettings(): GlobalSimulationSettings {
         val json = Json()
@@ -63,31 +68,11 @@ class SubstrateSettings {
         }
     }
 
-    fun getFileHandle(): FileHandle {
-        val relativeFolderName = "settings"
-        val fileName = "GlobalSubstrateSettings-0.2.4.1.test.json"
+    /** Файл настроек среды. Каталог — см. GameFiles.settingsDir (при повторе бага — песочница). */
+    fun getFileHandle(): FileHandle = GameFiles.settingsDir().child(FILE_NAME)
 
-        val saveDir: FileHandle = when (Gdx.app.type) {
-            Application.ApplicationType.Desktop -> {
-                val jarFile =
-                    File(GenomeJsonReader::class.java.protectionDomain.codeSource.location.toURI())
-                Gdx.files.absolute(jarFile.parentFile.absolutePath)
-            }
-
-            Application.ApplicationType.Android -> {
-                Gdx.files.local("")
-            }
-
-            else -> {
-                Gdx.files.local("")
-            }
-        }
-
-        val folderHandle: FileHandle = saveDir.child(relativeFolderName)
-        if (!folderHandle.exists() || !folderHandle.isDirectory) {
-            folderHandle.mkdirs()
-        }
-        return folderHandle.child(fileName)
+    companion object {
+        const val FILE_NAME = "GlobalSubstrateSettings-0.2.4.1.test.json"
     }
 
 }

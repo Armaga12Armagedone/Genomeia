@@ -2,33 +2,50 @@ package io.github.some_example_name.lwjgl3;
 
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3WindowAdapter;
 
 import io.github.some_example_name.old.game.MyGame;
-import kotlin.Unit;
 
 import java.awt.Dimension;
 import java.awt.Toolkit;
+import java.util.Arrays;
 
 /**
  * Launches the desktop (LWJGL3) application.
  */
 public class Lwjgl3Launcher {
-//    public static void main(String[] args) {
-//        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-//            Logger.logCrash(throwable);
-//            System.exit(1);
-//        });
-//        if (StartupHelper.startNewJvmIfRequired()) return;
-//        createApplication();
-//    }
+    /*
+     * Краши ловит сама игра (core, bug.CrashHandler): собирает .bug с журналом действий
+     * и показывает окно отчёта. Здесь своего обработчика нет, чтобы не перехватить
+     * исключение раньше неё; упавшее до запуска игры (окно, OpenGL) печатается JVM как
+     * обычно.
+     */
     public static void main(String[] args) {
-        if (StartupHelper.startNewJvmIfRequired())
+        if (StartupHelper.startNewJvmIfRequired(true, args))
             return; // This handles macOS support and helps on Windows.
-        createApplication();
+        WindowsFileAssociations.register();
+        createApplication(args);
     }
 
-    private static Lwjgl3Application createApplication() {
-        return new Lwjgl3Application(new MyGame(new DesktopFileProvider(), null), getDefaultConfiguration());
+    private static Lwjgl3Application createApplication(String[] args) {
+        MyGame game = new MyGame(new DesktopFileProvider(), null);
+        // created вызывается после MyGame.create: меню и журнал уже готовы.
+
+        Lwjgl3ApplicationConfiguration configuration = getDefaultConfiguration();
+        // Перетаскивание файлов в окно — импорт геномов и карт (MyGame.filesDropped). На macOS это
+        // единственный способ: системное окно выбора там не открывается (DesktopFileProvider).
+        configuration.setWindowListener(new Lwjgl3WindowAdapter() {
+            @Override
+            public void created(com.badlogic.gdx.backends.lwjgl3.Lwjgl3Window window) {
+                com.badlogic.gdx.Gdx.app.postRunnable(() -> game.openFiles(Arrays.asList(args)));
+            }
+
+            @Override
+            public void filesDropped(String[] files) {
+                game.filesDropped(Arrays.asList(files));
+            }
+        });
+        return new Lwjgl3Application(game, configuration);
     }
 
     private static Lwjgl3ApplicationConfiguration getDefaultConfiguration() {
@@ -75,10 +92,14 @@ public class Lwjgl3Launcher {
         //// You may also need to configure GPU drivers to fully disable Vsync; this can cause screen tearing.
 //        configuration.useVsync(false);
 //        configuration.setForegroundFPS(60);
-        configuration.setWindowedMode(1300, 1300);
+        // Размер окна можно задать снаружи: -Dgenomeia.width=1280 -Dgenomeia.height=720.
+        // Нужно для проверки вёрстки на разных разрешениях без правки кода.
+        int windowWidth = Integer.getInteger("genomeia.width", 900);
+        int windowHeight = Integer.getInteger("genomeia.height", 900);
+        configuration.setWindowedMode(windowWidth, windowHeight);
 //        configuration.setFullscreenMode(Lwjgl3ApplicationConfiguration.getDisplayMode());
         // GLES 3.0 feature set (no SSBO). Desktop GL 3.3 for uintBitsToFloat / core profile.
-        configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 3, 0);
+        configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 3, 3);
 //        configuration.setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL32, 3, 2);
 
         //// You can change these files; they are in lwjgl3/src/main/resources/ .

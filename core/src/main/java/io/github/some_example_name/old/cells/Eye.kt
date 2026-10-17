@@ -1,16 +1,25 @@
 package io.github.some_example_name.old.cells
 
+import io.github.some_example_name.old.cells.base.SpecialModData
 import io.github.some_example_name.old.cells.base.activation
 import io.github.some_example_name.old.core.utils.invSqrt
 import io.github.some_example_name.old.core.utils.skyBlueColors
+import io.github.some_example_name.old.entities.SpecialEntity
+import io.github.some_example_name.old.features.editor.dialog.EyeSection
+import io.github.some_example_name.old.systems.genomics.genome.Action
 import java.util.BitSet
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.round
 import kotlin.math.sqrt
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.protobuf.ProtoNumber
 
 class Eye(cellTypeId: Int): Cell(
+    key = "eye",
     defaultColor = skyBlueColors[2],
     cellTypeId = cellTypeId,
     textureName = "eye.png",
@@ -19,10 +28,28 @@ class Eye(cellTypeId: Int): Cell(
     isDirected = true
 ) {
 
+    override fun editorSections() = super.editorSections() + EyeSection
+
+    /**
+     * Параметры глаза в геноме лежат в общих полях Action (colorRecognition, lengthDirected —
+     * так они записаны во всех геномах), а у клетки — объектом EyeData. Объект на клетку
+     * создаётся при делении — событие, а не тик.
+     */
+    override fun createSpecialData(action: Action): SpecialModData =
+        if (action.colorRecognition == null && action.lengthDirected == null) EyeData.DEFAULT
+        else EyeData(action.colorRecognition ?: EyeData.DEFAULT.colorRecognition, action.lengthDirected ?: EyeData.DEFAULT.visibilityRange)
+
+    /** Мутация глаза в глаз меняет только заданные в геноме поля, остальные — как были. */
+    override fun mutateSpecialData(current: SpecialModData, action: Action): SpecialModData? {
+        if (action.colorRecognition == null && action.lengthDirected == null) return null
+        val eye = current as? EyeData ?: EyeData.DEFAULT
+        return EyeData(action.colorRecognition ?: eye.colorRecognition, action.lengthDirected ?: eye.visibilityRange)
+    }
+
     lateinit var visitedBits: Array<BitSet>
     lateinit var checkedObjectListId: Array<IntArray>
 
-    override fun doOnTick(cellIndex: Int, threadId: Int) = with(cellEntity) {
+    override fun doOnTick(cellIndex: Int, threadId: Int): Unit = with(cellEntity) {
         //TODO у глаза будет другая система с диапозоном
         if (simulationData.tickCounter % 4 == 0) {
             if (energy[cellIndex] > 0) {
@@ -31,7 +58,8 @@ class Eye(cellTypeId: Int): Cell(
                 val directionX = angleCos[cellIndex]
                 val directionY = angleSin[cellIndex]
 
-                val visonDist = specialEntity.getVisibilityRange(cellIndex)
+                val eye = specialEntity.getSpecialData(cellIndex) as? EyeData ?: return
+                val visonDist = eye.visibilityRange
 
                 val particle = drawThickLineGridTraversalCell(
                     x1 = getX(cellIndex) + directionX * 0.51f,
@@ -42,7 +70,7 @@ class Eye(cellTypeId: Int): Cell(
                     threadId = threadId
                 )
 
-                val visibleColor = specialEntity.getColorDifferentiation(cellIndex).toInt()
+                val visibleColor = eye.colorRecognition
 
                 val impulse = if (particle != null) {
                     val index = particle.first
@@ -269,3 +297,22 @@ class Eye(cellTypeId: Int): Cell(
     }
 
 }
+
+/**
+ * Свои данные глаза: какие цвета он различает (биты r = 1, g = 2, b = 4) и как далеко видит.
+ * Неизменяемые: меняет их только мутация, новым объектом в слоте клетки.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@SerialName("eye")
+data class EyeData(
+    @ProtoNumber(1) val colorRecognition: Int = 7,
+    @ProtoNumber(2) val visibilityRange: Float = 4.25f
+) : SpecialModData {
+    companion object {
+        val DEFAULT = EyeData()
+    }
+}
+
+/** Данные глаза для рендера и редактора; не глаз (данных нет) — значения по умолчанию. */
+fun SpecialEntity.eyeData(cellIndex: Int): EyeData = getSpecialData(cellIndex) as? EyeData ?: EyeData.DEFAULT

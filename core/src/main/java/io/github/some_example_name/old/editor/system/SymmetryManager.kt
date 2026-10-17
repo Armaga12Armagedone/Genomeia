@@ -1,5 +1,6 @@
 package io.github.some_example_name.old.editor.system
 
+import kotlinx.serialization.Serializable
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.gridHeight
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer.gridWidth
@@ -325,16 +326,21 @@ class SymmetryManager(
     }
 }
 
+@Serializable
 sealed class SymmetryMode
 
+@Serializable
 object NoSymmetry : SymmetryMode()
+@Serializable
 data class SquareGrid(
     val step: Float,
     val offsetX: Float = 64f,
     val offsetY: Float = 64f
 ) : SymmetryMode()
 
+@Serializable
 object Axial : SymmetryMode()
+@Serializable
 data class TriangleGrid(
     val step: Float,
     val offsetX: Float = 64f,

@@ -4,23 +4,18 @@ import com.badlogic.gdx.utils.Disposable
 import io.github.some_example_name.old.cells.base.CellListBuilder
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.commands.WorldCommandsManager
-import io.github.some_example_name.old.core.DIGameGlobalContainer.genomeJsonReader
-import io.github.some_example_name.old.core.DIGameGlobalContainer.shaderManager
+import io.github.some_example_name.old.core.DIGameGlobalContainer.worldRenderer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.substrateSettings
 import io.github.some_example_name.old.entities.CellEntity
-import io.github.some_example_name.old.entities.EyeEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralEntity
 import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.OrganEntity
 import io.github.some_example_name.old.entities.ParticleEntity
-import io.github.some_example_name.old.entities.PheromoneEmitterEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
-import io.github.some_example_name.old.entities.ProducerEntity
 import io.github.some_example_name.old.entities.SpecialEntity
 import io.github.some_example_name.old.entities.SpecialModDataEntity
 import io.github.some_example_name.old.entities.SubstancesEntity
-import io.github.some_example_name.old.entities.TailEntity
 import io.github.some_example_name.old.features.worldeditor.WorldTerrainManager
 import io.github.some_example_name.old.systems.genomics.CellSystem
 import io.github.some_example_name.old.systems.genomics.DivideManager
@@ -63,9 +58,6 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
     val cellList = cellListBuilder.instances
     val zygote = cellListBuilder.zygote
 
-    val tailEntity = TailEntity(
-        tailStartMaxAmount = 30
-    )
     override val organEntity = OrganEntity(
         organStartMaxAmount = 10
     )
@@ -78,26 +70,13 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
         neuralStartMaxAmount = 50,
         cellList = cellList
     )
-    private val eyeEntity = EyeEntity(
-        eyeStartMaxAmount = 3_000
-    )
-    private val producerEntity = ProducerEntity(
-        producerStartMaxAmount = 100
-    )
     val specialModDataEntity = SpecialModDataEntity(
-        specialModDataStartMaxAmount = 100
-    )
-    val pheromoneEmitterEntity = PheromoneEmitterEntity(
-        pheromoneEmitterStartMaxAmount = 100
+        specialModDataStartMaxAmount = 3_300
     )
 
     override val specialEntity = SpecialEntity(
         cellsStartMaxAmount = 100,
-        eyeEntity = eyeEntity,
-        tailEntity = tailEntity,
-        specialModDataEntity = specialModDataEntity,
-        producerEntity = producerEntity,
-        pheromoneEmitterEntity = pheromoneEmitterEntity
+        specialModDataEntity = specialModDataEntity
     )
     override val cellEntity = CellEntity(
         cellsStartMaxAmount = 300,
@@ -137,24 +116,19 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
     )
 
     override val entityList = listOf(
-        tailEntity,
         organEntity,
         particleEntity,
         neuralEntity,
-        eyeEntity,
         specialModDataEntity,
         specialEntity,
         cellEntity,
         linkEntity,
         neuralLinkEntity,
         pheromoneEntity,
-        substancesEntity,
-        producerEntity,
-        pheromoneEmitterEntity
+        substancesEntity
     )
 
     override val genomeManager = GenomeManager(
-        genomeJsonReader = genomeJsonReader,
         simulationData = simulationData
     )
 
@@ -176,12 +150,8 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
     )
 
     val renderSystem = RenderSystem(
-        cellEntity = cellEntity,
-        linkEntity = linkEntity,
-        shaderManager = shaderManager,
-        particleEntity = particleEntity,
-        renderBufferManager = renderBufferManager,
-        pheromoneEntity = pheromoneEntity
+        worldRenderer = worldRenderer,
+        renderBufferManager = renderBufferManager
     )
 
     val userCommandManager = UserCommandManager(
@@ -229,7 +199,7 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
         linkEntity = linkEntity,
         cellList = cellList,
         cellEntity = cellEntity,
-        substancesEntity = substancesEntity,
+        substancesEntity = substancesEntity
     )
 
     val particlePhysicsSystem = ParticlePhysicsSystem(
@@ -262,8 +232,7 @@ object DISingleThreadSimulationContainer:  DIContext, Disposable {
         particleEntity = particleEntity,
         gridManager = gridManager,
         specialEntity = specialEntity,
-        organEntity = organEntity,
-        isEditor = false
+        organEntity = organEntity
     )
 
     val cellSystem = CellSystem(

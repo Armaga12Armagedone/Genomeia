@@ -1,17 +1,21 @@
 package io.github.some_example_name.old.systems.render
 
+import io.github.some_example_name.old.cells.eyeData
 import io.github.some_example_name.old.cells.Cell
 import io.github.some_example_name.old.core.DEBUG_CHECKS
-import io.github.some_example_name.old.cells.Eye
-import io.github.some_example_name.old.cells.base.formulaType
 import io.github.some_example_name.old.entities.CellEntity
 import io.github.some_example_name.old.entities.LinkEntity
 import io.github.some_example_name.old.entities.NeuralLinkEntity
 import io.github.some_example_name.old.entities.ParticleEntity
 import io.github.some_example_name.old.entities.PheromoneEntity
 import io.github.some_example_name.old.entities.SpecialEntity
+import io.github.some_example_name.old.features.settings.GlobalSettings
 import io.github.some_example_name.old.systems.simulation.SimulationData
+import io.github.some_example_name.render.RenderMode
+import io.github.some_example_name.render.pack.CellInstanceBuffer
+import io.github.some_example_name.render.pack.OverlayInstanceBuffer
 import kotlin.math.round
+import kotlin.math.sqrt
 import java.util.concurrent.atomic.AtomicInteger
 
 class RenderBufferManager(
@@ -24,9 +28,23 @@ class RenderBufferManager(
     val cellList: List<Cell>,
     val specialEntity: SpecialEntity,
     initialCellCapacity: Int = 50_000,
-    initialLinkCapacity: Int = 50_000,
+    initialOverlayCapacity: Int = 4_096,
     initialPheromoneCapacity: Int = 1_000
 ) {
+
+    /**
+     * Режим рендера этого мира. Свой у каждого мира: у симуляции его выбирают списком,
+     * а мир в фоне меню всегда рисуется реалистично и чужой выбор не видит.
+     *
+     * Живёт здесь, а не в RenderSystem, потому что читает его поток симуляции: по нему
+     * [updateBuffer] решает, красить ли клетки отладочными цветами и собирать ли оверлей
+     * (нейросвязи, стрелки, лучи), — в остальных режимах это работа впустую. Пишет же его
+     * GL-поток (список в экране
+     * симуляции), отсюда @Volatile: без него поток симуляции имел полное право не увидеть
+     * переключение никогда. Переключают руками раз в минуты, цена volatile-чтения ничто.
+     */
+    @Volatile
+    var mode: RenderMode = RenderMode.entries[GlobalSettings.RENDER_MODE]
 
     // Двойные буферы
     private val cellBuffers = arrayOf(
@@ -37,26 +55,24 @@ class RenderBufferManager(
         PheromoneBufferData(initialPheromoneCapacity),
         PheromoneBufferData(initialPheromoneCapacity)
     )
-    private val linkBuffers = arrayOf(
-        RenderLinkBufferData(initialLinkCapacity),
-        RenderLinkBufferData(initialLinkCapacity)
+    private val overlayBuffers = arrayOf(
+        RenderOverlayBufferData(initialOverlayCapacity),
+        RenderOverlayBufferData(initialOverlayCapacity)
     )
     private val specificBuffer0 = RenderSpecificBufferData()
     private val specificBuffer1 = RenderSpecificBufferData()
 
     /**
-     * ОДИН индекс на буферы клеток и связей — они обязаны переключаться вместе.
+     * ОДИН индекс на буферы клеток и оверлея — они обязаны переключаться вместе.
      *
-     * Буфер связей хранит не индексы клеток, а positionInAlive, то есть позиции внутри
-     * БУФЕРА ЧАСТИЦ. Эти позиции осмысленны только для того буфера частиц, который собран
-     * в том же вызове updateBuffer.
+     * Оверлей рисуется поверх клеток и по их координатам: стрелка начинается в центре
+     * клетки, нейросвязь соединяет два центра. Возьми поток рендера клетки одного тика, а
+     * оверлей другого — стрелки и связи отставали бы от тела на кадр.
      *
-     * Раньше индексы были отдельные и переключались в разных местах: клетки сразу после
-     * своей сборки, связи — в конце, уже после сборки феромонов. В это окно поток рендера
-     * успевал взять НОВЫЙ буфер клеток и СТАРЫЙ буфер связей. Порядок aliveList меняется
-     * каждый тик (удаление делает swap-with-last), поэтому старые позиции указывали на
-     * произвольные другие частицы — на экране это связи между чужими организмами, а при
-     * уменьшении числа клеток позиция уезжала за границу и линия уходила в ноль.
+     * Раньше вместо оверлея здесь был буфер связей с позициями ВНУТРИ буфера клеток, и
+     * рассинхрон был хуже: индексы переключались в разных местах, рендер успевал взять
+     * новые клетки и старые связи, и линии соединяли чужие организмы. Отсюда и правило
+     * одного индекса; теперь оверлей несёт готовые координаты, но правило осталось.
      *
      * Феромоны и specific самодостаточны: они не ссылаются на чужие буферы, поэтому у них
      * свои индексы и своё время переключения.
@@ -66,7 +82,7 @@ class RenderBufferManager(
     private val specificFrontIndex = AtomicInteger(0)
 
     /**
-     * Индекс согласованной пары буферов «клетки + связи».
+     * Индекс согласованной пары буферов «клетки + оверлей».
      *
      * Поток рендера обязан прочитать его ОДИН раз за кадр и дальше брать оба буфера по нему.
      * Если читать через два отдельных геттера, симуляция успеет переключиться между ними —
@@ -75,27 +91,26 @@ class RenderBufferManager(
     fun frontFrameIndex(): Int = frameFrontIndex.get()
 
     fun cellBuffer(frameIndex: Int): RenderCellBufferData = cellBuffers[frameIndex]
-    fun linkBuffer(frameIndex: Int): RenderLinkBufferData = linkBuffers[frameIndex]
+    fun overlayBuffer(frameIndex: Int): RenderOverlayBufferData = overlayBuffers[frameIndex]
 
     fun getCurrentPheromoneBuffer(): PheromoneBufferData = pheromoneBuffers[pheromoneFrontIndex.get()]
     fun getCurrentSpecificBufferData(): RenderSpecificBufferData =
         if (specificFrontIndex.get() == 0) specificBuffer0 else specificBuffer1
 
-    /**
-     * Частица -> её позиция в буфере клеток текущего кадра.
-     *
-     * Раньше эту роль играл particleEntity.positionInAlive: буфер собирался ровно в порядке
-     * aliveList, поэтому позиция в списке и позиция в буфере совпадали. Теперь буфер
-     * собирается по аренам организмов, и совпадения больше нет — а буферу связей нужна
-     * именно позиция В БУФЕРЕ, потому что шейдер по ней берёт координаты концов линии.
-     *
-     * Заполняется в том же проходе, что и сам буфер, поэтому лишних обходов не добавляет.
-     */
-    private var renderPosition = IntArray(0)
+    // ==================== Отладочный режим ====================
 
-    private fun ensureRenderPositionCapacity(size: Int) {
-        if (renderPosition.size < size) renderPosition = IntArray(size)
-    }
+    /**
+     * Собирается ли в текущем [updateBuffer] отладочный кадр. Режим читается ОДИН раз за
+     * вызов: переключи его GL-поток посреди сборки — и половина клеток получила бы
+     * отладочные цвета, а половина обычные.
+     */
+    private var debugFrame = false
+
+    /** Оверлей, который собирается в текущем [updateBuffer]. */
+    private var overlayBack = overlayBuffers[0]
+
+    /** Цвета, стрелки и лучи отладочного режима — общие с редактором генома. */
+    private val palette = DebugCellPalette(cellList)
 
     /**
      * Клетки организмов — по аренам, то есть подряд.
@@ -159,7 +174,6 @@ class RenderBufferManager(
                 }
 
                 writeCell(back, writeIndex, cellIndex, particleIndex, px, py, pColor, pRadius)
-                renderPosition[particleIndex] = writeIndex
                 writeIndex++
             }
         }
@@ -191,7 +205,6 @@ class RenderBufferManager(
             if (particleIndex == -1) continue
 
             writeCell(back, writeIndex, cellIndex, particleIndex, px, py, pColor, pRadius)
-            renderPosition[particleIndex] = writeIndex
             writeIndex++
         }
         return writeIndex
@@ -208,8 +221,7 @@ class RenderBufferManager(
         val pRadius = particleEntity.radius
 
         // Тип «не клетка» один на всех — считается один раз, а не на каждой частице.
-        val packed2Value = (cellList.size + 1).coerceIn(0, 255) shl 8
-        val writeDirected = !doesUsePostProcess
+        val nonCellType = (cellList.size + 1)
 
         for (i in 0 until nonCells.size) {
             val particleIndex = nonCells.getInt(i)
@@ -218,17 +230,21 @@ class RenderBufferManager(
             back.y[writeIndex] = py[particleIndex]
             back.color[writeIndex] = pColor[particleIndex]
 
-            val bRadius = (((pRadius[particleIndex] - 0.05f) / 0.7f) * 255f + 0.5f)
-                .toInt().coerceIn(0, 255)
-            back.packed1[writeIndex] = bRadius shl 24
-            back.packed2[writeIndex] = packed2Value or ((particleIndex and 0xFFFF) shl 16)
+            // Углы намеренно нулевые: у не-клетки направления нет. В шейдере нулевой байт
+            // распаковывается в -1, то есть доворот получается постоянный, а не случайный.
+            back.shape[writeIndex] = CellInstanceBuffer.shape(
+                cosByte = 0,
+                sinByte = 0,
+                radiusByte = CellInstanceBuffer.radiusByte(pRadius[particleIndex]),
+                energyByte = 0
+            )
+            back.type[writeIndex] = CellInstanceBuffer.type(
+                cellType = nonCellType,
+                noiseSeed = particleIndex,
+                // Без ядра в ностальгическом режиме: ядро — признак клетки.
+                isCell = false
+            )
 
-            if (writeDirected) {
-                back.directedAngleCos[writeIndex] = 0f
-                back.directedAngleSin[writeIndex] = 0f
-            }
-
-            renderPosition[particleIndex] = writeIndex
             writeIndex++
         }
         return writeIndex
@@ -244,22 +260,27 @@ class RenderBufferManager(
         pColor: IntArray,
         pRadius: FloatArray
     ) {
-        back.x[writeIndex] = px[particleIndex]
-        back.y[writeIndex] = py[particleIndex]
-        back.color[writeIndex] = pColor[particleIndex]
+        val x = px[particleIndex]
+        val y = py[particleIndex]
+        val debug = debugFrame
 
         val angleCos = cellEntity.angleCos[cellIndex]
         val angleSin = cellEntity.angleSin[cellIndex]
         val cellType = cellEntity.cellType[cellIndex].toInt()
 
-        val cosByte = ((angleCos * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
-        val sinByte = ((angleSin * 0.5f + 0.5f) * 255f + 0.5f).toInt().coerceIn(0, 255)
+        back.x[writeIndex] = x
+        back.y[writeIndex] = y
+        back.color[writeIndex] =
+            if (debug) debugColor(cellIndex, cellType, pColor[particleIndex]) else pColor[particleIndex]
 
-        val bRadius = ((((pRadius[particleIndex] * cellEntity.degreeOfShortening[cellIndex]) - 0.05f) / 0.7f) * 255f + 0.5f)
-            .toInt().coerceIn(0, 255)
-        val bEnergy = ((cellEntity.energy[cellIndex] / 10f) * 255f + 0.5f).toInt().coerceIn(0, 255)
+        val visibleRadius = pRadius[particleIndex] * cellEntity.degreeOfShortening[cellIndex]
 
-        back.packed1[writeIndex] = cosByte or (sinByte shl 8) or (bRadius shl 24)
+        back.shape[writeIndex] = CellInstanceBuffer.shape(
+            cosByte = CellInstanceBuffer.angleByte(angleCos),
+            sinByte = CellInstanceBuffer.angleByte(angleSin),
+            radiusByte = CellInstanceBuffer.radiusByte(visibleRadius),
+            energyByte = CellInstanceBuffer.energyByte(cellEntity.energy[cellIndex])
+        )
         // Старшие 16 бит — устойчивый ключ шума для шейдера.
         //
         // Шейдер доворачивает текстуру на случайный угол, и раньше брал его из
@@ -271,30 +292,122 @@ class RenderBufferManager(
         //
         // Индекс частицы это слот арены: он закреплён за клеткой на всю жизнь и от
         // порядка сборки буфера не зависит вообще.
-        back.packed2[writeIndex] =
-            bEnergy or (cellType.coerceIn(0, 255) shl 8) or ((particleIndex and 0xFFFF) shl 16)
+        back.type[writeIndex] = CellInstanceBuffer.type(
+            cellType = cellType,
+            noiseSeed = particleIndex,
+            // Хамелеона по цвету не узнать — его меняет сигнал. В отладке на нём спираль.
+            spiral = debug && palette.hasSpiral(cellType)
+        )
 
-        if (!doesUsePostProcess) {
-            val cell = cellList[cellType]
-            val length = when {
-                cell is Eye -> specialEntity.getVisibilityRange(cellIndex)
-                cell.isDirected -> 1f
-                else -> 0f
-            }
-            back.directedAngleCos[writeIndex] = angleCos * length
-            back.directedAngleSin[writeIndex] = angleSin * length
+        if (debug) writeDirection(cellIndex, cellType, x, y, angleCos, angleSin, visibleRadius)
+    }
+
+    /** Цвет клетки в отладочном режиме — см. DebugCellPalette. */
+    private fun debugColor(cellIndex: Int, cellType: Int, particleColor: Int): Int =
+        palette.color(
+            cellType,
+            particleColor,
+            if (palette.isMuscle(cellType)) muscleContraction(cellIndex) else 0f
+        )
+
+    /**
+     * Насколько мышца сжата, 0..1: сигнал, который она получает, зажатый в 0..1.
+     *
+     * Берётся команда, а не результат. Физически мышца сейчас не укорачивается — строка с
+     * degreeOfShortening в Muscle.doOnTick закомментирована, — и по укорочению мышцы на
+     * картинке не менялись бы вовсе. Когда сокращение вернётся, читать надо будет его.
+     */
+    private fun muscleContraction(cellIndex: Int): Float {
+        val signal = cellEntity.neuronImpulseOutput[cellIndex]
+        // NaN не больше нуля — тоже «не сжата».
+        return if (signal > 0f) minOf(signal, 1f) else 0f
+    }
+
+    /** Стрелка направления или луч глаза — в оверлей, см. DebugCellPalette. */
+    private fun writeDirection(
+        cellIndex: Int,
+        cellType: Int,
+        x: Float,
+        y: Float,
+        angleCos: Float,
+        angleSin: Float,
+        radius: Float
+    ) {
+        val signal = cellEntity.neuronImpulseOutput[cellIndex]
+        if (palette.isEye(cellType)) {
+            palette.writeEyeRay(
+                overlayBack, cellType, x, y, angleCos, angleSin, radius,
+                range = specialEntity.eyeData(cellIndex).visibilityRange,
+                signal = signal
+            )
+        } else if (palette.hasArrow(cellType)) {
+            palette.writeArrow(overlayBack, x, y, angleCos, angleSin, radius, signal)
+        }
+    }
+
+    /** Радиусы действия феромонов — кольцами, под всем остальным оверлеем. */
+    private fun writePheromoneRings(overlay: RenderOverlayBufferData) = with(pheromoneEntity) {
+        val params = OverlayInstanceBuffer.params(OverlayInstanceBuffer.KIND_RING, 0f, 0)
+        for (bufIndex in 0..<aliveList.size) {
+            val i = aliveList.getInt(bufIndex)
+            overlay.add(x[i], y[i], sqrt(radiusSquared[i]), 0f, color[i], params)
+        }
+    }
+
+    /**
+     * Нейросвязи — от источника к приёмнику, с сигналом, который источник отдаёт в связь.
+     *
+     * Направление то же, что у NeuralLinkManager.transportNeuralSignal: при
+     * isLink1NeuralDirected сигнал идёт из второй клетки в первую, иначе из первой во
+     * вторую. Физические связи в отладке не рисуются вовсе.
+     */
+    private fun writeNeuralLinks(overlay: RenderOverlayBufferData) = with(neuralLinkEntity) {
+        val px = particleEntity.x
+        val py = particleEntity.y
+        val output = cellEntity.neuronImpulseOutput
+
+        for (bufIndex in 0..<aliveList.size) {
+            val i = aliveList.getInt(bufIndex)
+            val linkCellA = links1[i]
+            val linkCellB = links2[i]
+            val linkCellAIsDead = !cellEntity.isAlive[linkCellA] || cellEntity.getGeneration(linkCellA) != linksGeneration1[i]
+            val linkCellBIsDead = !cellEntity.isAlive[linkCellB] || cellEntity.getGeneration(linkCellB) != linksGeneration2[i]
+            if (linkCellAIsDead || linkCellBIsDead) continue
+
+            val particleA = cellEntity.getParticleIndex(linkCellA)
+            val particleB = cellEntity.getParticleIndex(linkCellB)
+            // Клетка без частицы — уже испорченное состояние, но обращаться по индексу -1
+            // нельзя: это выход за границу массива, а не битая картинка.
+            if (particleA == -1 || particleB == -1) continue
+
+            val fromA = !isLink1NeuralDirected[i]
+            val source = if (fromA) linkCellA else linkCellB
+            val from = if (fromA) particleA else particleB
+            val to = if (fromA) particleB else particleA
+
+            // Индекс связи — ключ фазы импульсов: закреплён за связью на всю её жизнь.
+            palette.writeNeuralLink(
+                overlay, px[from], py[from], px[to], py[to], color[i], output[source], seed = i
+            )
         }
     }
 
     fun updateBuffer(performanceInfo: String = "") {
-        // Общий back-индекс на клетки и связи: оба буфера собираются в него и публикуются
+        // Общий back-индекс на клетки и оверлей: оба буфера собираются в него и публикуются
         // одним переключением в конце, чтобы рендер не увидел их вразнобой.
         val frameBackIndex = 1 - frameFrontIndex.get()
+
+        debugFrame = mode.drawsDebugOverlay
+        overlayBack = overlayBuffers[frameBackIndex]
+        overlayBack.clear()
+
+        // Порядок записи оверлея — порядок отрисовки: кольца феромонов снизу, стрелки и
+        // лучи (их пишет writeCell) над ними, нейросвязи сверху.
+        if (debugFrame) writePheromoneRings(overlayBack)
 
         // ==================== CELL ====================
         val cellBack = cellBuffers[frameBackIndex]
         cellBack.ensureCapacity(particleEntity.aliveList.size)
-        ensureRenderPositionCapacity(particleEntity.isAlive.size)
 
         var writeIndex = writeOrganismCells(cellBack, 0)
         writeIndex = writeOrphanCells(cellBack, writeIndex)
@@ -337,87 +450,10 @@ class RenderBufferManager(
         }
         pheromoneFrontIndex.set(backPheromoneIndex)
 
-        // ==================== LINK ====================
-        val linkBack = linkBuffers[frameBackIndex]
-        if (!doesUsePostProcess) {
-            val needed = linkEntity.aliveList.size + neuralLinkEntity.aliveList.size
-            val back = linkBack
+        // ==================== NEURAL LINKS ====================
+        if (debugFrame) writeNeuralLinks(overlayBack)
 
-            back.ensureCapacity(needed)
-
-            var writeIndex = 0
-
-            // длинные нейролинки
-            with(neuralLinkEntity) {
-                for (bufIndex in aliveList.indices) {
-                    val i = aliveList.getInt(bufIndex)
-                    val linkCellA = links1[i]
-                    val linkCellB = links2[i]
-                    val linkCellAIsDead = !cellEntity.isAlive[linkCellA] || cellEntity.getGeneration(linkCellA) != linksGeneration1[i]
-                    val linkCellBIsDead = !cellEntity.isAlive[linkCellB] || cellEntity.getGeneration(linkCellB) != linksGeneration2[i]
-                    if (linkCellAIsDead || linkCellBIsDead) continue
-
-                    val particleAIndex = cellEntity.getParticleIndex(linkCellA)
-                    val particleBIndex = cellEntity.getParticleIndex(linkCellB)
-                    // Клетка без частицы — уже испорченное состояние, но обращаться по
-                    // индексу -1 нельзя: это выход за границу массива, а не битая картинка.
-                    if (particleAIndex == -1 || particleBIndex == -1) continue
-
-                    // Позиция В БУФЕРЕ КЛЕТОК этого же кадра, а не в aliveList: буфер
-                    // собирается по аренам организмов, и его порядок с aliveList больше
-                    // не совпадает. Карта заполняется в том же проходе, что и буфер.
-                    val positionA = renderPosition[particleAIndex]
-                    val positionB = renderPosition[particleBIndex]
-
-                    back.cellA[writeIndex] = positionA
-                    back.cellB[writeIndex] = positionB
-
-                    // длинные нейролинки всегда neural-directed
-                    back.isNeuralDirected[writeIndex] = if (isLink1NeuralDirected[i]) 1 else 0
-
-                    writeIndex++
-                }
-            }
-
-            // обычные линки
-            with(linkEntity) {
-                for (bufIndex in aliveList.indices) {
-                    val i = aliveList.getInt(bufIndex)
-                    val linkCellA = links1[i]
-                    val linkCellB = links2[i]
-                    val linkCellAIsDead = !cellEntity.isAlive[linkCellA] || cellEntity.getGeneration(linkCellA) != linksGeneration1[i]
-                    val linkCellBIsDead = !cellEntity.isAlive[linkCellB] || cellEntity.getGeneration(linkCellB) != linksGeneration2[i]
-                    if (linkCellAIsDead || linkCellBIsDead) continue
-
-                    val particleAIndex = cellEntity.getParticleIndex(linkCellA)
-                    val particleBIndex = cellEntity.getParticleIndex(linkCellB)
-                    // Клетка без частицы — уже испорченное состояние, но обращаться по
-                    // индексу -1 нельзя: это выход за границу массива, а не битая картинка.
-                    if (particleAIndex == -1 || particleBIndex == -1) continue
-
-                    // Позиция В БУФЕРЕ КЛЕТОК этого же кадра, а не в aliveList: буфер
-                    // собирается по аренам организмов, и его порядок с aliveList больше
-                    // не совпадает. Карта заполняется в том же проходе, что и буфер.
-                    val positionA = renderPosition[particleAIndex]
-                    val positionB = renderPosition[particleBIndex]
-
-                    back.cellA[writeIndex] = positionA
-                    back.cellB[writeIndex] = positionB
-
-                    back.isNeuralDirected[writeIndex] = -1
-
-                    writeIndex++
-                }
-            }
-
-            back.renderLinkAmount = writeIndex
-        } else {
-            // Связи не рисуются, но буфер публикуется вместе с клетками — обнуляем, чтобы
-            // в нём не осталось позиций от позапрошлого кадра.
-            linkBack.renderLinkAmount = 0
-        }
-
-        // Единственная публикация пары «клетки + связи».
+        // Единственная публикация пары «клетки + оверлей».
         frameFrontIndex.set(frameBackIndex)
 
         // ==================== SPECIFIC ====================
@@ -444,7 +480,7 @@ class RenderBufferManager(
                 val cellType = cellEntity.cellType[cellIndex].toInt()
                 cellName = cellList[cellType].name +
                     if (cellEntity.isNeural[cellIndex])
-                        " ${formulaType[cellEntity.getActivationFuncType(cellIndex)]} " +
+                        " ${cellEntity.formulas[cellEntity.getActivationFuncType(cellIndex)].label} " +
                             "${cellEntity.getA(cellIndex)} ${cellEntity.getB(cellIndex)} ${cellEntity.getC(cellIndex)}"
                     else ""
             } else {
@@ -467,10 +503,8 @@ class RenderCellBufferData(initialCapacity: Int) {
     var x = FloatArray(capacity)
     var y = FloatArray(capacity)
     var color = IntArray(capacity)
-    var packed1 = IntArray(capacity)
-    var packed2 = IntArray(capacity)
-    var directedAngleCos = FloatArray(capacity)
-    var directedAngleSin = FloatArray(capacity)
+    var shape = IntArray(capacity)
+    var type = IntArray(capacity)
 
     fun ensureCapacity(minCapacity: Int) {
         if (minCapacity > capacity) {
@@ -480,10 +514,8 @@ class RenderCellBufferData(initialCapacity: Int) {
             x = x.copyOf(newCapacity)
             y = y.copyOf(newCapacity)
             color = color.copyOf(newCapacity)
-            packed1 = packed1.copyOf(newCapacity)
-            packed2 = packed2.copyOf(newCapacity)
-            directedAngleCos = directedAngleCos.copyOf(newCapacity)
-            directedAngleSin = directedAngleSin.copyOf(newCapacity)
+            shape = shape.copyOf(newCapacity)
+            type = type.copyOf(newCapacity)
         }
     }
 }
@@ -512,23 +544,56 @@ class PheromoneBufferData(initialCapacity: Int) {
     }
 }
 
-class RenderLinkBufferData(initialCapacity: Int) {
+/**
+ * Фигуры оверлея отладочного режима одного тика — поля OverlayInstanceBuffer, уже
+ * упакованные потоком симуляции. GL-поток только переписывает их в буфер инстансов.
+ *
+ * Координаты готовые, мировые: стрелка и связь не ссылаются на буфер клеток, поэтому
+ * его порядок (арены организмов) оверлею безразличен.
+ */
+class RenderOverlayBufferData(initialCapacity: Int) : DebugCellPalette.OverlaySink {
     var capacity = initialCapacity
-    var renderLinkAmount = 0
+        private set
+    var size = 0
+        private set
 
-    var cellA = IntArray(capacity)
-    var cellB = IntArray(capacity)
-    var isNeuralDirected = ByteArray(capacity)
+    var x0 = FloatArray(capacity)
+        private set
+    var y0 = FloatArray(capacity)
+        private set
+    var x1 = FloatArray(capacity)
+        private set
+    var y1 = FloatArray(capacity)
+        private set
+    var color = IntArray(capacity)
+        private set
+    var params = IntArray(capacity)
+        private set
 
-    fun ensureCapacity(minCapacity: Int) {
-        if (minCapacity > capacity) {
-            val newCapacity = if (capacity == 0) minCapacity else (capacity * 2).coerceAtLeast(minCapacity)
-            capacity = newCapacity
+    fun clear() {
+        size = 0
+    }
 
-            cellA = cellA.copyOf(newCapacity)
-            cellB = cellB.copyOf(newCapacity)
-            isNeuralDirected = isNeuralDirected.copyOf(newCapacity)
-        }
+    override fun add(x0: Float, y0: Float, x1: Float, y1: Float, color: Int, params: Int) {
+        if (size == capacity) grow(size + 1)
+        this.x0[size] = x0
+        this.y0[size] = y0
+        this.x1[size] = x1
+        this.y1[size] = y1
+        this.color[size] = color
+        this.params[size] = params
+        size++
+    }
+
+    private fun grow(minCapacity: Int) {
+        val newCapacity = (capacity * 2).coerceAtLeast(minCapacity).coerceAtLeast(16)
+        capacity = newCapacity
+        x0 = x0.copyOf(newCapacity)
+        y0 = y0.copyOf(newCapacity)
+        x1 = x1.copyOf(newCapacity)
+        y1 = y1.copyOf(newCapacity)
+        color = color.copyOf(newCapacity)
+        params = params.copyOf(newCapacity)
     }
 }
 

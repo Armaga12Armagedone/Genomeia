@@ -7,6 +7,7 @@ import io.github.some_example_name.old.core.utils.pinkColors
 // Dies when it receives an impulse
 // Will be made obsolete by apoptosis
 class Breakaway(cellTypeId: Int): Cell(
+    key = "breakaway",
     defaultColor = pinkColors[1],
     cellTypeId = cellTypeId,
     isNeural = true,

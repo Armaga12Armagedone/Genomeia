@@ -15,14 +15,19 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.editor.system.Axial
 import io.github.some_example_name.old.editor.system.NoSymmetry
 import io.github.some_example_name.old.editor.system.SquareGrid
-import io.github.some_example_name.old.editor.system.SymmetryManager
+import io.github.some_example_name.old.editor.system.SymmetryMode
 import io.github.some_example_name.old.editor.system.TriangleGrid
 import io.github.some_example_name.old.core.ui.setupTitleSize
 import io.github.some_example_name.old.game.applyCustomFont
 import io.github.some_example_name.old.core.ui.makeStyledButton
 
+/**
+ * Выбор симметрии. Сам диалог её не меняет: выбранный режим уходит командой через
+ * [onApply], а [current] нужен только чтобы отметить текущий.
+ */
 class SymmetryDialog(
-    val symmetryManager: SymmetryManager
+    val current: SymmetryMode,
+    val onApply: (SymmetryMode) -> Unit
 ) : VisDialog(bundle.get("dialog.select_symmetry") ?: "Select symmetry") {
 
     private val textures = mutableListOf<Texture>()
@@ -74,7 +79,7 @@ class SymmetryDialog(
         btnRow.add(cancelBtn).height(btnH)
         contentTable.add(btnRow).center().colspan(2)
 
-        when (symmetryManager.symmetryMode) {
+        when (current) {
             is NoSymmetry  -> noSymmetryButton.isChecked   = true
             Axial          -> axialButton.isChecked         = true
             is SquareGrid  -> squareGridButton.isChecked    = true
@@ -87,12 +92,13 @@ class SymmetryDialog(
     }
 
     private fun applySelectedSymmetry() {
-        symmetryManager.symmetryMode = when {
+        val selected = when {
             noSymmetryButton.isChecked   -> NoSymmetry
             axialButton.isChecked        -> Axial
-            squareGridButton.isChecked   -> symmetryManager.symmetryMode as? SquareGrid ?: SquareGrid(0.6f)
-            else                         -> symmetryManager.symmetryMode as? TriangleGrid ?: TriangleGrid(0.6f)
+            squareGridButton.isChecked   -> current as? SquareGrid ?: SquareGrid(0.6f)
+            else                         -> current as? TriangleGrid ?: TriangleGrid(0.6f)
         }
+        if (selected != current) onApply(selected)
     }
 
     override fun hide(action: Action?) {
