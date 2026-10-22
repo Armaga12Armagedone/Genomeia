@@ -87,7 +87,13 @@ class MenuScreen : VisDslScreen(
             row()
 
             visTextButton("Logic", onClick = {
-                navigation.performCommand(GoLogic)
+                //navigation.performCommand(GoLogic)
+                menuViewModel.handle(MenuIntent.OpenLogic)
+            })
+            row()
+
+            visTextButton("Level Editor", onClick = {
+                menuViewModel.handle(MenuIntent.OpenLevelEditor)
             })
             row()
 

@@ -66,7 +66,17 @@ object GoSettings : Menu() {
 }
 
 @Serializable
-object GoLogic: Menu()
+object GoLogic: Menu() {
+    override val name: String
+        get() = "GoLogic"
+}
+
+@Serializable
+object GoLevelEditor : Menu() {
+    override val name get() = "GoLevelEditor"
+}
+
+@Serializable
 object GoEcoSystem : Menu() {
     override val name get() = "GoEcoSystem"
 }
@@ -114,6 +124,7 @@ fun navigationCommandByName(name: String): NavigationCommands? = when (name.trim
     GoEcoSystem.name -> GoEcoSystem
     GoSupport.name -> GoSupport
     "GoGenomeEditor" -> GoGenomeEditor(null)
+    "GoLevelEditor" -> GoLevelEditor
     GoBack.name -> GoBack
     GoExit.name -> GoExit
     else -> null

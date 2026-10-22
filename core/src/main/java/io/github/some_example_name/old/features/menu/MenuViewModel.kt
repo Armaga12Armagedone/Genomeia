@@ -9,6 +9,8 @@ import io.github.some_example_name.old.bug.BugReplay
 import io.github.some_example_name.old.commands.GameCommand
 import io.github.some_example_name.old.commands.GoExit
 import io.github.some_example_name.old.commands.GoGenomeEditor
+import io.github.some_example_name.old.commands.GoLevelEditor
+import io.github.some_example_name.old.commands.GoLogic
 import io.github.some_example_name.old.commands.GoSettings
 import io.github.some_example_name.old.commands.GoSimulation
 import io.github.some_example_name.old.commands.GoSupport
@@ -94,6 +96,18 @@ sealed interface MenuIntent : GameCommand {
     @Serializable
     data object OpenSettings : MenuIntent {
         override val name get() = "OpenSettings"
+    }
+
+    @Serializable
+    data object OpenLogic : MenuIntent {
+        override val name: String
+            get() = "OpenLogic"
+
+    }
+
+    @Serializable
+    data object OpenLevelEditor : MenuIntent {
+        override val name get() = "OpenLevelEditor"
     }
 
     @Serializable
@@ -195,6 +209,10 @@ class MenuViewModel(
             is MenuIntent.OpenSupport -> navigation.performCommand(GoSupport)
 
             is MenuIntent.Exit -> navigation.performCommand(GoExit)
+
+            is MenuIntent.OpenLogic -> navigation.performCommand(GoLogic)
+
+            is MenuIntent.OpenLevelEditor -> navigation.performCommand(GoLevelEditor)
         }
     }
 

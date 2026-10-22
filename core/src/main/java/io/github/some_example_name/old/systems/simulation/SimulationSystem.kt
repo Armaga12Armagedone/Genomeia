@@ -421,6 +421,9 @@ class SimulationSystem(
      * случайностей команд игрока. При повторе бага seed берётся из записи.
      */
     private fun startSession() {
+        if (simulationData.hasLua) {
+            DIGameGlobalContainer.luaEnv.run()
+        }
         val epoch = SessionJournal.beginSimEpoch()
         val seed = (if (BugReplay.isActive) BugReplay.sessionSeed(epoch) else null)
             // RandomXS128 сам перемешивает seed, так что близкие значения nanoTime не страшны.

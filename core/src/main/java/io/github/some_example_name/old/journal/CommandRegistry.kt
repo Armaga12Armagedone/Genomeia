@@ -8,6 +8,8 @@ import io.github.some_example_name.old.commands.GoBack
 import io.github.some_example_name.old.commands.GoEcoSystem
 import io.github.some_example_name.old.commands.GoExit
 import io.github.some_example_name.old.commands.GoGenomeEditor
+import io.github.some_example_name.old.commands.GoLevelEditor
+import io.github.some_example_name.old.commands.GoLogic
 import io.github.some_example_name.old.commands.GoMenu
 import io.github.some_example_name.old.commands.GoReplace
 import io.github.some_example_name.old.commands.GoSettings
@@ -91,6 +93,8 @@ object CommandRegistry {
         t<GoSimulation>(109),
         t<EcoSystemScreenGlobalSettings>(110),
         t<EcoSystemScreenCellsSettings>(111),
+        t<GoLogic>(112),
+        t<GoLevelEditor>(113),
 
         // --- Главное меню ---
         t<MenuIntent.OpenWorldEditor>(200),
@@ -102,6 +106,8 @@ object CommandRegistry {
         t<MenuIntent.ImportGenome>(206),
         t<MenuIntent.GenomeImported>(207),
         t<MenuIntent.MapImported>(208),
+        t<MenuIntent.OpenLogic>(209),
+        t<MenuIntent.OpenLevelEditor>(210),
 
         // --- Настройки ---
         t<SettingsIntent.SelectTab>(300),

@@ -9,6 +9,8 @@ import io.github.some_example_name.old.journal.SessionJournal
 import io.github.some_example_name.old.features.devsupport.SupportScreen
 import io.github.some_example_name.old.features.ecosystem.EcoSystemScreen
 import io.github.some_example_name.old.features.editor.GenomeEditorScreen
+import io.github.some_example_name.old.features.levels.CampaignScreen
+import io.github.some_example_name.old.features.levels.editor.LevelEditorScreen
 import io.github.some_example_name.old.features.menu.MenuScreen
 import io.github.some_example_name.old.features.settings.SettingsScreen
 import io.github.some_example_name.old.features.simulation.SimulationScreen
@@ -87,6 +89,7 @@ class NavigationCommandsManager {
                 exitGame()
                 EXIT
             }
+
         }
 
         onCommand?.invoke(navigationCommands, destination)
@@ -101,8 +104,9 @@ class NavigationCommandsManager {
         GoSupport -> SupportScreen()
         EcoSystemScreenCellsSettings -> TODO()
         EcoSystemScreenGlobalSettings -> TODO()
-        GoLogic -> LogicUI()
-                    is GoSimulation -> SimulationScreen(command.world, command.genomeName, command.savedWorld)
+        GoLogic -> CampaignScreen()//LogicUI()
+        GoLevelEditor -> LevelEditorScreen()
+        is GoSimulation -> SimulationScreen(command.world, command.genomeName, command.savedWorld)
     }
 
     /**

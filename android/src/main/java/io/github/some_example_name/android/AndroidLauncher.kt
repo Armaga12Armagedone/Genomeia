@@ -41,6 +41,22 @@ import java.io.File
 class AndroidLauncher : AndroidApplication(), KeyBoardListener {
 
     private lateinit var game: MyGame
+    private val pendingResults = HashMap<Int, (Int, Intent?) -> Unit>()
+    private var nextRequestCode = 20_000
+
+    fun startForResult(intent: Intent, callback: (Int, Intent?) -> Unit) {
+        val code = nextRequestCode++
+        pendingResults[code] = callback
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, code)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        pendingResults.remove(requestCode)?.invoke(resultCode, data)
+    }
 
     companion object {
         var inputCallback: ((Float) -> Unit)? = null

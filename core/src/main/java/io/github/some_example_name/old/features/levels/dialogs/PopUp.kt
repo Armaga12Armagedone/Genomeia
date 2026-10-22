@@ -1,4 +1,4 @@
-package io.github.some_example_name.old.features.levels
+package io.github.some_example_name.old.features.levels.dialogs
 
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener

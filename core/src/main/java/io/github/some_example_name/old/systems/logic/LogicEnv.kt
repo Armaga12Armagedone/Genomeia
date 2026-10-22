@@ -5,12 +5,9 @@ import io.github.some_example_name.old.core.DISimulationContainer
 import ai.tenum.lua.runtime.LuaNativeFunction
 import ai.tenum.lua.runtime.LuaNumber
 import ai.tenum.lua.runtime.LuaString
-import ai.tenum.lua.runtime.LuaValue
 import com.badlogic.gdx.Gdx
-import io.github.some_example_name.old.features.levels.PopUp
+import io.github.some_example_name.old.features.levels.dialogs.PopUp
 import io.github.some_example_name.old.features.simulation.SimulationScreen
-import java.util.Queue
-import javax.swing.Popup
 
 class LogicEnv {
     val popups = com.badlogic.gdx.utils.Queue<PopUp>()

@@ -1,5 +1,7 @@
 body-export.txt
 button.png
+campaign/levels/levels.json
+campaign/lua/0.lua
 cell_textures/Chameleon.png
 cell_textures/Compass.png
 cell_textures/PheromoneEmitter.png
@@ -43,7 +45,6 @@ genomes/Stem grow emitter.genome
 genomes/Sucker.genome
 genomes/Tapeworm.genome
 genomes/Tardigrade.genome
-hs_err_pid22808.log
 ost/track1.ogg
 ost/track2.ogg
 ost/track3.ogg

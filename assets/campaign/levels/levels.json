@@ -1,0 +1,21 @@
+{
+  "version": 0.1,
+  "levels": [
+    {
+      "id": 0,
+      "nameKey": "level0",
+      "logicPath": "campaign/lua/0.lua",
+      "allowed": ["leaf"],
+      "cellsNeed": -1,
+      "destination": {"x": -1, "y":  -1},
+      "world": {
+        "gridWidth": 192,
+        "gridHeight": 192,
+        "seed": "tail-intro",
+        "dayNight": 3,
+        "smoothing": 2,
+        "edits": []
+      }
+    }
+  ]
+}

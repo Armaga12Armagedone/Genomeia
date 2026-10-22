@@ -27,7 +27,7 @@ class EnvRun {
         //logicScript = """function tick() popup("hi") end"""
         logicScript = """popup("test") popup("hi")"""
         DISimulationContainer.simulationData.hasLua = true
-        run()
+        //run()
         //tick()
     }
 
