@@ -10,6 +10,7 @@ import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
 import com.kotcrab.vis.ui.widget.VisTextField
 import io.github.some_example_name.old.core.DIGameGlobalContainer
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.ui.LineNumberTextArea
 import io.github.some_example_name.old.core.ui.VisDslScreen
 import io.github.some_example_name.old.core.ui.dp
@@ -23,7 +24,7 @@ import io.github.some_example_name.old.core.ui.visTextField
 import io.github.some_example_name.old.core.ui.visToggleButton
 import io.github.some_example_name.old.features.levels.dialogs.AllowCellsDialog
 
-class LevelEditorScreen : VisDslScreen() {
+class LevelEditorScreen(val newLevel: Boolean = true) : VisDslScreen() {
 
     private val panel: Drawable by lazy { makeStyledNP(PANEL_BG, PANEL_BORDER, mutableListOf()) }
     private lateinit var textEditor: LineNumberTextArea
@@ -34,6 +35,16 @@ class LevelEditorScreen : VisDslScreen() {
     private lateinit var destX: VisTextField
     private lateinit var destY: VisTextField
     private lateinit var levelName: VisTextField
+
+    private val allowedCellsList = mutableMapOf<String, Boolean>() //вроде сделано
+
+    init {
+        if (newLevel) {
+            for (cell in DISimulationContainer.cellList) {
+                allowedCellsList[cell.name] = true
+            }
+        }
+    }
 
     override fun VisTable.compose() {
         val sideWidth = (Gdx.graphics.width * 0.32f).coerceAtLeast(280.dp())
@@ -124,7 +135,11 @@ class LevelEditorScreen : VisDslScreen() {
     }
 
     fun allowedCells() {
-        AllowCellsDialog().show(stage)
+        AllowCellsDialog(::setAllowedCells, mutableMapOf()).show(stage)
+    }
+
+    fun setAllowedCells(name: String, valBool: Boolean) {
+        allowedCellsList[name] = valBool
     }
 
     fun mapEditor() {
@@ -144,11 +159,11 @@ class LevelEditorScreen : VisDslScreen() {
     }
 
     companion object {
-        private val BG = Color(0.07f, 0.05f, 0.04f, 1f)
-        private val PANEL_BG = Color(0.14f, 0.10f, 0.07f, 1f)
-        private val PANEL_BORDER = Color(0.85f, 0.50f, 0.20f, 0.55f)
-        private val ACCENT = Color(0.92f, 0.55f, 0.22f, 1f)
-        private val CODE = Color(0.95f, 0.84f, 0.70f, 1f)
+        val BG = Color(0.07f, 0.05f, 0.04f, 1f)
+        val PANEL_BG = Color(0.14f, 0.10f, 0.07f, 1f)
+        val PANEL_BORDER = Color(0.85f, 0.50f, 0.20f, 0.55f)
+        val ACCENT = Color(0.92f, 0.55f, 0.22f, 1f)
+        val CODE = Color(0.95f, 0.84f, 0.70f, 1f)
     }
 }
 

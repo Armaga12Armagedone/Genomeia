@@ -13,13 +13,22 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer.game
 import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.ui.dp
 import io.github.some_example_name.old.core.ui.makeStyledButton
+import io.github.some_example_name.old.core.ui.makeStyledNP
 import io.github.some_example_name.old.core.ui.setupTitleSize
+import io.github.some_example_name.old.features.levels.editor.LevelEditorScreen
 
-class AllowCellsDialog: VisDialog("Allow cell dialog") {
+class AllowCellsDialog(val allowFunc: (String, Boolean) -> Unit, val allowCell: MutableMap<String, Boolean>): VisDialog("Allow cell dialog") {
+    //var allowedCells = mutableMapOf<String, Boolean>()
+
     init {
         setupTitleSize(game)
         setupUI()
+//        if (allowCell.isNotEmpty()) {
+//            allowedCells = allowCell
+//        }
     }
+
+
 
     fun setupUI() {
         val table = VisTable()
@@ -29,12 +38,23 @@ class AllowCellsDialog: VisDialog("Allow cell dialog") {
         table.add(title).center().pad(6.dp()).row()
 
         val cellsListTab = VisTable()
+        cellsListTab.background = makeStyledNP(LevelEditorScreen.PANEL_BG, LevelEditorScreen.PANEL_BORDER, mutableListOf())
         cellsListTab.top()
 
         for (cell in DISimulationContainer.cellList) {
+//            if (allowCell.isEmpty()) {
+//                allowedCells[cell.name] = true
+//            }
             val cellTab = VisTable()
             val cellName = VisLabel(cell.name)
-            val cellBool = makeStyledButton("Use", game, mutableListOf<Texture>(), true)
+            val cellBool = makeStyledButton("Use", game, mutableListOf<Texture>(), true).apply { isChecked = true; addListener(
+                object: ClickListener() {
+                    override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                        super.clicked(event, x, y)
+                        changeUse(cell.name, isChecked)
+                    }
+                }
+            )}
 
             cellTab.add(cellName).left().pad(16.dp())
             cellTab.add(cellBool).right().expandX().pad(8.dp())
@@ -66,6 +86,12 @@ class AllowCellsDialog: VisDialog("Allow cell dialog") {
         table.add(btnClose).center().pad(10.dp())
 
         add(table)
+    }
+
+    fun changeUse(name: String, value: Boolean) {
+        //allowedCells[name] = value
+        allowFunc(name, value)
+        println("${name} changed to ${value}")
     }
 
 }
