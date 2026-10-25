@@ -49,7 +49,7 @@ object GoMenu : Menu() {
  * повторе дала бы другую карту, и все мазки кистью легли бы не туда.
  */
 @Serializable
-class GoWorldEditor(val seed: String) : Menu() {
+class GoWorldEditor(val seed: String, val levelEditor: Boolean = false) : Menu() {
     override val name get() = "GoWorldEditor"
     override val detail get() = seed
 }
@@ -119,7 +119,7 @@ object EcoSystemScreenCellsSettings : Menu() {
  */
 fun navigationCommandByName(name: String): NavigationCommands? = when (name.trim()) {
     GoMenu.name -> GoMenu
-    "GoWorldEditor" -> GoWorldEditor(WorldEditorIntent.newSeed().seed)
+    "GoWorldEditor" -> GoWorldEditor(WorldEditorIntent.newSeed().seed, levelEditor = false)
     GoSettings.name -> GoSettings
     GoEcoSystem.name -> GoEcoSystem
     GoSupport.name -> GoSupport

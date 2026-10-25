@@ -165,34 +165,35 @@ class DesktopFileProvider : FileProvider {
     override fun saveTextFile(
         suggestedName: String,
         content: String,
-        callback: (saved: Boolean) -> Unit
+        callback: (saved: Boolean, name: String) -> Unit
     ) {
         if (isMac) {
-            callback(false)
+            callback(false, "")
             return
         }
         Thread({
-            val saved = try {
+            val (saved, path) = try {
                 val dialog = FileDialog(null as Frame?, "Genomeia", FileDialog.SAVE)
                 dialog.file = suggestedName
                 dialog.isVisible = true
+
                 val picked = dialog.file?.let { File(dialog.directory, it) }
                 if (picked == null) {
-                    false
+                    false to null
                 } else {
-                    // Диалог не всегда добавляет расширение — дописываем из подсказки.
                     val ext = suggestedName.substringAfterLast('.', "")
                     val file = if (ext.isNotEmpty() && picked.extension.isEmpty()) {
                         File(picked.parentFile, "${picked.name}.$ext")
                     } else picked
+
                     file.writeText(content, Charsets.UTF_8)
-                    true
+                    true to file.absolutePath
                 }
             } catch (e: Exception) {
                 System.err.println("Не удалось сохранить файл: ${e.message}")
-                false
+                false to null
             }
-            callback(saved)
+            callback(saved, path ?: "")
         }, "Save-Text").apply { isDaemon = true }.start()
     }
 

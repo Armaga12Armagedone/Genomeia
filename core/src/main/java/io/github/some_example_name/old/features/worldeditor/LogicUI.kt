@@ -14,7 +14,7 @@ import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.ui.visTextButton
 import java.awt.Color
 
-class LogicUI: Screen {
+class LogicUI: Screen { //не нужно TODO убрать
     private val textEditor: VisTextArea = VisTextArea()
     private val errorLabel: VisLabel = VisLabel()
     private lateinit var stage: Stage

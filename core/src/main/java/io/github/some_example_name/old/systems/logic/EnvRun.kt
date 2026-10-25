@@ -5,6 +5,10 @@ import ai.tenum.lua.runtime.LuaNativeFunction
 import ai.tenum.lua.runtime.LuaNumber
 import ai.tenum.lua.runtime.LuaTable
 import ai.tenum.lua.runtime.LuaValue
+import ai.tenum.lua.lexer.Lexer
+import ai.tenum.lua.parser.Parser
+import ai.tenum.lua.compiler.Compiler
+import ai.tenum.lua.parser.ParserException
 import ai.tenum.lua.vm.LuaVmImpl
 import ai.tenum.lua.vm.errorhandling.LuaException
 import ai.tenum.lua.vm.errorhandling.LuaRuntimeError
@@ -25,8 +29,8 @@ class EnvRun {
         //globals.set("env", CoerceJavaToLua.coerce(env))
         // run("""print("Cells: ".. env:getCellsCount())""") работает
         //logicScript = """function tick() popup("hi") end"""
-        logicScript = """popup("test") popup("hi")"""
-        DISimulationContainer.simulationData.hasLua = true
+        //logicScript = """popup("test") popup("hi")"""
+        //DISimulationContainer.simulationData.hasLua = true
         //run()
         //tick()
     }
@@ -42,6 +46,27 @@ class EnvRun {
         }
         catch (e: LuaException) {
             return e.message ?: ""
+        }
+    }
+
+    fun check(): String{
+        return try {
+            val lexer = Lexer(logicScript, "check")
+            val tokens = lexer.scanTokens()
+
+            val parser = Parser(tokens)
+            val ast = parser.parse()
+
+            val compiler = Compiler(sourceFilename = "check")
+            compiler.compile(ast, hasVararg = true)
+
+            return ""
+        }
+        catch (e: ParserException) {
+            return "${e.message.toString()} on line ${e.token.line}"
+        }
+        catch (e: Exception) {
+            return "unknown error: ${e.message.toString()}"
         }
     }
 

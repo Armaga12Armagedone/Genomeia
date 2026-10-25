@@ -100,7 +100,7 @@ class NavigationCommandsManager {
         GoEcoSystem -> EcoSystemScreen()
         is GoGenomeEditor -> GenomeEditorScreen(command.genomeName)
         GoSettings -> SettingsScreen()
-        is GoWorldEditor -> WorldEditorScreen(command.seed)
+        is GoWorldEditor -> WorldEditorScreen(seed = command.seed, levelEditor = command.levelEditor)
         GoSupport -> SupportScreen()
         EcoSystemScreenCellsSettings -> TODO()
         EcoSystemScreenGlobalSettings -> TODO()

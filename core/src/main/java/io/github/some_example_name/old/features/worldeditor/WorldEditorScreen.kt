@@ -10,6 +10,7 @@ import com.kotcrab.vis.ui.widget.VisTextField
 import kotlin.math.roundToInt
 import io.github.some_example_name.old.commands.GoBack
 import io.github.some_example_name.old.commands.GoSimulation
+import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.bundle
 import io.github.some_example_name.old.core.ui.VisDslScreen
 import io.github.some_example_name.old.core.ui.dp
@@ -45,10 +46,13 @@ import io.github.some_example_name.old.features.worldeditor.WorldEditorViewModel
  */
 class WorldEditorScreen(
     /** Стартовый сид — из команды GoWorldEditor. */
-    seed: String
+    val levelEditor: Boolean = false,
+    seed: String,
 ) : VisDslScreen(background = Color(0.1f, 0.1f, 0.1f, 1f)), ReplayTarget {
 
-    private val viewModel = WorldEditorViewModel(initialSeed = seed)
+    private val viewModel = if (!levelEditor) {WorldEditorViewModel(initialSeed = seed)} else {
+        DIGameGlobalContainer.levelEditorMapData ?: WorldEditorViewModel(initialSeed = seed)
+    }
 
     /**
      * Повтор бага. Вёрстка пересобирается, чтобы ползунки и поле сида показали новое
@@ -281,9 +285,15 @@ class WorldEditorScreen(
 
             spacer()
 
+            val text = if (!levelEditor) { bundle.get("button.createNewWorld") } else "Save" //TODO использзовать bundle.get
+            val func: () -> Unit = if (!levelEditor) { {navigation.performCommand(GoSimulation(viewModel.toSpec(), null)) }} else { {
+                DIGameGlobalContainer.levelEditorsData(viewModel)
+                navigation.performCommand(GoBack)
+            }}
+
             visTextButton(
-                text = bundle.get("button.createNewWorld"),
-                onClick = { navigation.performCommand(GoSimulation(viewModel.toSpec(), null)) }
+                text = text,//bundle.get("button.createNewWorld"),
+                onClick = func//{ navigation.performCommand(GoSimulation(viewModel.toSpec(), null)) }
             ) { right() }
         }
     }

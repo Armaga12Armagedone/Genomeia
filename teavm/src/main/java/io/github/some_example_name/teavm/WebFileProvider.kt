@@ -33,10 +33,10 @@ class WebFileProvider : FileProvider {
     override fun saveTextFile(
         suggestedName: String,
         content: String,
-        callback: (saved: Boolean) -> Unit
+        callback: (saved: Boolean, name: String) -> Unit
     ) {
         val saved = runCatching { WebFilePicker.save(suggestedName, content) }.isSuccess
-        callback(saved)
+        callback(saved, suggestedName)
     }
 
     private fun getJarDir(): File {

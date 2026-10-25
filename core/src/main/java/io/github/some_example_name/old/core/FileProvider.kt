@@ -62,8 +62,8 @@ interface FileProvider {
     fun saveTextFile(
         suggestedName: String,
         content: String,
-        callback: (saved: Boolean) -> Unit = {}
-    ) = callback(false)
+        callback: (saved: Boolean, name: String) -> Unit = {_, _, ->}
+    ) = callback(false, "")
 
     /** Умеет ли платформа [saveTextFile]: нет — кнопку сохранения лучше не показывать. */
     val canSaveTextFile: Boolean get() = false
