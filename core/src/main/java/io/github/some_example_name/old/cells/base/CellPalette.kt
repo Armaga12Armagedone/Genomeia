@@ -72,6 +72,8 @@ class CellPalette private constructor(
         /** Всё, кроме выведенного из игры. */
         val FULL = CellPalette(cells = null, formulas = null)
 
+        //fun allowedCell(cells:)
+
         /** Только перечисленное — например, для обучающего уровня. */
         fun only(cells: Set<String>, formulas: Set<String>) = CellPalette(cells, formulas)
     }

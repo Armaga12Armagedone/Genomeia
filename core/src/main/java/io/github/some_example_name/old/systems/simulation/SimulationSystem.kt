@@ -159,8 +159,11 @@ class SimulationSystem(
             restartSim()
             return
         }
-        if (simulationData.hasLua) {
+        if (simulationData.level.hasLua) {
             DIGameGlobalContainer.luaEnv.tick()
+        }
+        if (simulationData.level.needDestination) {
+            println("Res: ${DIGameGlobalContainer.luaEnv.env.dist()}")
         }
 
         simulationData.tickCounter++
@@ -421,7 +424,7 @@ class SimulationSystem(
      * случайностей команд игрока. При повторе бага seed берётся из записи.
      */
     private fun startSession() {
-        if (simulationData.hasLua) {
+        if (simulationData.level.hasLua) {
             DIGameGlobalContainer.luaEnv.run()
         }
         val epoch = SessionJournal.beginSimEpoch()

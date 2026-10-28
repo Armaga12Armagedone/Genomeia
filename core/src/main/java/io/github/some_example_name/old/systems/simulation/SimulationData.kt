@@ -1,5 +1,7 @@
 package io.github.some_example_name.old.systems.simulation
 
+import io.github.some_example_name.old.features.levels.editor.LevelInfo
+
 class SimulationData {
     var isRestart = false
     var isFinish = false
@@ -7,9 +9,11 @@ class SimulationData {
     var timeSimulation = 0f
 
     var isLevel = false //level-игровой уровень с lua логикой и конечной целью. при false-обычная симуляция.
-    var hasLua = false
-    var hasDestPoint = false //точка куда игрок должен добраться
-    var cellsNeed = -1 //сколько клеток нужно для победы
+    var isGuide = false
+//    var hasLua = false
+//    var hasDestPoint = false //точка куда игрок должен добраться
+//    var cellsNeed = -1 //сколько клеток нужно для победы
+    lateinit var level: LevelInfo
 
     //Пока вынес все глобальные переменные сюда, но кажется это все не совсем к месту
     var currentGenomeIndex = 0

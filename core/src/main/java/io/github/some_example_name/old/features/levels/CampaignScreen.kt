@@ -36,7 +36,7 @@ class CampaignScreen: VisDslScreen(isScrollable = false) {
                         super.clicked(event, x, y)
                         println(level.id)
                         simData.isLevel = true
-                        simData.hasLua = true
+                        //simData.level.hasLua = true
                         val logic = Gdx.files.internal("campaign/lua/0.lua").readString()
                         DIGameGlobalContainer.luaEnv.setScript(logic)
                         navigation.performCommand(GoSimulation(world=null, genomeName = null))

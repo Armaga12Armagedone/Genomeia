@@ -11,14 +11,14 @@ import io.github.some_example_name.old.core.ui.setupTitleSize
 import io.github.some_example_name.old.game.applyCustomFont
 import io.github.some_example_name.old.game.applyCustomFontLarge
 
-class PopUp(title: String, val textTitle: String, val text: String): VisDialog(title) {
+class PopUp(title: String, val text: String): VisDialog(title) {
     init {
         setupTitleSize(DIGameGlobalContainer.game)
         val table = VisTable()
 
-        val titleLabel = VisLabel(textTitle)
+        val titleLabel = VisLabel(title)
         DIGameGlobalContainer.game.applyCustomFontLarge(titleLabel)
-        table.add(title).center().top().row()
+        //table.add(titleLabel).center().top().row()
 
         val textLabel = VisLabel(text)
         DIGameGlobalContainer.game.applyCustomFont(textLabel)
@@ -28,6 +28,7 @@ class PopUp(title: String, val textTitle: String, val text: String): VisDialog(t
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 super.clicked(event, x, y)
                 DIGameGlobalContainer.luaEnv.env.popupActive = false
+                DIGameGlobalContainer.luaEnv.env.execute()
                 hide()
             }
         })}

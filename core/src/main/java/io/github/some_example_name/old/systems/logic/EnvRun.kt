@@ -26,6 +26,7 @@ class EnvRun {
         globals.globals.set("env", LuaNativeFunction { args -> listOf(LuaNumber.of(5))})
         globals.globals.set("getCells", env.getCellsCount)
         globals.globals.set("popup", env.popup)
+        globals.globals.set("win", env.win)
         //globals.set("env", CoerceJavaToLua.coerce(env))
         // run("""print("Cells: ".. env:getCellsCount())""") работает
         //logicScript = """function tick() popup("hi") end"""
@@ -67,6 +68,29 @@ class EnvRun {
         }
         catch (e: Exception) {
             return "unknown error: ${e.message.toString()}"
+        }
+    }
+
+    fun terrain(): String {
+        try {
+            env.execute()
+            val tick = globals.globals.get("terrain")
+            if (tick == null) {
+                env.win.call(listOf())
+                return "Function terrain hasn't found"
+            }
+            else if (tick !is LuaFunction) {
+                env.win.call(listOf())
+                return "name terrain reserved to system function"
+            }
+            tick.call(listOf())
+            return ""
+        }
+        catch (e: LuaException) {
+            return e.message ?: ""
+        }
+        catch (e: LuaRuntimeError) {
+            return e.message ?: ""
         }
     }
 

@@ -1,7 +1,5 @@
 body-export.txt
 button.png
-campaign/levels/levels.json
-campaign/lua/0.lua
 cell_textures/Chameleon.png
 cell_textures/Compass.png
 cell_textures/PheromoneEmitter.png

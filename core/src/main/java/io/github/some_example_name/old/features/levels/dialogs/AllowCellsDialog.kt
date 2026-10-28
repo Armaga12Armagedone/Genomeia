@@ -41,7 +41,7 @@ class AllowCellsDialog(val allowFunc: (String, Boolean) -> Unit, val allowCell: 
         cellsListTab.background = makeStyledNP(LevelEditorScreen.PANEL_BG, LevelEditorScreen.PANEL_BORDER, mutableListOf())
         cellsListTab.top()
 
-        for (cell in DISimulationContainer.cellList) {
+        for (cell in DISimulationContainer.cellList.filterNot { it.name.lowercase() in listOf("foodsensor", "suctioncup", "touchtrigger", "pheromoneemitter", "pheromonesensor", "speedsensor") }) {
 //            if (allowCell.isEmpty()) {
 //                allowedCells[cell.name] = true
 //            }
