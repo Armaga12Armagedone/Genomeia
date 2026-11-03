@@ -1,7 +1,9 @@
 package io.github.some_example_name.old.features.levels.dialogs
 
+import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
+import com.badlogic.gdx.utils.Align
 import com.kotcrab.vis.ui.widget.VisDialog
 import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTable
@@ -10,6 +12,7 @@ import io.github.some_example_name.old.core.ui.makeStyledButton
 import io.github.some_example_name.old.core.ui.setupTitleSize
 import io.github.some_example_name.old.game.applyCustomFont
 import io.github.some_example_name.old.game.applyCustomFontLarge
+import kotlin.math.min
 
 class PopUp(title: String, val text: String): VisDialog(title) {
     init {
@@ -22,13 +25,16 @@ class PopUp(title: String, val text: String): VisDialog(title) {
 
         val textLabel = VisLabel(text)
         DIGameGlobalContainer.game.applyCustomFont(textLabel)
-        table.add(textLabel).center().top().row()
+
+        val textWidth = textLabel.prefWidth
+
+        textLabel.setWrap(true)
+        textLabel.setAlignment(Align.center)
+        table.add(textLabel).width(min(textWidth, Gdx.graphics.width * 0.8f)).pad(10f).center().top().row()
 
         val okBut = makeStyledButton("Ok", DIGameGlobalContainer.game, mutableListOf()).apply { addListener( object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 super.clicked(event, x, y)
-                DIGameGlobalContainer.luaEnv.env.popupActive = false
-                DIGameGlobalContainer.luaEnv.env.execute()
                 hide()
             }
         })}
@@ -36,5 +42,10 @@ class PopUp(title: String, val text: String): VisDialog(title) {
         table.add(okBut).fillX()
 
         add(table)
+    }
+
+    override fun hide() {
+        DIGameGlobalContainer.luaEnv.env.onPopupClosed()
+        super.hide()
     }
 }

@@ -3,7 +3,12 @@ package io.github.some_example_name.old.commands
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Screen
 import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.cells.base.CellPalette
+import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DIGameGlobalContainer.game
+import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
+import io.github.some_example_name.old.features.levels.editor.LevelInfo
 import io.github.some_example_name.old.journal.CommandSource
 import io.github.some_example_name.old.journal.SessionJournal
 import io.github.some_example_name.old.features.devsupport.SupportScreen
@@ -106,7 +111,40 @@ class NavigationCommandsManager {
         EcoSystemScreenGlobalSettings -> TODO()
         GoLogic -> CampaignScreen()//LogicUI()
         GoLevelEditor -> LevelEditorScreen()
-        is GoSimulation -> SimulationScreen(command.world, command.genomeName, command.savedWorld)
+        is GoSimulation -> {
+            applyLevel(command.level)
+            // Карта уровня — внутри LevelInfo (в GoSimulation.world её не дублируем:
+            // уровень с сотнями мазков кистью иначе упирался бы в предел записи журнала).
+            SimulationScreen(command.level?.world ?: command.world, command.genomeName, command.savedWorld)
+        }
+    }
+
+    /**
+     * Состояние уровня перед сборкой экрана симуляции.
+     *
+     * Раньше это делал сам экран уровня до [performCommand], поэтому в журнал попадала
+     * только команда «запустить мир»: повтор .bug из уровня поднимал обычный мир, без lua
+     * и цели, и хэши расходились. Теперь уровень едет в [GoSimulation], а состояние
+     * ставится здесь — одинаково для живой игры и для повтора.
+     */
+    private fun applyLevel(level: LevelInfo?) {
+        val data = DISimulationContainer.simulationData
+        // Мир без уровня сбрасывает флаг: иначе следующий запуск после уровня остался бы
+        // уровнем со старым LevelInfo.
+        data.isLevel = level != null
+        if (level == null) return
+        data.level = level
+
+        if (level.hasLua) {
+            DIGameGlobalContainer.luaEnv.setScript(level.logic)
+        }
+
+        val allowed = level.allowedCells.filterValues { it }.keys
+        DIGenomeEditorContainer.cellPalette = if (allowed.isEmpty()) {
+            CellPalette.FULL
+        } else {
+            CellPalette.only(allowed, setOf())
+        }
     }
 
     /**

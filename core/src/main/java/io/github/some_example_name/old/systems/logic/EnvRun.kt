@@ -3,7 +3,6 @@ package io.github.some_example_name.old.systems.logic
 import ai.tenum.lua.runtime.LuaFunction
 import ai.tenum.lua.runtime.LuaNativeFunction
 import ai.tenum.lua.runtime.LuaNumber
-import ai.tenum.lua.runtime.LuaTable
 import ai.tenum.lua.runtime.LuaValue
 import ai.tenum.lua.lexer.Lexer
 import ai.tenum.lua.parser.Parser
@@ -12,9 +11,6 @@ import ai.tenum.lua.parser.ParserException
 import ai.tenum.lua.vm.LuaVmImpl
 import ai.tenum.lua.vm.errorhandling.LuaException
 import ai.tenum.lua.vm.errorhandling.LuaRuntimeError
-import io.github.some_example_name.old.core.DIGameGlobalContainer
-import io.github.some_example_name.old.core.DISimulationContainer
-import io.github.some_example_name.old.systems.simulation.SimulationData
 
 class EnvRun {
     val globals = LuaVmImpl()
@@ -27,18 +23,42 @@ class EnvRun {
         globals.globals.set("getCells", env.getCellsCount)
         globals.globals.set("popup", env.popup)
         globals.globals.set("win", env.win)
-        //globals.set("env", CoerceJavaToLua.coerce(env))
-        // run("""print("Cells: ".. env:getCellsCount())""") работает
+        globals.globals.set("lose", env.lose)
+
+        // Что показать игроку
+        globals.globals.set("objective", env.objective)
+        globals.globals.set("progress", env.progress)
+        globals.globals.set("marker", env.marker)
+        globals.globals.set("zone", env.zone)
+        globals.globals.set("hint", env.hint)
+        globals.globals.set("timeLimit", env.timeLimit)
+
+        // События вместо опроса мира каждый тик
+        globals.globals.set("onCells", env.onCells)
+        globals.globals.set("onDestination", env.onDestination)
+        globals.globals.set("onTimeout", env.onTimeout)
+        globals.globals.set("afterTicks", env.afterTicks)
+
+        // Мир: еда, случайность, отладочный вывод
+        globals.globals.set("world", env.world)
+        globals.globals.set("spawnFood", env.spawnFood)
+        globals.globals.set("random", env.random)
+        globals.globals.set("log", env.log)
+        globals.globals.set("bundle", env.bundle)
+
+        sandbox()
         //logicScript = """function tick() popup("hi") end"""
-        //logicScript = """popup("test") popup("hi")"""
-        //DISimulationContainer.simulationData.hasLua = true
-        //run()
-        //tick()
+    }
+
+    private fun sandbox() {
+        for (name in REMOVED_GLOBALS) globals.globals.remove(name)
     }
 
     fun run(): String {
+        // Новый запуск уровня (в том числе рестарт) — правила и легаси-триггеры заново.
+        env.rules.reset()
+        env.resetTriggers()
         try {
-            //globals.load(logicScript).call()
             globals.execute(logicScript)
             return ""
         }
@@ -71,51 +91,51 @@ class EnvRun {
         }
     }
 
+    fun cells(): String {
+        return executeFunc("cells")
+    }
+
     fun terrain(): String {
-        try {
-            env.execute()
-            val tick = globals.globals.get("terrain")
-            if (tick == null) {
-                env.win.call(listOf())
-                return "Function terrain hasn't found"
-            }
-            else if (tick !is LuaFunction) {
-                env.win.call(listOf())
-                return "name terrain reserved to system function"
-            }
-            tick.call(listOf())
-            return ""
-        }
-        catch (e: LuaException) {
-            return e.message ?: ""
-        }
-        catch (e: LuaRuntimeError) {
-            return e.message ?: ""
-        }
+        return executeFunc("terrain")
     }
 
     fun tick(): String {
-        try {
-            env.execute()
-            val tick = globals.globals.get("tick")
-            if (tick == null) {
-                return "Function tick hasn't found"
-            }
-            else if (tick !is LuaFunction) {
-                return "name tick reserved to system function"
-            }
-            tick.call(listOf())
-            return ""
-        }
-        catch (e: LuaException) {
-            return e.message ?: ""
-        }
-        catch (e: LuaRuntimeError) {
-            return e.message ?: ""
-        }
+        return executeFunc("tick")
     }
 
     fun setScript(text: String) {
         logicScript = text
+    }
+
+    fun executeFunc(name: String): String {
+        try {
+            env.execute()
+            val tick = globals.globals.get(name)
+            if (tick == null) {
+                return "Function ${name} hasn't found"
+            }
+            else if (tick !is LuaFunction) {
+                return "name ${name} reserved to system function"
+            }
+            tick.call(listOf())
+            return ""
+        }
+        catch (e: LuaException) {
+            return e.message ?: ""
+        }
+        catch (e: LuaRuntimeError) {
+            return e.message ?: ""
+        }
+    }
+
+    private companion object {
+        /**
+         * Что вырезаем из глобальных имён. `load`/`require`/`dofile`/`loadfile` умеют
+         * читать файлы и обходить эту чистку заново; `debug` лезет во внутренности VM.
+         */
+        val REMOVED_GLOBALS = listOf(
+            "os", "io", "debug", "package",
+            "require", "dofile", "loadfile", "load"
+        )
     }
 }

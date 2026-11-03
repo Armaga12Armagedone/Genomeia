@@ -6,6 +6,7 @@ import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.Camera
 import com.badlogic.gdx.math.MathUtils
 import io.github.some_example_name.old.bug.BugReplay
+import io.github.some_example_name.old.cells.base.CellPalette
 import io.github.some_example_name.old.commands.GameCommand
 import io.github.some_example_name.old.commands.GoExit
 import io.github.some_example_name.old.commands.GoGenomeEditor
@@ -17,6 +18,7 @@ import io.github.some_example_name.old.commands.GoSupport
 import io.github.some_example_name.old.commands.GoWorldEditor
 import io.github.some_example_name.old.commands.UserCommandManager
 import io.github.some_example_name.old.core.DIGameGlobalContainer
+import io.github.some_example_name.old.core.DISimulationContainer
 import io.github.some_example_name.old.core.DISingleThreadSimulationContainer
 import io.github.some_example_name.old.core.GameFiles
 import io.github.some_example_name.old.editor.di.DIGenomeEditorContainer
@@ -171,13 +173,20 @@ class MenuViewModel(
 
     private fun apply(intent: MenuIntent) {
         when (intent) {
-            is MenuIntent.OpenWorldEditor -> navigation.performCommand(GoWorldEditor(intent.seed))
+            is MenuIntent.OpenWorldEditor -> {
+                resetLevelState()
+                navigation.performCommand(GoWorldEditor(intent.seed))
+            }
 
-            is MenuIntent.OpenSavedWorld -> navigation.performCommand(
-                GoSimulation(world = null, genomeName = null, savedWorld = intent.slot)
-            )
+            is MenuIntent.OpenSavedWorld -> {
+                resetLevelState()
+                navigation.performCommand(GoSimulation(world = null, genomeName = null, savedWorld = intent.slot))
+            }
 
-            is MenuIntent.OpenGenomeEditor -> navigation.performCommand(GoGenomeEditor(intent.genomeName))
+            is MenuIntent.OpenGenomeEditor -> {
+                resetLevelState()
+                navigation.performCommand(GoGenomeEditor(intent.genomeName))
+            }
 
             is MenuIntent.ImportGenome -> {
                 // При повторе окна выбора нет: файлы придут следующими командами из записи.
@@ -201,6 +210,7 @@ class MenuViewModel(
                 check(SessionAttachments.restore(intent.attachment, target)) { "нет снимка импортированной карты" }
                 // Снимок уже есть в attachment: не дублируем весь мир второй раз в .bug.
                 SessionAttachments.markMapWritten(intent.slot)
+                resetLevelState()
                 navigation.performCommand(GoSimulation(world = null, genomeName = null, savedWorld = intent.slot))
             }
 
@@ -212,8 +222,26 @@ class MenuViewModel(
 
             is MenuIntent.OpenLogic -> navigation.performCommand(GoLogic)
 
-            is MenuIntent.OpenLevelEditor -> navigation.performCommand(GoLevelEditor)
+            is MenuIntent.OpenLevelEditor -> {
+                resetLevelState()
+                navigation.performCommand(GoLevelEditor)
+            }
         }
+    }
+
+    /**
+     * Обычная игра после уровня: ни настройки уровня, ни урезанная палитра клеток не должны
+     * переезжать в следующую сессию. Палитра живёт в редакторе генома, поэтому сбрасывается
+     * здесь, рядом с [SimulationData.resetLevel], а не в самой SimulationData: симуляция
+     * про редактор знать не должна.
+     *
+     * Уровень задаёт палитру при запуске (кампания, «Протестировать»), а вернуть полную
+     * некому — без этого после первого кастомного уровня редактор генома навсегда остаётся
+     * с чужим списком клеток.
+     */
+    private fun resetLevelState() {
+        DISimulationContainer.simulationData.resetLevel()
+        DIGenomeEditorContainer.cellPalette = CellPalette.FULL
     }
 
     /**

@@ -1,53 +1,76 @@
 package io.github.some_example_name.old.systems.logic
 
+import ai.tenum.lua.runtime.LuaBoolean
+import ai.tenum.lua.runtime.LuaFunction
 import ai.tenum.lua.runtime.LuaNativeFunction
 import ai.tenum.lua.runtime.LuaNumber
 import ai.tenum.lua.runtime.LuaString
+import ai.tenum.lua.runtime.LuaValue
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.utils.Json
 import com.badlogic.gdx.utils.ObjectMap
 import io.github.some_example_name.old.commands.GoBack
-import io.github.some_example_name.old.commands.GoMenu
+import io.github.some_example_name.old.commands.WorldCommandType
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.DISimulationContainer.simulationData
 import io.github.some_example_name.old.features.levels.dialogs.PopUp
 import io.github.some_example_name.old.features.simulation.SimulationScreen
-import kotlin.math.abs
 
 
 class LogicEnv {
     val popups = com.badlogic.gdx.utils.Queue<PopUp>()
     var popupActive = false
 
+    //Состояние уровня для экрана: цель, прогресс, метка, зона, провал.
+    val rules = LevelRules()
+
+    private var cellsTriggerFired = false
+    private var destinationTriggerFired = false
+
     val getCellsCount = LuaNativeFunction {
         listOf(LuaNumber.of(DISimulationContainer.simulationSystem.getStats().cells))
     }
 
+    val world = LuaNativeFunction {
+        args -> val name = string(args, 0)
+        when (name) {
+            "cells" -> {
+                listOf(LuaNumber.of(DISimulationContainer.simulationSystem.getStats().cells))
+            }
+            "time" -> {
+                listOf(LuaNumber.of(simulationData.timeSimulation.toDouble()))
+            }
+            "tick" -> {
+                    listOf(LuaNumber.of(simulationData.tickCounter))
+            }
+            "pos" -> {
+                val (posX, posY) = getAveragePos()
+                listOf(LuaNumber.of(posX.toDouble()), LuaNumber.of(posY.toDouble()))
+            }
+            else -> listOf()
+        }
+    }
+
     val win = LuaNativeFunction {//при isLevel у каждой map есть свой id, при win мы отображаем popup а затем засчитываем json файл с levelam'и как пройденный
-        //popup.call(listOf())
         if (DISimulationContainer.simulationData.isGuide) {
-            //val levels = Gdx.files.internal("campaign/levels/levels.json")
             val file = Gdx.files.local("campaign/levels/levels.json")
             val json = Json()
 
             // 2. Читаем существующий файл или создаем новую карту, если файла нет
             val settings: ObjectMap<String, Boolean> = if (file.exists()) {
-                // Передаем ObjectMap::class.java, а затем типы для String и Boolean
                 json.fromJson(ObjectMap::class.java, java.lang.Boolean::class.java, file)
                     as ObjectMap<String, Boolean>
             } else {
                 ObjectMap()
             }
 
-
-            // 3. Перезаписываем или добавляем значения
             settings.put(DISimulationContainer.simulationData.level.id.toString(), true)
-
-
-            // 4. Перезаписываем файл целиком (false означает "не добавлять в конец", а стереть и записать заново)
             file.writeString(json.prettyPrint(settings), false)
         }
 
+        rules.resumeAfterReading()
         Gdx.app.postRunnable {
             DIGameGlobalContainer.navigationCommandsManager.performCommand(GoBack)
         }
@@ -55,26 +78,142 @@ class LogicEnv {
         listOf()
     }
 
-    fun loose() {
-        Gdx.app.postRunnable {
-            DIGameGlobalContainer.navigationCommandsManager.performCommand(GoBack)
-        }
+    val bundle = LuaNativeFunction {
+        args -> val name = string(args, 0)
+
+        listOf(LuaString.of(DIGameGlobalContainer.bundle.get(name) ?: ""))
     }
 
 
-    val popup = LuaNativeFunction {
-        args -> val text = (args.getOrNull(0) as? LuaString)?.value ?: ""
-        val title = (args.getOrNull(1) as? LuaString)?.value ?: "title"
-        //println(text)
+    val lose = LuaNativeFunction { args ->
+        rules.fail(string(args, 0).ifEmpty { "Уровень провален" })
+        listOf()
+    }
+
+    val popup = LuaNativeFunction { args ->
+        val text = string(args, 0)
+        val title = string(args, 1).ifEmpty { "title" }
+        val pause = bool(args, 2)
+        if (pause) rules.requestReadingPause()
         Gdx.app.postRunnable {
-            val popuk = PopUp(title, text)//.show((DIGameGlobalContainer.game.screen as SimulationScreen).getStage())
-            popups.addLast(popuk)
+            popups.addLast(PopUp(title, text))
         }
         listOf()
     }
 
+    val objective = LuaNativeFunction { args ->
+        rules.setObjective(string(args, 0))
+        listOf()
+    }
+
+    val progress = LuaNativeFunction { args ->
+        rules.setProgress(number(args, 0).toInt(), number(args, 1).toInt())
+        listOf()
+    }
+
+    val marker = LuaNativeFunction { args ->
+        if (args.isEmpty()) rules.clearMarker() else rules.setMarker(number(args, 0), number(args, 1))
+        listOf()
+    }
+
+    val zone = LuaNativeFunction { args ->
+        if (args.isEmpty()) {
+            rules.clearZone()
+        } else {
+            rules.setZone(number(args, 0), number(args, 1), number(args, 2))
+        }
+        listOf()
+    }
+
+    val timeLimit = LuaNativeFunction { args ->
+        rules.setTimeLimit(number(args, 0))
+        listOf()
+    }
+
+    val hint = LuaNativeFunction { args ->
+        val text = string(args, 0)
+        if (rules.hintOnce(text)) {
+            Gdx.app.postRunnable {
+                popups.addLast(PopUp("Подсказка", text))
+            }
+        }
+        listOf()
+    }
+
+    val onCells = LuaNativeFunction { args ->
+        val fn = function(args, 1)
+        if (fn != null) rules.setOnCells(number(args, 0).toInt(), fn)
+        listOf()
+    }
+
+    val onDestination = LuaNativeFunction { args ->
+        function(args, 0)?.let { rules.setOnDestination(it) }
+        listOf()
+    }
+
+    val onTimeout = LuaNativeFunction { args ->
+        function(args, 0)?.let { rules.setOnTimeout(it) }
+        listOf()
+    }
+
+    val afterTicks = LuaNativeFunction { args ->
+        val fn = function(args, 1)
+        if (fn != null) rules.afterTicks(number(args, 0).toInt(), fn)
+        listOf()
+    }
+
+    val spawnFood = LuaNativeFunction { args ->
+        val x = number(args, 0)
+        val y = number(args, 1)
+        val radius = if (args.size > 2) number(args, 2) else DEFAULT_FOOD_RADIUS
+        if (x > 0f && x < DISimulationContainer.gridWidth && y > 0f && y < DISimulationContainer.gridHeight) {
+            DISimulationContainer.worldCommandsManager.worldCommandLastBuffer.push(
+                type = WorldCommandType.ADD_SUBSTANCE,
+                ints = intArrayOf(Color.RED.toIntBits(), 0),
+                floats = floatArrayOf(x, y, radius)
+            )
+        }
+        listOf()
+    }
+
+    val random = LuaNativeFunction { args ->
+        val result = when (args.size) {
+            0 -> rules.randomFloat(0f, 1f)
+            1 -> rules.randomFloat(0f, number(args, 0))
+            else -> rules.randomFloat(number(args, 0), number(args, 1))
+        }
+        listOf(LuaNumber.of(result.toDouble()))
+    }
+
+    val log = LuaNativeFunction { args ->
+        Gdx.app.log("Level", string(args, 0))
+        listOf()
+    }
 
     fun execute() {
+        if (!simulationData.isLevel) return
+
+        val cells = DISimulationContainer.simulationSystem.getStats().cells
+        rules.step(cells)
+
+        val level = simulationData.level
+        if (!cellsTriggerFired && level.cellsNeed > 0 && cells >= level.cellsNeed) {
+            cellsTriggerFired = true
+            DIGameGlobalContainer.luaEnv.cells()
+        }
+        if (!destinationTriggerFired && level.needDestination && destinationReached()) {
+            destinationTriggerFired = true
+            rules.destinationReached()
+            DIGameGlobalContainer.luaEnv.terrain()
+        }
+    }
+
+    fun onPopupClosed() {
+        popupActive = false
+        rules.resumeAfterReading()
+    }
+
+    fun pumpPopups() {
         if (!popupActive && !popups.isEmpty && DIGameGlobalContainer.game.screen is SimulationScreen) {
             popups.get(0).show((DIGameGlobalContainer.game.screen as SimulationScreen).getStage())
             popups.removeFirst()
@@ -82,38 +221,54 @@ class LogicEnv {
         }
     }
 
+    fun resetTriggers() {
+        cellsTriggerFired = false
+        destinationTriggerFired = false
+    }
 
-    //for level play:
-    fun dist(): Boolean {
-        val xs = mutableListOf<Float>()
-        val ys = mutableListOf<Float>()
+    private fun destinationReached(): Boolean {
+        val (sx, sy) = getAveragePos()
 
-        for (ind in DISimulationContainer.cellEntity.particleIndexes) {
-            if (ind < 0) {
-                continue
-            }
-            //print(ind)
-            val x = DISimulationContainer.particleEntity.x[ind]
-            val y = DISimulationContainer.particleEntity.y[ind]
-            xs.add(x)
-            ys.add(y)
+        val dx = simulationData.level.destination.first - sx
+        val dy = simulationData.level.destination.second - sy
+        return dx * dx + dy * dy <= DESTINATION_RADIUS * DESTINATION_RADIUS
+    }
+
+    private fun getAveragePos(): Pair<Float, Float> {
+        val cell = DISimulationContainer.cellEntity
+        val particle = DISimulationContainer.particleEntity
+        val alive = cell.aliveList
+
+        var sx = 0f
+        var sy = 0f
+        var count = 0
+        for (i in 0 until alive.size) {
+            val particleIndex = cell.particleIndexes[alive.getInt(i)]
+            if (particleIndex < 0) continue
+            sx += particle.x[particleIndex]
+            sy += particle.y[particleIndex]
+            count++
         }
+        if (count == 0) return 0f to 0f
 
-        val xc = xs.sum()/xs.size
-        val yc = ys.sum()/ys.size
+        return sx/count to sy/count
+    }
 
-        println("x: ${xc}, y: ${yc}")
+    private fun string(args: List<LuaValue<*>>, index: Int): String =
+        (args.getOrNull(index) as? LuaString)?.value ?: ""
 
-        val destx = DISimulationContainer.simulationData.level.destination.first
-        val desty = DISimulationContainer.simulationData.level.destination.second
+    private fun number(args: List<LuaValue<*>>, index: Int): Float =
+        (args.getOrNull(index) as? LuaNumber)?.toDouble()?.toFloat() ?: 0f
 
-        val ds1 = destx-xc
-        if (abs(ds1)<=10) {
-            val ys1 = desty-yc
-            DIGameGlobalContainer.luaEnv.terrain()
-            return ds1*ds1+ys1*ys1 <= 100f
-        }
-        return false
+    private fun bool(args: List<LuaValue<*>>, index: Int): Boolean =
+        (args.getOrNull(index) as? LuaBoolean)?.value == true
+
+    private fun function(args: List<LuaValue<*>>, index: Int): LuaFunction? =
+        args.getOrNull(index) as? LuaFunction
+
+    private companion object {
+        const val DESTINATION_RADIUS = 10f
+
+        const val DEFAULT_FOOD_RADIUS = 0.3f
     }
 }
-

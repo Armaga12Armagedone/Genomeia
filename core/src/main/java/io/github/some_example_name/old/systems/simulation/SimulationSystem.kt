@@ -159,11 +159,9 @@ class SimulationSystem(
             restartSim()
             return
         }
-        if (simulationData.level.hasLua) {
+        if (simulationData.isLevel && simulationData.level.hasLua) {
             DIGameGlobalContainer.luaEnv.tick()
-        }
-        if (simulationData.level.needDestination) {
-            println("Res: ${DIGameGlobalContainer.luaEnv.env.dist()}")
+
         }
 
         simulationData.tickCounter++
@@ -424,7 +422,10 @@ class SimulationSystem(
      * случайностей команд игрока. При повторе бага seed берётся из записи.
      */
     private fun startSession() {
-        if (simulationData.level.hasLua) {
+        // Правила уровня — с чистого листа: HUD предыдущего уровня не должен переехать
+        // в этот, даже если у этого уровня нет lua (тогда run() не зовётся).
+        DIGameGlobalContainer.luaEnv.env.rules.reset()
+        if (simulationData.isLevel && simulationData.level.hasLua) {
             DIGameGlobalContainer.luaEnv.run()
         }
         val epoch = SessionJournal.beginSimEpoch()
@@ -438,6 +439,8 @@ class SimulationSystem(
     private fun resetSessionInput(seed: Long) {
         userCommandManager.startSession(seed)
         debugRandom.setSeed(seed xor DEBUG_RANDOM_SALT)
+        // Скрипт уровня берёт random() отсюда: повтор .bug подставит тот же сид.
+        DIGameGlobalContainer.luaEnv.env.rules.seed(seed)
         simulationData.controllerKeys.fill(false)
         lastControllerKeysMask = 0
     }

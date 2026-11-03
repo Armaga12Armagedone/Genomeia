@@ -18,6 +18,7 @@ import io.github.some_example_name.old.editor.system.logic.TapScreen
 import io.github.some_example_name.old.editor.system.logic.TryToDivide
 import io.github.some_example_name.old.editor.system.logic.UiEditorCommands
 import io.github.some_example_name.old.features.devsupport.SupportIntent
+import io.github.some_example_name.old.features.levels.editor.LevelInfo
 import io.github.some_example_name.old.features.menu.MenuIntent
 import io.github.some_example_name.old.features.settings.SettingsIntent
 import io.github.some_example_name.old.features.settings.SettingsTab
@@ -94,6 +95,24 @@ class CommandRegistryTest {
         assertEquals(null, target.savedWorld)
 
         assertEquals("777", (roundTrip(GoWorldEditor("777")) as GoWorldEditor).seed)
+    }
+
+    @Test
+    fun `уровень едет в команде запуска мира`() {
+        val level = LevelInfo(
+            id = 7,
+            nameKey = "Уровень 1",
+            hasLua = true,
+            logic = "objective('доберись до цели')",
+            allowedCells = mapOf("leaf" to true, "muscle" to false),
+            cellsNeed = 5,
+            needDestination = true,
+            destination = 12.5f to 30f,
+            world = WorldSpec(192, 192, "12345678", 7, 3, listOf(WorldEdit.Clear))
+        )
+
+        val command = roundTrip(GoSimulation(world = null, genomeName = null, level = level)) as GoSimulation
+        assertEquals(level, command.level)
     }
 
     @Test

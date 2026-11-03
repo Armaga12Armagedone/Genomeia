@@ -496,6 +496,25 @@ class WorldCommandsManager(
                     )
                 }
 
+                // Еда и прочие субстанции от скрипта уровня (LogicEnv.spawnFood). Сюда, а не в
+                // общий буфер: скрипт зовётся в начале тика, до параллельных стадий, и его
+                // команды должны лечь после них — тогда порядок не зависит от воркеров.
+                WorldCommandType.ADD_SUBSTANCE -> {
+                    val newSubIndex = substancesEntity.addSubstance(
+                        x = floats[0],
+                        y = floats[1],
+                        color = ints[0],
+                        radius = floats[2],
+                        subType = ints[1].toByte(),
+                    )
+                    pheromoneEntity.addPheromone(
+                        x = floats[0],
+                        y = floats[1],
+                        emitterIndex = substancesEntity.particleIndex[newSubIndex],
+                        type = 0
+                    )
+                }
+
                 else -> {}
             }
         }

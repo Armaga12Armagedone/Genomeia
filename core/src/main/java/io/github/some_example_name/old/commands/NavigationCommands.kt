@@ -2,6 +2,7 @@ package io.github.some_example_name.old.commands
 
 import io.github.some_example_name.old.features.worldeditor.WorldEditorIntent
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
+import io.github.some_example_name.old.features.levels.editor.LevelInfo
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -86,17 +87,32 @@ object GoSupport : Menu() {
     override val name get() = "GoSupport"
 }
 
+/**
+ * Запуск мира. Либо обычная симуляция ([world] или [savedWorld]), либо уровень: тогда
+ * карта, lua и цель едут в [level] одной командой.
+ */
 @Serializable
 class GoSimulation(
-    /** Рецепт мира, а не готовая карта: см. [WorldSpec]. null — мир из редактора генома. */
+    /**
+     * Рецепт мира, а не готовая карта: см. [WorldSpec]. null — мир не из редактора карт:
+     * тест генома, сохранение или уровень (у уровня карта лежит в [level]).
+     */
     val world: WorldSpec?,
     val genomeName: String?,
     /** Слот сохранённого мира (MapSave): тогда мир загружается из него, а [world] не нужен. */
-    val savedWorld: String? = null
+    val savedWorld: String? = null,
+    /**
+     * Уровень целиком: карта, lua, палитра разрешённых клеток, цель. Едет в команде, а не
+     * ставится экраном до её вызова, иначе в журнале остаётся «запустить мир», а какой
+     * именно уровень — нет, и повтор .bug поднимает уровень обычной симуляцией.
+     * null — обычная симуляция.
+     */
+    val level: LevelInfo? = null
 ) : Menu() {
     override val name get() = "GoSimulation"
     override val detail
-        get() = listOfNotNull(world?.detail, genomeName, savedWorld?.let { "save=$it" })
+        get() = listOfNotNull(world?.detail, genomeName, savedWorld?.let { "save=$it" },
+            level?.let { "level=${it.nameKey}" })
             .joinToString(", ").ifEmpty { "-" }
 }
 
@@ -125,6 +141,7 @@ fun navigationCommandByName(name: String): NavigationCommands? = when (name.trim
     GoSupport.name -> GoSupport
     "GoGenomeEditor" -> GoGenomeEditor(null)
     "GoLevelEditor" -> GoLevelEditor
+    GoLogic.name -> GoLogic
     GoBack.name -> GoBack
     GoExit.name -> GoExit
     else -> null

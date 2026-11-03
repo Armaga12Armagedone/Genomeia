@@ -6,6 +6,7 @@ import com.badlogic.gdx.Input
 import com.badlogic.gdx.Screen
 import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.GL20
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.BitmapFont
@@ -25,6 +26,7 @@ import com.kotcrab.vis.ui.widget.VisLabel
 import com.kotcrab.vis.ui.widget.VisTextButton
 import io.github.some_example_name.old.bug.ReplayTarget
 import io.github.some_example_name.old.commands.GameCommand
+import io.github.some_example_name.old.commands.GoBack
 import io.github.some_example_name.old.commands.GoGenomeEditor
 import io.github.some_example_name.old.commands.GoMenu
 import io.github.some_example_name.old.commands.GoReplace
@@ -32,15 +34,20 @@ import io.github.some_example_name.old.commands.PlayerCommand
 import io.github.some_example_name.old.core.ui.KeyboardFocus
 import io.github.some_example_name.old.core.DIGameGlobalContainer
 import io.github.some_example_name.old.core.DISimulationContainer
+import io.github.some_example_name.old.core.DISimulationContainer.simulationData
 import io.github.some_example_name.old.core.ui.CameraControl
+import io.github.some_example_name.old.core.ui.dp
 import io.github.some_example_name.old.core.ui.h
 import io.github.some_example_name.old.core.ui.makeStyledButton
+import io.github.some_example_name.old.core.ui.makeStyledNP
 import io.github.some_example_name.old.core.ui.setupTitleSize
 import io.github.some_example_name.old.core.ui.renderModeSelectBox
 import io.github.some_example_name.old.core.ui.w
 import io.github.some_example_name.old.features.worldeditor.WorldSpec
+import io.github.some_example_name.old.features.levels.dialogs.LevelFailDialog
 import io.github.some_example_name.old.game.applyCustomFontMedium
 import io.github.some_example_name.old.systems.genomics.library.GenomeCatalog
+import io.github.some_example_name.old.systems.logic.LevelHud
 import io.github.some_example_name.old.systems.simulation.ControllerKeys
 import io.github.some_example_name.render.debug.RenderSceneDump
 import java.io.File
@@ -104,6 +111,18 @@ class SimulationScreen(
     private lateinit var font: BitmapFont
     private lateinit var stage: Stage
     private lateinit var root: Table
+    /** Цель уровня: текст цели и прогресс. Отдельно от root — root пересобирается кнопками. */
+    private lateinit var levelHud: Table
+    /** Подложка HUD: своя текстура, у неё своя жизнь — rebuildMenu её не трогает. */
+    private val levelHudTextures = mutableListOf<Texture>()
+    private var levelHudSnapshot = LevelHud()
+    private var levelDestination: Pair<Float, Float>? = null
+    /** Что рисует LevelOverlay: свои метки уровня плюс точка назначения из LevelInfo. */
+    private var overlayHud = LevelHud()
+    /** Окно провала показано: второй раз за заход его не открываем. */
+    private var failShown = false
+    /** Пауза, которую поставил сам уровень (popup с pause), а не игрок. */
+    private var pausedByReading = false
     private lateinit var fontMatrix: Matrix4
     private lateinit var shapeRenderer: ShapeRenderer
 
@@ -142,6 +161,11 @@ class SimulationScreen(
         root = Table()
         root.setFillParent(true)
         stage.addActor(root)
+
+        // HUD уровня (цель и прогресс) — полоса под панелью кнопок. Своя подложка, а не
+        // голая надпись: мир под ней яркий, и бежевый текст на траве не читается.
+        levelHud = Table().apply { isVisible = false }
+        levelHud.background = makeStyledNP(HUD_FILL, HUD_BORDER, levelHudTextures)
 
         rebuildMenu()
         currentScreenWidth = Gdx.graphics.width
@@ -234,7 +258,15 @@ class SimulationScreen(
 
         shapeRenderer.projectionMatrix = camera.combined
 
+        updateLevelHud()
+        syncReadingPause()
+        checkLevelFail()
+        // Окна уровня показываем здесь, на потоке рендера: скрипт кладёт их в очередь
+        // через postRunnable, а show() трогает сцену.
+        DIGameGlobalContainer.luaEnv.env.pumpPopups()
+
         renderSystem.render()
+        LevelOverlay.draw(shapeRenderer, camera, overlayHud)
 
         stage.act(Gdx.graphics.deltaTime)
         stage.draw()
@@ -358,8 +390,91 @@ class SimulationScreen(
         spriteBatch.dispose()
         font.dispose()
         extraTextures.forEach { it.dispose() }
+        levelHudTextures.forEach { it.dispose() }
     }
 
+
+    /**
+     * Цель, прогресс, метка и зона из Lua-скрипта уровня.
+     *
+     * Экран только рисует состояние: правила считает LevelRules в потоке симуляции, а
+     * здесь мы сверяем неизменяемый снимок и пересобираем HUD только когда он поменялся
+     * (Lua зовёт objective/progress редко — не каждый тик).
+     */
+    private fun updateLevelHud() {
+        val data = DISimulationContainer.simulationData
+        val hud = if (data.isLevel) DIGameGlobalContainer.luaEnv.env.rules.hud else LevelHud()
+        val destination = if (data.isLevel && data.level.needDestination) data.level.destination else null
+
+        if (hud == levelHudSnapshot && destination == levelDestination) return
+
+        levelHudSnapshot = hud
+        levelDestination = destination
+        levelHud.clear()
+
+        if (!data.isLevel) {
+            levelHud.isVisible = false
+            overlayHud = LevelHud()
+            return
+        }
+
+        if (hud.objective.isNotEmpty()) {
+            val objective = VisLabel(hud.objective)
+            DIGameGlobalContainer.game.applyCustomFontMedium(objective)
+            levelHud.add(objective).center().padTop(10.dp()).row()
+        }
+        if (hud.progress >= 0) {
+            val progress = VisLabel("${hud.progress} / ${hud.progressMax}")
+            DIGameGlobalContainer.game.applyCustomFontMedium(progress)
+            levelHud.add(progress).center().padTop(4.dp()).padBottom(8.dp()).row()
+        }
+        // Пустая полоса над миром — лишний тёмный прямоугольник: показываем её только
+        // когда скрипт уровня что-то в неё положил.
+        levelHud.isVisible = hud.objective.isNotEmpty() || hud.progress >= 0
+
+        // Если скрипт не поставил свою метку, показываем точку назначения из LevelInfo:
+        // иначе игрок не видит, куда плыть.
+        overlayHud = if (!hud.hasMarker && destination != null) {
+            hud.copy(markerX = destination.first, markerY = destination.second, hasMarker = true)
+        } else {
+            hud
+        }
+    }
+
+    /**
+     * popup(..., true) просит паузу, пока игрок читает. Ставит её обычная команда, а не
+     * симуляция: пауза меняет ход мира, значит должна попасть в журнал.
+     */
+    private fun syncReadingPause() {
+        val want = DISimulationContainer.simulationData.isLevel &&
+            DIGameGlobalContainer.luaEnv.env.rules.readingPause
+        if (want == pausedByReading) return
+        pausedByReading = want
+        viewModel.handle(SimulationIntent.SetPaused(want))
+    }
+
+    /** Провал уровня: окно с причиной и кнопками. Показ — только из потока рендера. */
+    private fun checkLevelFail() {
+        if (failShown || !DISimulationContainer.simulationData.isLevel) return
+
+        val rules = DIGameGlobalContainer.luaEnv.env.rules
+        val reason = rules.failReason ?: return
+        failShown = true
+        rules.clearFail()
+        if (!viewModel.isPaused) viewModel.handle(SimulationIntent.SetPaused(true))
+
+        LevelFailDialog(
+            reason = reason,
+            onRetry = {
+                failShown = false
+                viewModel.handle(SimulationIntent.Restart)
+                viewModel.handle(SimulationIntent.SetPaused(false))
+            },
+            onMenu = {
+                DIGameGlobalContainer.navigationCommandsManager.performCommand(GoReplace(GoMenu))
+            }
+        ).show(stage)
+    }
 
     private fun rebuildMenu() {
         extraTextures.forEach { it.dispose() }
@@ -376,19 +491,22 @@ class SimulationScreen(
         val bundle = DIGameGlobalContainer.bundle
         val game = DIGameGlobalContainer.game
 
+        val text = if (simulationData.isLevel) bundle.get("button.back") else if (genomeName == null) bundle.get("button.menu") else bundle.get("button.backToEditor")
+        val nav = if (simulationData.isLevel) GoBack else if (genomeName == null) {
+            GoReplace(GoMenu)
+        } else {
+            GoReplace(GoGenomeEditor(genomeName.replace(".json", "")))
+        }
+
         val menuButton = makeStyledButton(
-            if (genomeName == null) bundle.get("button.menu") else bundle.get("button.backToEditor"),
+            text=text,
             game, extraTextures
         ).onClick {
             // Через менеджер, а не game.screen = ...: иначе переход не виден журналу,
             // а стек остаётся от прошлого маршрута — «Назад» в меню уводило бы туда,
             // откуда игрок уже вышел.
             DIGameGlobalContainer.navigationCommandsManager.performCommand(
-                if (genomeName == null) {
-                    GoReplace(GoMenu)
-                } else {
-                    GoReplace(GoGenomeEditor(genomeName.replace(".json", "")))
-                }
+                nav
             )
         }
 
@@ -479,6 +597,10 @@ class SimulationScreen(
         }
 
         root.add(controls).growX().top().left().row()
+
+        // HUD следующей строкой под кнопками, а не с фиксированным отступом от верха: на
+        // узком экране кнопки переносятся на вторую строку, и HUD накрыл бы их.
+        root.add(levelHud).growX().row()
 
         if (simulationSystem.simulationData.showControllerKeys) {
             controllerKeyboard()
@@ -614,6 +736,10 @@ class SimulationScreen(
     }
 
     private companion object {
+        /** Подложка HUD: та же палитра, что у панелей редактора (тёплый тёмный + охра). */
+        val HUD_FILL = Color(0.07f, 0.05f, 0.04f, 0.82f)
+        val HUD_BORDER = Color(0.92f, 0.55f, 0.22f, 0.55f)
+
         /**
          * Клавиши контроллера на клавиатуре — по индексу в controllerKeyTouched:
          * 0–9 цифры, 10–13 WASD, 14 пробел, 15–18 стрелки. Порядок — тот же, что у имён
